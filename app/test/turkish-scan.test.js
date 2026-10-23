@@ -38,6 +38,14 @@ test('Turkish scan faulty input: Turkish letters, ASCII Turkish words, identifie
     ['README.md', 'Kurulum: dosyayi acin.'],
     ['src-tauri/Cargo.toml', 'description = "kitap ciltleme"'],
     ['.github/workflows/pages.yml', '# kitap sayfasi'],
+    // leftovers the first pass missed (M9 review): one word per line, in an identifier
+    ['app/test/e2e.mjs', 'const tbFarki = (t) => t;'],
+    ['app/test/e2e.mjs', 'const tbElle = 1;'],
+    ['app/test/a.test.js', 'const varyant = {};'],
+    ['app/test/a.test.js', 'const bilgisiz = 1;'],
+    ['app/js/a.js', "var elma = 'META-INF/x.xml';"],
+    ['app/test/a.test.js', 'const zmn = new Set();'],
+    ['src-tauri/src/a.rs', 'move |_uyg: *mut X| {}'],
   ];
   // turkish-data: end
   for (const [file, text] of bad) assert.ok(S.scanText(file, text).length > 0, `${file}: ${text}`);
@@ -63,13 +71,17 @@ test('Turkish scan faulty input: paths, a dictionary with Turkish keys and copie
 });
 
 // turkish-data: begin (faulty test inputs of the marker tests)
-test('Turkish scan faulty input: broken allowlist markers are caught; a marker covers only its block or line', () => {
+test('Turkish scan faulty input: broken allowlist markers are caught; a block exempts only data lines (comments are scanned); a marker covers only its line', () => {
   const B = 'turkish' + '-data', L = 'legacy' + '-names';
   assert.ok(reasons('app/js/a.js', `// ${B}: begin\nvar s = 'şeker';`).some((r) => /never closed/.test(r)), 'an unclosed block');
   assert.ok(reasons('app/js/a.js', `var a = 1;\n// ${B}: end`).some((r) => /without begin/.test(r)), 'an end without begin');
   assert.ok(reasons('app/js/a.js', `// ${B}: begin\n// ${L}: begin\n// ${L}: end\n// ${B}: end`).some((r) => /inside/.test(r)), 'nested blocks');
   assert.deepEqual(reasons('app/js/a.js', `// ${B}: begin (test words)\nvar s = 'şeker';\n// ${B}: end\nvar t = 1;`), [], 'a closed block');
   assert.deepEqual(reasons('app/js/a.js', `// ${B}: begin (test words)\nvar s = 'şeker';\n// ${B}: end\nvar t = 'ılık';`).map((r) => r.split(':')[0]), ['4'], 'after the block it is scanned again');
+  assert.ok(reasons('app/js/a.js', `// ${L}: begin (old names)\n// eski kayıt adları\nvar k = 'kitapCilt.v1';\n// ${L}: end`).some((r) => /^2:/.test(r)), 'a Turkish comment inside a block');
+  assert.ok(reasons('src-tauri/src/a.rs', `// ${L}: begin\n    /// Kalıcı kimlik\n    #[serde(alias = "kimlik")]\n// ${L}: end`).some((r) => /^2:/.test(r)), 'a Turkish doc comment inside a block (Rust)');
+  assert.deepEqual(reasons('src-tauri/src/a.rs', `// ${L}: begin\n    #[serde(alias = "kimlik")]\n// ${L}: end`), [], 'a Rust attribute (#) inside a block is data');
+  assert.ok(reasons('.gitignore', `# ${L}: begin\n# eski işaret\n.*.dist-hazirla\n# ${L}: end`).some((r) => /^2:/.test(r)), 'a # comment inside a block (gitignore)');
   const OK = 'turkish' + '-ok';
   assert.ok(reasons('app/js/a.js', `var s = 'şeker'; // ${OK}`).some((r) => /without a reason/.test(r)), 'a marker without a reason');
   assert.deepEqual(reasons('app/js/a.js', `var s = 'şeker'; // ${OK}: test data`), [], 'a marker with a reason');

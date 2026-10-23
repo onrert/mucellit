@@ -16,8 +16,8 @@
 const TURKISH_LETTER = /[çğıöşüÇĞİÖŞÜ]/;
 // A helper heuristic for Turkish sentences without Turkish letters (folded to ASCII); only in a literal that contains
 // a space (a single word may be an identifier in the source: 'sewn', 'projects'). Two signals (26 words in the past):
-//   1. common Turkish words (ASCII form). Words that clash with English are left out on purpose: once, her, su, sure, sec, o, mi.
-//   2. common Turkish suffixes at the end of a word: -amadı/-emedi, -ıyor/-uyor, -ları/-leri, -siniz, -ilsin, -ildi, -ecek …
+//   1. common Turkish words (ASCII form). Words that clash with English are left out on purpose: once, her, su, sure, sec, o, mi.  // turkish-ok: the UI scan's own patterns (Turkish words in examples)
+//   2. common Turkish suffixes at the end of a word: -amadı/-emedi, -ıyor/-uyor, -ları/-leri, -siniz, -ilsin, -ildi, -ecek …  // turkish-ok: the UI scan's own patterns (Turkish words in examples)
 // False alarm test: i18n.test.js checks that no text of the en dictionary and no technical string counts as Turkish.
 const WORDS = ['ve', 'bir', 'ile', 'icin', 'veya', 'ya da', 'gibi', 'kadar', 'daha', 'cok', 'hic', 'tum', 'tumu', 'butun', 'lutfen', 'tekrar',
   'yeniden', 'simdi', 'sonra', 'yok', 'degil', 'gerekli', 'olmali', 'sayfa', 'sayfaya', 'sayfalar', 'sayfasi', 'kitap', 'kitaba', 'kitabi',

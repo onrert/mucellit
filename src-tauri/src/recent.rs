@@ -30,10 +30,11 @@ pub const MAX_ENTRIES: usize = 10;
 pub const FILE_NAME: &str = "recent-files.json";
 
 /// One recent file entry. `path` stays on the Rust side only (JS gets a `Summary`).
-// legacy-names: begin (serde aliases: field names of the recent files list written by earlier versions)
+// The serde aliases below read the field names written by earlier versions (legacy-names blocks around them).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
-    /// Kalıcı kimlik (uuid v4); menü öğesi ve `son_acilani_oku` bununla çağrılır.
+    /// Persistent id (uuid v4); the menu item and `read_recent_file` call with it.
+    // legacy-names: begin (serde aliases: field names written by earlier versions)
     #[serde(alias = "kimlik")]
     pub id: String,
     #[serde(alias = "ad")]
@@ -41,25 +42,23 @@ pub struct Entry {
     /// "pdf" | "epub"
     #[serde(alias = "tur")]
     pub kind: String,
-    /// Son açılış (Unix saniye).
+    /// Last opened (Unix seconds).
     #[serde(alias = "tarih")]
     pub date: u64,
-    /// Seçildiği andaki yol: aynı dosyanın yeniden eklenmesini tanımak ve yer imi yoksa okumak için.
+    /// The path at the moment of the choice: to recognise the same file added again and to read it when there is no bookmark.
     #[serde(alias = "yol")]
     pub path: String,
-    /// Güvenlik kapsamlı yer imi (base64). `None`: platform desteklemiyor ya da oluşturulamadı.
+    /// Security-scoped bookmark (base64). `None`: the platform does not support it or it could not be made.
     #[serde(default, alias = "yerimi")]
+    // legacy-names: end
     pub bookmark: Option<String>,
 }
 
-/// JS'e verilen özet (yol ve yer imi verilmez).
+/// The summary given to JS (no path and no bookmark).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Summary {
-    #[serde(alias = "kimlik")]
     pub id: String,
-    #[serde(alias = "ad")]
     pub name: String,
-    #[serde(alias = "tur")]
     pub kind: String,
     pub date: u64,
 }
@@ -75,13 +74,15 @@ impl From<&Entry> for Summary {
     }
 }
 
-/// MRU listesi (saf veri yapısı; dosya ve yer imi işi dışarıda).
+/// The MRU list (a plain data structure; the file and bookmark work is outside).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecentList {
+    // legacy-names: begin (serde alias: field name written by earlier versions)
     #[serde(alias = "kayitlar")]
+    // legacy-names: end
     pub entries: Vec<Entry>,
 }
-// legacy-names: end
+// end of the serde aliases
 
 impl RecentList {
     /// Puts the entry first. An entry with the same path is removed (its id is kept: the menu item stays the same).

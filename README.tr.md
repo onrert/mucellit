@@ -47,8 +47,9 @@ Dosyaların bilgisayarından çıkmaz: hesap yok, hiçbir şey yüklenmez, ücre
 - **Yayın:** `main`'e her push testleri çalıştırır ve siteyi GitHub Pages ile yayınlar (`.github/workflows/pages.yml`).
 - **Masaüstü (deneysel):** `src-tauri/` aynı uygulamayı Tauri 2 ile bir macOS penceresine sarar (`cargo tauri dev`).
   Dağıtılmaz; desteklenen sürüm web sürümüdür.
-- **Eski sürümlerin verisi:** İngilizce kod tabanından önceki sürümlerin kaydettiği süreç verisi, ayarlar ve Mac
-  uygulamasının dosyaları açılışta bir kez taşınır (`app/js/migrate.js`, `src-tauri/src/legacy.rs`).
+- **Eski sürümlerin verisi:** İngilizce kod tabanından önceki sürümlerin tarayıcıda kaydettiği süreç verisi ve ayarlar
+  açılışta bir kez taşınır (`app/js/migrate.js`). Masaüstü sürümü deneyseldir: paket kimliği değiştiği için
+  (`com.onurmert.kitapcilt` → `com.onurmert.mucellit`) eski masaüstü sürümlerinin verisi yeni sürümde görünmez.
 - **Tarayıcılar:** güncel Chrome ya da Edge önerilir; Safari de sınanır; Firefox sınanmaz.
 - **Kapak hesabı:** değerler yaygın atölye uygulamasıdır; ilk kitabında ölçüp ayarla. Kaynaklar README.md'de.
 

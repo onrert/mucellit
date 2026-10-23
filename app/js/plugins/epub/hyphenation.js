@@ -12,14 +12,13 @@
  *    That point is recognised because the character before the index is an apostrophe.
  *  - A word with a digit or another non-letter inside (apostrophe aside) is not split.
  *
- * turkish-data: begin (Turkish example words)
- *   a-ra-ba, bir-lik, Türk-çe, alt-lık, sa-at
- *   syllabify('araba')                    → ['a', 'ra', 'ba']
- *   breakPoints('uçurtma')                → [5]          ('uçurt' | 'ma')
- *   breakPoints('Edirne’nin')             → [4, 7]       ('Edir-' | 'ne’nin', 'Edirne’' | 'nin')
- *   isNoHyphen('Edirne’nin', 7)           → true
- *   Leading/trailing punctuation (e.g. 'sabahı;') is skipped; the indices refer to the original word.
- * turkish-data: end
+ * Examples (Turkish words; each line is marked):
+ *   a-ra-ba, bir-lik, Türk-çe, alt-lık, sa-at   (turkish-ok: Turkish example)
+ *   syllabify('araba')                    → ['a', 'ra', 'ba']   (turkish-ok: Turkish example)
+ *   breakPoints('uçurtma')                → [5]          ('uçurt' | 'ma')   (turkish-ok: Turkish example)
+ *   breakPoints('Edirne’nin')             → [4, 7]       ('Edir-' | 'ne’nin', 'Edirne’' | 'nin')   (turkish-ok: Turkish example)
+ *   isNoHyphen('Edirne’nin', 7)           → true   (turkish-ok: Turkish example)
+ *   Leading/trailing punctuation (e.g. 'sabahı;') is skipped; the indices refer to the original word.   (turkish-ok: Turkish example)
  */
 (function (root, factory) {
   var m = factory();

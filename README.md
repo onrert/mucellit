@@ -45,8 +45,10 @@ Your files never leave your computer: there is no account, nothing is uploaded, 
   (`.github/workflows/pages.yml`).
 - **Desktop (experimental):** `src-tauri/` wraps the same app in a macOS window with Tauri 2 (`cargo tauri dev`).
   It is not distributed; the web version is the supported one.
-- **Data of earlier versions:** projects, settings and the Mac app's files saved by versions before the English code
-  base are migrated once on start-up (`app/js/migrate.js`, `src-tauri/src/legacy.rs`).
+- **Data of earlier versions:** projects and settings saved in the browser by versions before the English code base
+  are migrated once on start-up (`app/js/migrate.js`). The desktop version is experimental: its bundle identifier
+  changed (it is now `com.onurmert.mucellit`), so the data of earlier desktop builds does not show
+  in the new build.
 - **Browsers:** current Chrome or Edge recommended; Safari is tested too; Firefox is not tested.
 - **Cover calculator:** values follow common workshop practice, so measure and adjust on your first book. Sources:
   [print-assistant.de](https://print-assistant.de/tools/prepress/abmasse-deckenueberzug-berechnen/),

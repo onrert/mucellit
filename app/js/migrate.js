@@ -77,6 +77,8 @@
     imposeSettings: 'mucellit.imposeSettings', selectedProject: 'mucellit.selectedProject', epubSettings: 'mucellit.epubSettings'
   };
   var NEW_SESSION_KEYS = { learnPosition: 'mucellit.learn.position' };
+  /** When the new key already exists, the legacy value is also copied once under this prefix + the legacy key. */
+  var LEGACY_BACKUP_PREFIX = 'mucellit.legacy-backup.';
 
   function isObject(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
   function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
@@ -162,11 +164,21 @@
 
   function get(s, k) { try { return s.getItem(k); } catch (e) { return null; } }
 
-  /** Moves one legacy key. Returns 'moved', 'kept' (new key already there) or null (nothing to do / not possible). */
+  /**
+   * Moves one legacy key. Returns 'moved', 'kept' (new key already there) or null (nothing to do / not possible).
+   * 'kept': the current data wins and is not overwritten; the legacy key is left as it is and its value is also copied
+   * once to LEGACY_BACKUP_PREFIX + legacy key, so nothing is lost even if the legacy key is removed later.
+   */
   function moveKey(s, oldKey, newKey, convert) {
     var raw = get(s, oldKey);
     if (raw === null) return null;
-    if (get(s, newKey) !== null) return 'kept';
+    if (get(s, newKey) !== null) {
+      var backupKey = LEGACY_BACKUP_PREFIX + oldKey;
+      if (get(s, backupKey) === null) {
+        try { s.setItem(backupKey, raw); } catch (e) { /* storage full: the legacy key still holds the value */ }
+      }
+      return 'kept';
+    }
     try { s.setItem(newKey, convert(raw)); } catch (e) { return null; } // storage full: try again next time
     if (get(s, newKey) === null) return null;
     try { s.removeItem(oldKey); } catch (e) { /* the data is safe under the new key */ }
@@ -200,6 +212,7 @@
     LEGACY_SESSION_KEYS: LEGACY_SESSION_KEYS,
     NEW_KEYS: NEW_KEYS,
     NEW_SESSION_KEYS: NEW_SESSION_KEYS,
+    LEGACY_BACKUP_PREFIX: LEGACY_BACKUP_PREFIX,
     isLegacyProjects: isLegacyProjects,
     projects: projects,
     imposeSettings: imposeSettings,

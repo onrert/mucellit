@@ -167,6 +167,12 @@ test('storage() faulty cases: current key wins (legacy kept), failed write keeps
   assert.deepEqual(Migrate.storage(both, null), { projects: 'kept' });
   assert.equal(both.getItem('mucellit.projects'), '{"version":2,"projects":[]}', 'current data not overwritten');
   assert.equal(both.getItem(OLD.projects), legacyLocal, 'legacy data not deleted');
+  const backupKey = Migrate.LEGACY_BACKUP_PREFIX + OLD.projects;
+  assert.equal(both.getItem(backupKey), legacyLocal, 'the legacy data is also copied under the legacy backup key');
+  both.setItem(OLD.projects, '{"changed":1}');
+  assert.deepEqual(Migrate.storage(both, null), { projects: 'kept' });
+  assert.equal(both.getItem(backupKey), legacyLocal, 'the backup is written once (not overwritten on a later run)');
+  assert.equal(both.getItem('mucellit.projects'), '{"version":2,"projects":[]}', 'current data still not overwritten');
   const full = fakeStorage({ [OLD.projects]: legacyLocal }, { failOn: 'mucellit.projects' });
   assert.deepEqual(Migrate.storage(full, null), {});
   assert.equal(full.getItem(OLD.projects), legacyLocal, 'legacy data kept when the write fails');

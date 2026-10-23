@@ -1,6 +1,6 @@
 //! One-time migration of the app data files written by versions before the English code base.
 //!
-//! Earlier versions kept their files in `app_data_dir` under Turkish names. On start-up (before the language and the
+//! Earlier versions kept their files under Turkish names. On start-up (before the language and the
 //! menu are set up) each legacy file that is found is renamed to its current name, unless a file with the current
 //! name already exists (then the current file wins and the legacy file is left untouched, so nothing is overwritten).
 //! The contents need no conversion here: the recent files list reads the legacy field names through serde aliases
@@ -10,8 +10,11 @@
 //! Crash leftovers of the atomic writer with the legacy temp suffix are removed like current ones
 //! (`recent::remove_leftover_temps`).
 //!
-//! Note: the bundle identifier changed with the rename (`com.onurmert.kitapcilt` → `com.onurmert.mucellit`), so a  // turkish-ok: legacy file names (migration test)
-//! sandboxed build gets a new container; files in the old container are not reachable from here.
+//! Scope: only the current `app_data_dir` is looked at (a folder that still holds files with the earlier names).
+//! The bundle identifier and the binary name changed with the rename (the identifier is now
+//! `com.onurmert.mucellit`), so the data folder, the sandbox container and the WebKit data of earlier desktop builds
+//! are different folders: their data is NOT migrated and does not show in the new build. The desktop version is
+//! experimental and not distributed; data of earlier desktop builds was developer test data only.
 
 use std::fs;
 use std::io;

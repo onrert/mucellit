@@ -14,9 +14,9 @@
  *   - README.tr.md: the Turkish readme;
  *   - app/test/fixtures/**: test data (legacy-format files, Turkish test text); their paths are scanned and so are
  *     README files there;
- *   - the lines of a "turkish-data" block (Turkish hyphenation data, Turkish test text, this word list) and of a
- *     "legacy-names" block (storage names of earlier versions, read once for the data migration); a block starts with
- *     a line containing "<name>: begin" and ends with a line containing "<name>: end";
+ *   - the data lines (not the comment lines) of a "turkish-data" block (Turkish hyphenation data, Turkish test text,
+ *     this word list) and of a "legacy-names" block (storage names of earlier versions, read once for the data
+ *     migration); a block starts with a line containing "<name>: begin" and ends with a line containing "<name>: end";
  *   - a single line marked "turkish-ok: <reason>" (the reason is required);
  *   - the product name Mücellit (productName; written as Mucellit in code), the author's name in copyright lines and
  *     the [Türkçe](README.tr.md) link at the top of README.md;
@@ -38,6 +38,12 @@ const WHOLE_FILE = new Set(['README.tr.md']);
 const FIXTURES = /^app\/test\/fixtures\//;
 const DICT_VALUES = new Set(['app/i18n/tr.js']);
 const BLOCKS = ['turkish-data', 'legacy-names'];
+/** Is this line a comment line in the language of the file? (used inside allowlist blocks) */
+function isCommentLine(file, raw) {
+  if (/\.(py|ya?ml|toml)$|(^|\/)\.git(ignore|attributes)$/.test(file)) return /^\s*#/.test(raw);
+  if (/\.(html|xml|plist|xhtml|opf|md)$/.test(file)) return /^\s*<!--/.test(raw);
+  return /^\s*(\/\/|\/\*|\*)/.test(raw);
+}
 const OK_MARK = 'turkish' + '-ok'; // built so that this line is not a marker itself
 const OK_ANY = new RegExp(OK_MARK + '\\b');
 const OK_REASON = new RegExp(OK_MARK + ':\\s*\\S');
@@ -139,7 +145,7 @@ const WORDS = new Set([
     'yontem yorum yuk yukari yukle yukleme yuklendi yuklenen yukleyerek yuksek yuksekligi yukseklik yumusak yuru',
     'yuva yuvalar yuvarla yuvarlak yuvarlatma yuz yuzey yuzler yyon zaten zemin zincir zinciri zipi zipli zorunlu'
 ,
-    'penceresi reddedilmeli okubeni dongu pres'
+    'penceresi reddedilmeli okubeni dongu pres elle farki varyant bilgisiz elma zmn uyg'
 ].join(' ').split(' '));
 const SUFFIX = /^[a-z]{2,}(?:amadi|emedi|amiyor|emiyor|iyor|uyor|lari|leri|larin|lerin|siniz|sunuz|ilsin|insin|ildi|uldu|ilir|ulur|ecek|acak|landi|lendi)$/;
 // turkish-data: end
@@ -220,7 +226,8 @@ function scanText(file, text) {
         else { open = null; return; }
       }
     }
-    if (open) return;
+    // inside a block only data is exempt: comment lines are still scanned (a block must not hide Turkish comments)
+    if (open && !isCommentLine(file, raw)) return;
     if (OK_ANY.test(raw)) {
       if (!OK_REASON.test(raw)) add(n, OK_MARK + ' without a reason', raw);
       return;
