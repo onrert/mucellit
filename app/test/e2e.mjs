@@ -1,61 +1,63 @@
 /*
- * e2e.mjs — uçtan uca tarayıcı testi (Playwright + Chromium).
- * Çalıştırma (repo kökünden):  node app/test/e2e.mjs
+ * e2e.mjs — end-to-end browser test (Playwright + Chromium).
+ * Run (from the repository root):  node app/test/e2e.mjs
  *
- * Koşu 1 (yerel sunucu): 37 sayfalık test PDF'i yükle → formalı, kağıt 297×210,
- *   kitap 148×210, forma 4 → dışa aktar → 24 sayfa, 297×210 mm, 1. sayfada 16 solda
- *   1 sağda (pdf.js metin çıkarımı). Önizleme ekran görüntüsü. Süreç: kitap oluştur,
- *   2 adım işaretle, yenile, JSON dışa aktar → temizle → içe aktar → aynı veri.
- * Koşu 2 (file://): aynı PDF akışı, index.html doğrudan dosyadan açılır.
- * Her iki koşuda: konsol hatası (console.error / pageerror) yok; sayfanın yaptığı
- *   her ağ isteği yerel olmalı (sunucu adresi / file://); dış ağ isteği = KALDI.
+ * Run 1 (local server): load the 37-page test PDF → sewn, paper 297×210, book 148×210, 4 sheets per signature →
+ *   export → 24 pages, 297×210 mm, on page 1 16 on the left and 1 on the right (pdf.js text extraction). Preview
+ *   screenshot. Projects: create a project, mark 2 steps, reload, export JSON → clear → import → the same data.
+ * Run 2 (file://): the same PDF flow, index.html opened straight from the file.
+ * In both runs: no console error (console.error / pageerror); every network request of the page must be local
+ *   (the server address / file://); an outside network request = FAIL.
  *
- * EPUB (EPUB → PDF), her iki koşuda: Türkçe metin, vektör/font, ölçü ve ölçek 1,
- *   formalı dışa aktarma, DRM, FXL, bozuk; file:// koşusunda uzun.epub < 60 s.
- *   EPUB fixture'ları test sırasında app/test/epub-build.cjs ile üretilir.
+ * EPUB (EPUB → PDF), in both runs: Turkish text, vector/font, size and scale 1, sewn export, DRM, FXL, broken;
+ *   the long EPUB < 60 s in the file:// run. The EPUB fixtures are built during the test with app/test/epub-build.cjs.
  *
- *: onay "hayır" (yerel confirm reddi ve Tauri dialog eklentisi gibi Promise döndüren
- *   confirm) → Süreç verisi değişmez; "evet" → işlem yapılır. Sayfaya dosya bırakma PDF'i açar, ızgara içi
- *   sayfa sürükleme çalışır.
- * ".epub.zip" (klasör paketi EPUB'un tarayıcı sıkıştırması) iki koşuda; "tauri-benzetimi" koşusu sahte
- *   window.__TAURI__ ile yerel Kaydet akışını (D7: vazgeç → "kaydedilmedi", yazıldı → yol) ve otomatik yedeği sınar.
- *: yerel Aç (dosya_ac → dosya_oku ham ArrayBuffer), Dock/Finder açılışı (dosya-acildi olayı +
- *   bekleyen_acilanlar), Kaydet hatası (hatali dalı), kısmi kayıtta yüz sayısı, Kaydet penceresi açıkken ⌘S
- *, boş yedek bildirimsiz / dolu yedek geri yüklenir, temizlik yedeği beklemeden gider.
- * (dil): mevcut koşular Türkçe arayüzle (tarayıcı yerel ayarı tr-TR; sistem dili kuralı) ve bugünkü Türkçe metinlerle
- *   koşar. Ek "en" koşuları (en-US, sunucu ve file://): İngilizce arayüz duman sınaması (sekmeler, bildirimler, dosya adı
- *   ekleri -imposed/-fronts, görünen metinde Türkçe karakter yok, eski Türkçe kayıt İngilizce adımlarla açılır), elle
- *   dil seçimi ve geri dönüş; Tauri benzetiminde dil_oku/dil_ayarla, Görünüm > Dil menü olayı ve Rust yedeğinden geri gelme.
- *   Her koşunun sonunda sözlükte eksik anahtar (KitapCilt.dil.eksikler) yok.
- * "açılış-hatası" koşusu (tr-TR): platform.hazir reddi, i18n.js hatası ve bozuk tr sözlüğünde etiketler
- *   boş kalmaz (seçili dil / statik İngilizce); Tauri benzetiminde sistem dili Rust'tan (dil_oku.sistem) ve Mac'e uygun
- *   saklama ipucu; en koşusunda değişen İngilizce metinler (Imposition, source p., couldn't …).
- * tauri-benzetimi koşusunda yazdırma (Yazdır… / Önizleme'de Aç düğmeleri, baskı öncesi not, tek PDF, iki PDF önler →
- *   çevir onayı → arkalar, yarıda kalma, meşgulken ⌘P/⌘S yok sayılır, menü ⌘P, Önizleme açılamazsa Kaydet + not);
- *   tarayıcı koşularında düğmeler gizli. Başlangıç işleri 0a–0i (ilk kare dili, i18n.js yokken konsol, ondalık ayracı,
- *   dil seçici ipucu ve yerleşimi) ilgili koşularda.
- * yerel sunucu src-tauri/tauri.conf.json'daki CSP'yi başlık olarak gönderir (bütün akışlar Tauri
- *   ile aynı CSP altında koşar; ihlal konsol hatası olarak KALDI sayılır); fetch('https://example.com') CSP ile
- *   reddedilir; Object.prototype dondurulmuştur; içe aktarmada dosyaSec'in File'ı işlenir, reddi
- *   bildirime gider; Adım çıkar ve Tümünü temizle "evet" yolları.
+ * Confirm "no" (a native confirm rejection and a confirm that returns a Promise like the Tauri dialog plug-in) →
+ *   the Projects data does not change; "yes" → the action is done. Dropping a file on the page opens the PDF, dragging
+ *   pages inside the grid works.
+ * ".epub.zip" (the browser's compression of a folder package EPUB) in both runs; the "tauri-simulation" run tests the
+ *   native Save flow with a fake window.__TAURI__ (D7: cancel → "not saved", written → path) and the automatic backup:
+ *   native Open (open_file → read_file raw ArrayBuffer), opening from the Dock/Finder (file-opened event +
+ *   pending_opens), a Save error (failed branch), the page count on a partial save, ⌘S while the Save dialog is open,
+ *   an empty backup without a notice / a filled backup restored, the clean-up backup goes without waiting.
+ * (language): the existing runs use the Turkish interface (browser locale tr-TR; the system language rule) and today's
+ *   Turkish texts. Extra "en" runs (en-US, server and file://): an English interface smoke test (tabs, notices, file
+ *   name suffixes -imposed/-fronts, no Turkish letter in the visible text, an old Turkish record opens with English
+ *   steps), a manual language choice and back; in the Tauri simulation read_language/set_language, the View > Language
+ *   menu event and coming back from the Rust backup. At the end of every run no key is missing from the dictionary
+ *   (Mucellit.i18n.missingKeys).
+ * The "startup-error" run (tr-TR): with a rejected platform.ready, an i18n.js error and a broken tr dictionary the
+ *   labels are not left empty (chosen language / static English); in the Tauri simulation the system language comes
+ *   from Rust (read_language.system) with a storage hint fit for the Mac; in the en run the changed English texts
+ *   (Imposition, source p., couldn't …).
+ * Printing in the tauri-simulation run (Print… / Open in Preview buttons, the note before printing, one PDF, two PDFs
+ *   fronts → turn-over confirmation → backs, stopping halfway, ⌘P/⌘S ignored while busy, menu ⌘P, Save + note when
+ *   Preview cannot open); the buttons are hidden in the browser runs. Start-up jobs 0a–0i (first frame language,
+ *   console without i18n.js, decimal separator, language picker tooltip and layout) in the related runs.
+ * The local server sends the CSP of src-tauri/tauri.conf.json as a header (every flow runs under the same CSP as
+ *   Tauri; a violation counts as a console error, FAIL); fetch('https://example.com') is rejected by the CSP;
+ *   Object.prototype is frozen; on import the File of pickFile is handled, its rejection goes to a notice; the "yes"
+ *   paths of Remove step and Clear all.
  *
- * (Öğren rehberi): "öğren" (tr-TR) ve "öğren en" (en-US) koşuları, yerel sunucuda Tauri CSP başlığıyla: sekme
- *   açılmadan rehber kurulmaz; sayı paneli öntanımlıları Hesapla ile aynı (aynı sonuç nesnesi); 10 aşama 45 adım; Örnek
- *   Kitap değerleri (elle ve Hesapla'dan); elle değişiklik Hesapla'yı değiştirmez, "Hesapla'dan al"; başka cilt türünde
- *   uyum notu; sekme değişince "baştan sona" durur, figür sökülür, rAF çağrısı 0; baştan sona oynat (4×) sona kadar;
- *   dil değişimi (yeniden yükleme sonrası rehber yeni dilde, konum korunur); prefers-reduced-motion (45 adım animasyonsuz);
- *   CSP ihlali 0, global ad yalnız KitapCilt altında, eksik anahtar 0. file:// koşusunda duman; Tauri benzetiminde
- *   menü olayı "sekme-ogren" (Görünüm > Öğren ⌘4).
- * rehberin denetim arayüzü (KitapCilt.ogren.denetim) ürün kodunda yok; "öğren" koşuları learn.js
- *   isteğini yakalayıp test kopyasını sunar (app/test/learn-probe.cjs, page.route). file:// ve Tauri benzetimi dumanı
- *   yalnız DOM'la (ürün kodu olduğu gibi) ve ürün kodunda denetim olmadığını sınar. Öğren açıkken sekme/menü yeniden
- *   basılınca rehber yeniden kurulmaz ("baştan sona" adım atlamaz); dil değişiminde ilerleme (tamam) korunur; lisans paneli.
- * Bayraklar / ortam:
- *   --motor=chromium|webkit   (öntanımlı chromium; webkit = WKWebView'e en yakın Playwright motoru)
- *   KC_PLAYWRIGHT             Playwright modül klasörü (ör. /yol/playwright/node_modules/playwright)
- *   PLAYWRIGHT_BROWSERS_PATH  yoksa /opt/pw-browsers (varsa), o da yoksa Playwright öntanımlısı
- *   KC_GORUNTU                önizleme ekran görüntüsünün yolu (öntanımlı docs/preview.png)
- * Kütüphaneler app/vendor/ altında yerel.
+ * (Learn guide): the "learn" (tr-TR) and "learn en" (en-US) runs, on the local server with the Tauri CSP header: the
+ *   guide is not set up before the tab opens; the numbers panel defaults are the same as the Calculator (the same result
+ *   object); 10 stages 45 steps; Sample Book values (by hand and from the Calculator); a manual change does not change
+ *   the Calculator, "Use values from the Calculator tab"; the match note on another binding type; when the tab changes
+ *   "start to end" stops, the figure is removed, rAF calls 0; play from start to end (4×) to the end; language change
+ *   (after the reload the guide is in the new language, the position is kept); prefers-reduced-motion (45 steps without
+ *   animation); CSP violations 0, global names only under Mucellit, missing keys 0. A smoke test in the file:// run; in
+ *   the Tauri simulation the menu event "tab-learn" (View > Learn ⌘4).
+ * The guide's probe interface (Mucellit.learn.probe) is not in the product code; the "learn" runs catch the learn.js
+ *   request and serve a test copy (app/test/learn-probe.cjs, page.route). The file:// and Tauri simulation smoke tests
+ *   use only the DOM (the product code as it is) and check that the product code has no probe. With Learn open,
+ *   pressing the tab/menu again does not set the guide up again ("start to end" skips no step); the progress (done) is
+ *   kept on a language change; the licence panel.
+ * Flags / environment:
+ *   --engine=chromium|webkit  (default chromium; webkit = the Playwright engine closest to WKWebView)
+ *   MC_PLAYWRIGHT             Playwright module folder (e.g. /path/playwright/node_modules/playwright)
+ *   PLAYWRIGHT_BROWSERS_PATH  without it /opt/pw-browsers (when it exists), otherwise the Playwright default
+ *   MC_SCREENSHOTS            path of the preview screenshot (default docs/preview.png)
+ * The libraries are local under app/vendor/.
  */
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -68,8 +70,8 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 
-// Tarayıcı yolu: PLAYWRIGHT_BROWSERS_PATH verilmişse o; yoksa /opt/pw-browsers varsa o (bulut ortamı);
-// ikisi de yoksa Playwright'ın kendi öntanımlısı (macOS: ~/Library/Caches/ms-playwright).
+// Browser path: PLAYWRIGHT_BROWSERS_PATH when given; otherwise /opt/pw-browsers when it exists (cloud environment);
+// when neither, Playwright's own default (macOS: ~/Library/Caches/ms-playwright).
 if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync('/opt/pw-browsers')) process.env.PLAYWRIGHT_BROWSERS_PATH = '/opt/pw-browsers';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -81,12 +83,12 @@ const ENGINE = (process.argv.find((a) => a.startsWith('--engine=')) || '--engine
 const results = [];
 function check(criterion, condition, message, detail) {
   results.push({ criterion, pass: !!condition, message });
-  console.log(`${condition ? 'GEÇTİ' : 'FAIL'} [ölçüt ${criterion}] ${message}${detail !== undefined ? ' — ' + detail : ''}`);
+  console.log(`${condition ? 'PASS' : 'FAIL'} [criterion ${criterion}] ${message}${detail !== undefined ? ' — ' + detail : ''}`);
 }
 
 /**
- * Playwright modülü sırayla: KC_PLAYWRIGHT (modül klasörü, ör. /yol/playwright/node_modules/playwright),
- * düz `import('playwright')`, son olarak global npm kökü.
+ * The Playwright module in this order: MC_PLAYWRIGHT (the module folder, e.g. /path/playwright/node_modules/playwright),
+ * a plain `import('playwright')`, last the global npm root.
  */
 async function loadPlaywright() {
   if (process.env.MC_PLAYWRIGHT) return await import(pathToFileURL(join(resolve(process.env.MC_PLAYWRIGHT), 'index.mjs')).href);
@@ -96,7 +98,7 @@ async function loadPlaywright() {
   }
 }
 
-// Tauri penceresinin CSP'si: yerel sunucu aynısını başlık olarak gönderir. null ise başlık yok.
+// The CSP of the Tauri window: the local server sends the same as a header. null means no header.
 const TAURI_CSP = (() => {
   const c = JSON.parse(readFileSync(join(REPO, 'src-tauri', 'tauri.conf.json'), 'utf8')).app.security.csp;
   return typeof c === 'string' && c.trim() ? c : null;
@@ -119,7 +121,7 @@ function startServer() {
   return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));
 }
 
-/** Sayfayı izler: konsol hataları ve ağ istekleri. */
+/** Watches the page: console errors and network requests. */
 function watch(page, label) {
   const iz = { errors: [], requests: [], prompts: [], confirms: [], confirmRed: false };
   page.on('console', (m) => { if (m.type() === 'error') iz.errors.push(`[${label}] console.error: ${m.text()}`); });
@@ -134,7 +136,7 @@ function watch(page, label) {
 }
 
 async function makeTestPdf(page) {
-  // Test PDF'i sayfadaki pdf-lib ile üretilir: 37 sayfa, A5, her sayfada büyük numara.
+  // The test PDF is built with the pdf-lib of the page: 37 pages, A5, a big number on every page.
   const array = await page.evaluate(async () => {
     const { PDFDocument, StandardFonts } = window.PDFLib;
     const doc = await PDFDocument.create();
@@ -169,12 +171,12 @@ async function inspectPdf(page, bytes, pages) {
   }, { array: Array.from(bytes), pages });
 }
 
-function solSag(m) {
-  // ögeleri x'e göre sırala; her ögenin sol/sağ yarıda olup olmadığını döndür
+function leftRight(m) {
+  // sort the items by x; return whether each item is in the left/right half
   return m.elements.slice().sort((a, b) => a.x - b.x).map((o) => ({ str: o.str, half: o.x + o.w / 2 < m.width / 2 ? 'left' : 'right' }));
 }
 
-/** PDF yükle → formalı ayarla → dışa aktar → çıktıyı doğrula. */
+/** Load the PDF → set sewn → export → check the output. */
 async function pdfFlow(page, address, label, criterion, screenImage) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
@@ -182,7 +184,7 @@ async function pdfFlow(page, address, label, criterion, screenImage) {
   const pdf = await makeTestPdf(page);
   await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
   await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 37);
-  check(criterion, true, `${label}: 37 sayfalık PDF yüklendi, 37 küçük resim kartı`);
+  check(criterion, true, `${label}: 37-page PDF loaded, 37 thumbnail cards`);
   await page.selectOption('#binding-type', 'sewn');
   await page.fill('#paper-width', '297');
   await page.fill('#paper-height', '210');
@@ -191,32 +193,32 @@ async function pdfFlow(page, address, label, criterion, screenImage) {
   await page.fill('#signature-sheet', '4');
   await page.waitForFunction(() => document.querySelectorAll('#sheet-preview .sheet-card').length === 12);
   const summary = await page.textContent('#imposition-summary');
-  check(criterion, /48 sayfaya/.test(summary) && /3 forma/.test(summary), `${label}: önizleme 12 yaprak, özet`, summary.trim());
+  check(criterion, /48 sayfaya/.test(summary) && /3 forma/.test(summary), `${label}: preview 12 sheets, summary`, summary.trim());  // turkish-ok: expected Turkish UI text
   await page.waitForSelector('#small-thumbs[data-thumbs-ready="yes"]', { timeout: 60000 });
   if (screenImage) {
     await mkdir(dirname(IMAGE), { recursive: true });
     await page.locator('#sheet-preview').screenshot({ path: IMAGE });
-    check(criterion, true, `${label}: önizleme ekran görüntüsü kaydedildi`, IMAGE);
+    check(criterion, true, `${label}: preview screenshot saved`, IMAGE);
   }
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-transfer')]);
   const output = await readFile(await download.path());
-  check(criterion, /-dizilmis\.pdf$/.test(download.suggestedFilename()), `${label}: tek PDF indirildi`, download.suggestedFilename());
+  check(criterion, /-dizilmis\.pdf$/.test(download.suggestedFilename()), `${label}: one PDF downloaded`, download.suggestedFilename());  // turkish-ok: expected Turkish UI text
   await page.waitForSelector('#output-preview[data-ready="yes"]');
 
   const r = await inspectPdf(page, output, [1, 2, 3, 17]);
-  check(criterion, r.pageCount === 24, `${label}: çıktı 24 sayfa`, r.pageCount);
+  check(criterion, r.pageCount === 24, `${label}: output 24 pages`, r.pageCount);
   const bad = r.sizes.map((b, i) => [i + 1, b]).filter(([, b]) => Math.abs(b[0] - 297) > 0.5 || Math.abs(b[1] - 210) > 0.5);
   check(criterion, r.sizes.length === 24 && bad.length === 0, `${label}: her page 297×210 mm (±0.5)`,
     bad.length ? JSON.stringify(bad) : `first ${r.sizes[0].map((x) => x.toFixed(2)).join('×')} mm`);
-  const s1 = solSag(r.texts[1]);
+  const s1 = leftRight(r.texts[1]);
   check(criterion, s1.length === 2 && s1[0].str === '16' && s1[0].half === 'left' && s1[1].str === '1' && s1[1].half === 'right',
-    `${label}: 1. sayfada 16 solda, 1 sağda (pdf.js metin)`, JSON.stringify(s1));
-  const s2 = solSag(r.texts[2]);
+    `${label}: on page 1 16 on the left, 1 on the right (pdf.js text)`, JSON.stringify(s1));
+  const s2 = leftRight(r.texts[2]);
   check(criterion, JSON.stringify(s2.map((o) => o.str)) === '["2","15"]', `${label}: 2. page (back) [2, 15]`, JSON.stringify(s2));
-  const s3 = solSag(r.texts[3]);
+  const s3 = leftRight(r.texts[3]);
   check(criterion, JSON.stringify(s3.map((o) => o.str)) === '["14","3"]', `${label}: 3. page [14, 3]`, JSON.stringify(s3));
-  const s17 = solSag(r.texts[17]);
-  check(criterion, s17.length === 1 && s17[0].str === '33' && s17[0].half === 'right', `${label}: 17. sayfa [48 boş, 33]`, JSON.stringify(s17));
+  const s17 = leftRight(r.texts[17]);
+  check(criterion, s17.length === 1 && s17[0].str === '33' && s17[0].half === 'right', `${label}: page 17 [48 blank, 33]`, JSON.stringify(s17));
 }
 
 async function readStorage(page) {
@@ -226,23 +228,23 @@ async function readStorage(page) {
 async function projectsFlow(page) {
   const O = 3;
   await page.click('#tab-button-projects');
-  await page.fill('#yk-name', 'E2E Kitap');
+  await page.fill('#yk-name', 'E2E Book');
   await page.selectOption('#yk-kind', 'sewn');
   await page.fill('#yk-paper', '80 g/m²');
   await page.click('#yk-create');
   await page.waitForFunction(() => document.querySelectorAll('#steps .step').length === 14);
-  check(O, true, 'kitap oluşturuldu, formalı şablon 14 adım');
+  check(O, true, 'project created, sewn template 14 steps');
   await page.locator('#steps .step-done').nth(0).check();
   await page.locator('#steps .step-done').nth(1).check();
-  await page.locator('#steps .step-note').nth(1).fill('ilk deneme: tek forma');
-  // Düzenle ayarlarını kitaba kaydet
+  await page.locator('#steps .step-note').nth(1).fill('first trial: one signature');
+  // save the Imposition settings to the project
   await page.click('#tab-button-impose');
   const bookId = (await readStorage(page)).projects[0].id;
   await page.selectOption('#settings-book', bookId);
   await page.click('#settings-save');
   const registered = await readStorage(page);
   check(O, registered.projects[0].settings && registered.projects[0].settings.paperWidth === 297 && registered.projects[0].pdfName === 'test-37.pdf',
-    'Düzenle ayarları kitaba kaydedildi', JSON.stringify({ paperWidth: registered.projects[0].settings && registered.projects[0].settings.paperWidth, pdfName: registered.projects[0].pdfName }));
+    'Imposition settings saved to the project', JSON.stringify({ paperWidth: registered.projects[0].settings && registered.projects[0].settings.paperWidth, pdfName: registered.projects[0].pdfName }));
 
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]');
@@ -251,35 +253,35 @@ async function projectsFlow(page) {
   const marks = await page.$$eval('#steps .step-done', (l) => l.map((e) => e.checked));
   const note = await page.locator('#steps .step-note').nth(1).inputValue();
   check(O, marks.length === 14 && marks[0] && marks[1] && marks.filter(Boolean).length === 2,
-    'yenilemeden sonra 2 işaret duruyor', JSON.stringify(marks.map((x) => (x ? 1 : 0))));
-  check(O, note === 'ilk deneme: tek forma', 'yenilemeden sonra not duruyor', note);
+    '2 marks stay after the reload', JSON.stringify(marks.map((x) => (x ? 1 : 0))));
+  check(O, note === 'first trial: one signature', 'the note stays after the reload', note);
 
   const once = await readStorage(page);
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#json-export')]);
   const jsonPath = await download.path();
   const exportData = JSON.parse(await readFile(jsonPath, 'utf8'));
-  check(O, isDeepStrictEqual(exportData, once), 'JSON dışa aktarım saklanan veriyle aynı', download.suggestedFilename());
+  check(O, isDeepStrictEqual(exportData, once), 'the JSON export is the same as the stored data', download.suggestedFilename());
 
   await page.click('#data-clear');
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 0);
   const clean = await readStorage(page);
-  check(O, !clean || clean.projects.length === 0, 'temizle: veri boş', JSON.stringify(clean));
+  check(O, !clean || clean.projects.length === 0, 'clear: data empty', JSON.stringify(clean));
 
   await page.setInputFiles('#json-import', jsonPath);
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 1);
   const after = await readStorage(page);
-  check(O, isDeepStrictEqual(after, once), 'içe aktar: veri dışa aktarılanla birebir aynı');
-  const isaretler2 = await page.$$eval('#steps .step-done', (l) => l.map((e) => e.checked));
-  check(O, isaretler2.filter(Boolean).length === 2 && isaretler2[0] && isaretler2[1], 'içe aktarımdan sonra 2 işaret arayüzde', JSON.stringify(isaretler2.map((x) => (x ? 1 : 0))));
+  check(O, isDeepStrictEqual(after, once), 'import: the data is exactly the exported one');
+  const marks2 = await page.$$eval('#steps .step-done', (l) => l.map((e) => e.checked));
+  check(O, marks2.filter(Boolean).length === 2 && marks2[0] && marks2[1], '2 marks in the interface after the import', JSON.stringify(marks2.map((x) => (x ? 1 : 0))));
 }
 
 
 // ------------------------------------------------------------------
-// Düzeltme testleri
+// Fix tests
 // ------------------------------------------------------------------
 const FIXTURE = join(APP, 'test', 'fixtures');
 
-/** Sayfa içi yardımcılar: sayılı PDF üretimi, çıktı üretimi (KC.cikti.uret) ve pdf.js ile metin okuma. */
+/** In-page helpers: building numbered PDFs, building the output (Mucellit.output.build) and reading text with pdf.js. */
 async function setupHelpers(page) {
   await page.evaluate(() => {
     const { PDFDocument, StandardFonts } = window.PDFLib;
@@ -321,12 +323,12 @@ async function setupHelpers(page) {
   });
 }
 
-/** Bir sayfa içi işlevi çalıştırır; sonuç yalnız serileştirilebilir değerler içerir. */
+/** Runs an in-page function; the result contains only serialisable values. */
 function ordered(pageText) { return pageText.elements.slice().sort((a, b) => a.x - b.x).map((o) => o.str); }
 
 async function ayFlowTwo(page, label) {
   const A = 'AD6';
-  // ---- iki PDF çıktısı + arkalar ters sıra (8 sayfa, forma 2 yaprak → 2 kâğıt) ----
+  // ---- two PDF output + backs in reverse order (8 pages, 2 sheets per signature → 2 sheets of paper) ----
   const r = await page.evaluate(async () => {
     const T = window.__t;
     const source = await T.numberedPdf(8);
@@ -339,15 +341,15 @@ async function ayFlowTwo(page, label) {
     }
     return o;
   });
-  check(A, r.flat.names.length === 2 && /-onler\.pdf$/.test(r.flat.names[0]) && /-arkalar\.pdf$/.test(r.flat.names[1]),
-    `${label}: iki PDF modu iki dosya üretir (önler + arkalar)`, r.flat.names.join(' , '));
-  check(A, JSON.stringify(r.flat.pages[0]) === '[["8","1"],["6","3"]]', `${label}: önler [8|1] [6|3]`, JSON.stringify(r.flat.pages[0]));
-  check(A, JSON.stringify(r.flat.pages[1]) === '[["2","7"],["4","5"]]', `${label}: arkalar düz sırada [2|7] [4|5]`, JSON.stringify(r.flat.pages[1]));
-  check(A, /-arkalar-ters\.pdf$/.test(r.reversed.names[1]) && JSON.stringify(r.reversed.pages[1]) === '[["4","5"],["2","7"]]',
-    `${label}: backsReversed açıkken arkalar ters sırada [4|5] [2|7]`, r.reversed.names[1] + ' ' + JSON.stringify(r.reversed.pages[1]));
-  check(A, JSON.stringify(r.reversed.pages[0]) === JSON.stringify(r.flat.pages[0]), `${label}: backsReversed önleri değiştirmez`);
+  check(A, r.flat.names.length === 2 && /-onler\.pdf$/.test(r.flat.names[0]) && /-arkalar\.pdf$/.test(r.flat.names[1]),  // turkish-ok: expected Turkish UI text
+    `${label}: the two PDF mode makes two files (fronts + backs)`, r.flat.names.join(' , '));
+  check(A, JSON.stringify(r.flat.pages[0]) === '[["8","1"],["6","3"]]', `${label}: fronts [8|1] [6|3]`, JSON.stringify(r.flat.pages[0]));
+  check(A, JSON.stringify(r.flat.pages[1]) === '[["2","7"],["4","5"]]', `${label}: backs in straight order [2|7] [4|5]`, JSON.stringify(r.flat.pages[1]));
+  check(A, /-arkalar-ters\.pdf$/.test(r.reversed.names[1]) && JSON.stringify(r.reversed.pages[1]) === '[["4","5"],["2","7"]]',  // turkish-ok: expected Turkish UI text
+    `${label}: with backsReversed on the backs are in reverse order [4|5] [2|7]`, r.reversed.names[1] + ' ' + JSON.stringify(r.reversed.pages[1]));
+  check(A, JSON.stringify(r.reversed.pages[0]) === JSON.stringify(r.flat.pages[0]), `${label}: backsReversed does not change the fronts`);
 
-  // ---- 180° arka dönüş: kısa/uzun kenar × yatay/dikey ----
+  // ---- 180° back rotation: short/long edge × landscape/portrait ----
   const d4 = await page.evaluate(async () => {
     const T = window.__t;
     const source = await T.numberedPdf(4);
@@ -372,62 +374,62 @@ async function ayFlowTwo(page, label) {
     const backDone = don
       ? back.marks.length === 2 && back.marks.every((i) => i < 0) && JSON.stringify(back.order) === '["3","2"]'
       : back.marks.length === 2 && back.marks.every((i) => i > 0) && JSON.stringify(back.order) === '["2","3"]';
-    check(A, frontFlat && backDone, `${label}: ${name}: ön düz, arka ${don ? '180° döndü' : 'dönmedi'}`, JSON.stringify({ on: on.order, back: back.order, backMark: back.marks }));
+    check(A, frontFlat && backDone, `${label}: ${name}: front straight, back ${don ? 'turned 180°' : 'not turned'}`, JSON.stringify({ on: on.order, back: back.order, backMark: back.marks }));
   }
 }
 
 async function ayBoxes(page, label) {
   const A = 'AD4';
-  // CropBox (30,30,420,595) ve kökeni (0,0) olmayan MediaBox (100,100,420,595); /Contents'siz sayfa
+  // CropBox (30,30,420,595) and a MediaBox whose origin is not (0,0) (100,100,420,595); a page without /Contents
   const r = await page.evaluate(async () => {
     const T = window.__t;
     const { PDFDocument, StandardFonts } = window.PDFLib;
     const doc = await PDFDocument.create();
     const f = await doc.embedFont(StandardFonts.Helvetica);
-    let p = doc.addPage([420, 595]); p.setMediaBox(100, 100, 420, 595); p.drawText('KAYIKORIJIN', { x: 150, y: 400, size: 30, font: f });
-    p = doc.addPage([480, 655]); p.setCropBox(30, 30, 420, 595); p.drawText('KIRPIK', { x: 150, y: 300, size: 30, font: f }); p.drawText('SQUARE', { x: 2, y: 2, size: 20, font: f });
+    let p = doc.addPage([420, 595]); p.setMediaBox(100, 100, 420, 595); p.drawText('SHIFTEDORIGIN', { x: 150, y: 400, size: 30, font: f });
+    p = doc.addPage([480, 655]); p.setCropBox(30, 30, 420, 595); p.drawText('CROPPED', { x: 150, y: 300, size: 30, font: f }); p.drawText('OVERFLOW', { x: 2, y: 2, size: 20, font: f });
     const source = await doc.save();
     const s = await T.build(source, T.all(2), { bindingType: 'single1', paperWidth: 210, paperHeight: 297, bookWidth: 210, bookHeight: 297, scaling: 'actual', duplex: 'long' });
     const m = await T.texts(s.files[0].bytes);
     const content = s.layout.sides.map((y) => y.slots.filter((v) => !v.blank).map((v) => v.content)[0]);
-    // TASMA: CropBox dışı metin çıktıda hiç görünmemeli → sayfayı çizip o bölgenin beyaz olduğunu denetle
+    // OVERFLOW: the text outside the CropBox must never show in the output → draw the page and check that the area is white
     const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(s.files[0].bytes), isEvalSupported: false }).promise;
     const sf = await pdf.getPage(2);
     const vp = sf.getViewport({ scale: 1 });
     const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
     const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
     await sf.render({ canvasContext: g, viewport: vp }).promise;
-    return { m, content, vpHeight: vp.height, vpGen: vp.width, sourceBytes: Array.from(source.slice(0, 0)), squareText: m[1].elements.some((o) => /SQUARE/.test(o.str)),
+    return { m, content, vpHeight: vp.height, vpWidth: vp.width, sourceBytes: Array.from(source.slice(0, 0)), overflowText: m[1].elements.some((o) => /OVERFLOW/.test(o.str)),
       pixelSize: [c.width, c.height], pixel: Array.from(g.getImageData(0, 0, c.width, c.height).data) };
   });
   const MM = 72 / 25.4;
   const mm2pt = (x) => x * MM;
-  const root = (inner) => ({ left: mm2pt(inner.x + inner.w / 2) - 210, alt: mm2pt(inner.y + inner.h / 2) - 297.5 });
+  const root = (inner) => ({ left: mm2pt(inner.x + inner.w / 2) - 210, bottom: mm2pt(inner.y + inner.h / 2) - 297.5 });
   const k1 = root(r.content[0]), k2 = root(r.content[1]);
-  const o1 = r.m[0].elements.find((o) => o.str === 'KAYIKORIJIN');
-  const o2 = r.m[1].elements.find((o) => o.str === 'KIRPIK');
-  check(A, o1 && Math.abs(o1.x - (k1.left + 50)) < 0.6 && Math.abs(o1.y - (k1.alt + 300)) < 0.6,
-    `${label}: MediaBox (100,100,420,595): KAYIKORIJIN x=sol+50 (köken kaymaz)`, o1 ? `x ${o1.x.toFixed(2)} (expected ${(k1.left + 50).toFixed(2)}), y ${o1.y.toFixed(2)} (expected ${(k1.alt + 300).toFixed(2)})` : 'metin yok');
-  check(A, o2 && Math.abs(o2.x - (k2.left + 120)) < 0.6 && Math.abs(o2.y - (k2.alt + 270)) < 0.6,
-    `${label}: CropBox (30,30,420,595): KIRPIK x=left+120`, o2 ? `x ${o2.x.toFixed(2)} (expected ${(k2.left + 120).toFixed(2)}), y ${o2.y.toFixed(2)} (expected ${(k2.alt + 270).toFixed(2)})` : 'metin yok');
-  // TASMA'nın çizileceği yer: sayfa sol-altı = (sol-28, alt-28) pt, 20 pt yazı ~ 50 pt geniş
+  const o1 = r.m[0].elements.find((o) => o.str === 'SHIFTEDORIGIN');
+  const o2 = r.m[1].elements.find((o) => o.str === 'CROPPED');
+  check(A, o1 && Math.abs(o1.x - (k1.left + 50)) < 0.6 && Math.abs(o1.y - (k1.bottom + 300)) < 0.6,
+    `${label}: MediaBox (100,100,420,595): SHIFTEDORIGIN x=left+50 (the origin does not shift)`, o1 ? `x ${o1.x.toFixed(2)} (expected ${(k1.left + 50).toFixed(2)}), y ${o1.y.toFixed(2)} (expected ${(k1.bottom + 300).toFixed(2)})` : 'no text');
+  check(A, o2 && Math.abs(o2.x - (k2.left + 120)) < 0.6 && Math.abs(o2.y - (k2.bottom + 270)) < 0.6,
+    `${label}: CropBox (30,30,420,595): CROPPED x=left+120`, o2 ? `x ${o2.x.toFixed(2)} (expected ${(k2.left + 120).toFixed(2)}), y ${o2.y.toFixed(2)} (expected ${(k2.bottom + 270).toFixed(2)})` : 'no text');
+  // where OVERFLOW is drawn: page bottom left = (left-28, bottom-28) pt, 20 pt text ~ 50 pt wide
   const [W, H] = r.pixelSize;
   const x0 = Math.max(0, Math.floor(k2.left - 30)), x1 = Math.floor(k2.left - 1);
-  const yAlt = Math.floor(H - (k2.alt - 28)), yUst = Math.floor(H - (k2.alt - 28 + 20));
+  const yBottom = Math.floor(H - (k2.bottom - 28)), yTop = Math.floor(H - (k2.bottom - 28 + 20));
   let dark = 0;
-  for (let y = yUst - 2; y <= yAlt + 2; y++) for (let x = x0; x <= x1; x++) {
+  for (let y = yTop - 2; y <= yBottom + 2; y++) for (let x = x0; x <= x1; x++) {
     const i = (y * W + x) * 4; if (r.pixel[i] < 200) dark += 1;
   }
-  console.log(`bilgi: ${label}: TASMA metin çıkarımında ${r.squareText ? 'görünür (pdf.js kırpmayı metin çıkarımına uygulamaz)' : 'none'}`);
-  check(A, dark === 0, `${label}: CropBox dışındaki "TASMA" yazısı çıktıda çizilmiyor (taşma bölgesi beyaz)`, `dark pixel ${dark}`);
+  console.log(`info: ${label}: OVERFLOW in the text extraction ${r.overflowText ? 'visible (pdf.js does not apply the crop to the text extraction)' : 'none'}`);
+  check(A, dark === 0, `${label}: the "OVERFLOW" text outside the CropBox is not drawn in the output (the overflow area is white)`, `dark pixel ${dark}`);
 
-  // ---- /Contents'siz kaynak sayfa boş sayılır ----
+  // ---- a source page without /Contents counts as blank ----
   const c = await page.evaluate(async () => {
     const T = window.__t;
     const { PDFDocument } = window.PDFLib;
-    const kaynak0 = await T.numberedPdf(3);
-    const doc = await PDFDocument.load(kaynak0);
-    // 2. sayfayı /Contents'siz yap
+    const source0 = await T.numberedPdf(3);
+    const doc = await PDFDocument.load(source0);
+    // make page 2 without /Contents
     doc.getPage(1).node.delete(window.PDFLib.PDFName.of('Contents'));
     const source = await doc.save();
     const checkDoc = await PDFDocument.load(source);
@@ -440,10 +442,10 @@ async function ayBoxes(page, label) {
     return { noContent, error, m };
   });
   check('AD3', c.noContent && c.error === null && c.m && c.m.length === 2,
-    `${label}: /Contents'siz sayfa çıktıyı durdurmaz (kaynakta /Contents gerçekten yok)`, c.error ? 'ERROR: ' + c.error : JSON.stringify(c.m));
+    `${label}: a page without /Contents does not stop the output (the source really has no /Contents)`, c.error ? 'ERROR: ' + c.error : JSON.stringify(c.m));
   if (c.m) {
     const all = c.m.flat();
-    check('AD3', all.includes('1') && all.includes('3') && !all.includes('2'), `${label}: /Contents'siz 2. sayfa boş (1 ve 3 var, 2 yok)`, JSON.stringify(c.m));
+    check('AD3', all.includes('1') && all.includes('3') && !all.includes('2'), `${label}: page 2 without /Contents is blank (1 and 3 there, 2 not)`, JSON.stringify(c.m));
   }
 }
 
@@ -454,7 +456,7 @@ async function ayBlankToStart(page, address, label) {
   await page.click('#tab-button-impose');
   await setupHelpers(page);
   const pdf = Buffer.from(await page.evaluate(async () => Array.from(await window.__t.numberedPdf(7))));
-  await page.setInputFiles('#pdf-file', { name: 'yedi.pdf', mimeType: 'application/pdf', buffer: pdf });
+  await page.setInputFiles('#pdf-file', { name: 'seven.pdf', mimeType: 'application/pdf', buffer: pdf });
   await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 7);
   await page.selectOption('#binding-type', 'sewn');
   await page.fill('#paper-width', '297'); await page.fill('#paper-height', '210');
@@ -464,12 +466,12 @@ async function ayBlankToStart(page, address, label) {
   await page.click('#blank-toStart');
   const first = await page.getAttribute('#small-thumbs .card:first-child', 'data-kind');
   const last = await page.getAttribute('#small-thumbs .card:last-child', 'data-kind');
-  check(A, first === 'blank' && last === 'pdf', `${label}: "Başa boş" boş sayfayı listenin BAŞINA koyar`, `first ${first}, son ${last}`);
+  check(A, first === 'blank' && last === 'pdf', `${label}: "Blank before" puts the blank page at the START of the list`, `first ${first}, son ${last}`);
   await page.waitForFunction(() => !document.getElementById('export-transfer').disabled);
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-transfer')]);
   const output = await readFile(await download.path());
   const m = await page.evaluate(async (array) => (await window.__t.texts(new Uint8Array(array)))[0].elements.map((e) => ({ str: e.str, half: e.x + e.w / 2 < 148.5 * 72 / 25.4 ? 'left' : 'right' })), Array.from(output));
-  check(A, m.length === 1 && m[0].str === '7' && m[0].half === 'left', `${label}: başa boş ile 1. çıktı sayfası yalnız solda "7" (sağ yuva boş)`, JSON.stringify(m));
+  check(A, m.length === 1 && m[0].str === '7' && m[0].half === 'left', `${label}: with a blank at the start the 1st output page has only "7" on the left (right slot empty)`, JSON.stringify(m));
 }
 
 async function encryptedFlow(page, address, iz, label) {
@@ -484,14 +486,14 @@ async function encryptedFlow(page, address, iz, label) {
     await page.waitForSelector('#encrypted-warning', { timeout: 20000 });
     const warning = await page.textContent('#encrypted-warning');
     const closed = await page.isDisabled('#export-transfer');
-    check(A, /Bu PDF kısıtlı\/şifreli; önce kısıtlamayı kaldırın, ör\. qpdf --decrypt girdi\.pdf cikti\.pdf/.test(warning) && closed,
-      `${label}: ${name}: Türkçe uyarı görünür, indir düğmesi kapalı`, `disabled=${closed}`);
-    // uyarı sonradan ayar değişince de durur, düğme açılmaz
+    check(A, /Bu PDF kısıtlı\/şifreli; önce kısıtlamayı kaldırın, ör\. qpdf --decrypt girdi\.pdf cikti\.pdf/.test(warning) && closed,  // turkish-ok: expected Turkish UI text
+      `${label}: ${name}: Turkish warning visible, download button disabled`, `disabled=${closed}`);
+    // the warning stays when a setting changes later, the button does not turn on
     await page.fill('#book-width', '147');
     await page.waitForTimeout(150);
-    check(A, await page.isDisabled('#export-transfer') && (await page.locator('#encrypted-warning').count()) === 1, `${label}: ${name}: ayar değişince de düğme kapalı kalır`);
+    check(A, await page.isDisabled('#export-transfer') && (await page.locator('#encrypted-warning').count()) === 1, `${label}: ${name}: the button stays disabled when a setting changes too`);
   }
-  // Parolalı (kullanıcı parolası) PDF: parola istemi (window.prompt) AÇILMAZ, önizleme açılmaz, uyarı görünür, indir kapalı
+  // A PDF with a (user) password: no password prompt (window.prompt) OPENS, no preview, the warning is visible, download disabled
   {
     const name = 'encrypted-user.pdf';
     await page.goto(address);
@@ -503,13 +505,13 @@ async function encryptedFlow(page, address, iz, label) {
     await page.waitForTimeout(300);
     const warning = await page.textContent('#passwordProtected-warning');
     const cards = await page.locator('#small-thumbs .card').count();
-    check('AR3', iz.prompts.length === 0, `${label}: ${name}: dialog (prompt) açılmadı`, JSON.stringify(iz.prompts));
-    check('AR3', warning.includes('Bu PDF parolalı; önce parolayı kaldırın: qpdf --password=PAROLA --decrypt girdi.pdf cikti.pdf')
-      && await page.isDisabled('#export-transfer') && cards === 0, `${label}: ${name}: Türkçe parolalı uyarısı görünür, önizleme/kart yok, indir kapalı`, `card=${cards}`);
+    check('AR3', iz.prompts.length === 0, `${label}: ${name}: no dialog (prompt) opened`, JSON.stringify(iz.prompts));
+    check('AR3', warning.includes('Bu PDF parolalı; önce parolayı kaldırın: qpdf --password=PAROLA --decrypt girdi.pdf cikti.pdf')  // turkish-ok: expected Turkish UI text
+      && await page.isDisabled('#export-transfer') && cards === 0, `${label}: ${name}: Turkish password warning visible, no preview/card, download disabled`, `card=${cards}`);
   }
-  // Şifre/kısıt durumu denetlenemezse (pdf-lib yok) kapalı başarısız: uyarı + indir kapalı
+  // When the encryption/restriction state cannot be checked (no pdf-lib), fail closed: warning + download disabled
   {
-    const name = 'dizilim-gerek-yok.pdf';
+    const name = 'no-imposition-needed.pdf';
     await page.goto(address);
     await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
     await page.click('#tab-button-impose');
@@ -522,10 +524,10 @@ async function encryptedFlow(page, address, iz, label) {
     await page.setInputFiles('#pdf-file', { name: name, mimeType: 'application/pdf', buffer: Buffer.from(bytes) });
     await page.waitForSelector('#check-warning', { timeout: 20000 });
     const warning = await page.textContent('#check-warning');
-    check('AR2', /Şifre\/kısıt durumu denetlenemedi/.test(warning) && await page.isDisabled('#export-transfer'),
-      `${label}: pdf-lib yokken "denetlenemedi" uyarısı görünür, indir kapalı (kapalı başarısız)`, warning);
+    check('AR2', /Şifre\/kısıt durumu denetlenemedi/.test(warning) && await page.isDisabled('#export-transfer'),  // turkish-ok: expected Turkish UI text
+      `${label}: without pdf-lib the "could not be checked" warning is visible, download disabled (fail closed)`, warning);
   }
-  // guncelVeri kopya döndürür; ayar-yukle kitap.ayar'ı değiştirmez
+  // currentData returns a copy; settings-load does not change project.settings
   {
     await page.goto(address);
     await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
@@ -538,7 +540,7 @@ async function encryptedFlow(page, address, iz, label) {
       k.projects.push({ id: 'x', name: 'fake', steps: [] });
       return { differentObject, unchanged: JSON.stringify(MC.projects.data()) === once };
     });
-    check('AR7', result.differentObject && result.unchanged, `${label}: currentData kopya döndürür (canlı veri değişmez)`, JSON.stringify(result));
+    check('AR7', result.differentObject && result.unchanged, `${label}: currentData returns a copy (the live data does not change)`, JSON.stringify(result));
     await page.click('#tab-button-projects');
     await page.waitForTimeout(100);
     const settings = await page.evaluate(() => {
@@ -557,7 +559,7 @@ async function encryptedFlow(page, address, iz, label) {
     await page.fill('#book-width', '99');
     await page.waitForTimeout(100);
     const after = await page.evaluate((id) => JSON.stringify(window.Mucellit.projectModel.findProject(window.Mucellit.projects.data(), id).settings), settings);
-    check('AR7', once === after, `${label}: settings-load sonrası book.settings değişmedi`, once + ' / ' + after);
+    check('AR7', once === after, `${label}: project.settings unchanged after settings-load`, once + ' / ' + after);
   }
 }
 
@@ -567,7 +569,7 @@ async function uiChecks(page, address, label) {
   await page.click('#tab-button-impose');
   await setupHelpers(page);
   const pdf = Buffer.from(await page.evaluate(async () => Array.from(await window.__t.numberedPdf(8))));
-  await page.setInputFiles('#pdf-file', { name: 'sekiz.pdf', mimeType: 'application/pdf', buffer: pdf });
+  await page.setInputFiles('#pdf-file', { name: 'eight.pdf', mimeType: 'application/pdf', buffer: pdf });
   await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 8);
   await page.selectOption('#binding-type', 'sewn');
   await page.fill('#paper-width', '297'); await page.fill('#paper-height', '210');
@@ -575,99 +577,99 @@ async function uiChecks(page, address, label) {
   await page.fill('#signature-sheet', '2');
   await page.fill('#outer-margin', '0'); await page.fill('#binding-allowance', '0');
   await page.waitForFunction(() => !document.getElementById('export-transfer').disabled);
-  // D7: kağıt kitaba sığmıyor → indirme kapalı + açık uyarı
+  // D7: the paper does not fit the book → download disabled + a clear warning
   await page.fill('#paper-width', '200');
   await page.waitForFunction(() => document.getElementById('export-transfer').disabled);
-  let uy = await page.textContent('#warnings');
-  check('AD6', /sığmıyor/.test(uy), `${label}: kağıda sığmayan yerleşimde açık uyarı, indirme kapalı`, uy.trim().slice(0, 90));
+  let warn = await page.textContent('#warnings');
+  check('AD6', /sığmıyor/.test(warn), `${label}: a clear warning on a layout that does not fit the paper, download disabled`, warn.trim().slice(0, 90));  // turkish-ok: expected Turkish UI text
   await page.fill('#paper-width', '297');
   await page.waitForFunction(() => !document.getElementById('export-transfer').disabled);
-  // D8: negatif kenar / cilt payı reddedilir
+  // D8: a negative margin / gutter is rejected
   await page.fill('#outer-margin', '-3');
   await page.waitForFunction(() => document.getElementById('export-transfer').disabled);
-  uy = await page.textContent('#warnings');
-  check('AD6', /negatif/.test(uy), `${label}: negatif dış kenar mesajla reddedilir, indirme kapalı`, uy.trim());
+  warn = await page.textContent('#warnings');
+  check('AD6', /negatif/.test(warn), `${label}: a negative outer margin is rejected with a message, download disabled`, warn.trim());  // turkish-ok: expected Turkish UI text
   await page.fill('#outer-margin', '0');
   await page.fill('#binding-allowance', '-1');
   await page.waitForFunction(() => document.getElementById('export-transfer').disabled);
-  uy = await page.textContent('#warnings');
-  check('AD6', /negatif/.test(uy), `${label}: negatif cilt payı mesajla reddedilir`, uy.trim());
+  warn = await page.textContent('#warnings');
+  check('AD6', /negatif/.test(warn), `${label}: a negative gutter is rejected with a message`, warn.trim());  // turkish-ok: expected Turkish UI text
   await page.fill('#binding-allowance', '0');
-  // O4: iki PDF modunda çevirme etiketi
+  // O4: the turn-over label in the two PDF mode
   await page.selectOption('#output-mode', 'pair');
   const e1 = await page.textContent('#duplex-label');
   await page.selectOption('#output-mode', 'single');
   const e2 = await page.textContent('#duplex-label');
-  check('AD4', /desteyi hangi kenardan çevireceksiniz/.test(e1) && /yazıcıda da aynısını seçin/.test(e2) && e1 !== e2, `${label}: iki PDF modunda çevirme etiketi "desteyi hangi kenardan çevireceksiniz"`, e1);
-  // D9 + boş sayfa sayısı: Hesapla sekmesi
+  check('AD4', /desteyi hangi kenardan çevireceksiniz/.test(e1) && /yazıcıda da aynısını seçin/.test(e2) && e1 !== e2, `${label}: the turn-over label in the two PDF mode "which edge you turn the stack over"`, e1);  // turkish-ok: expected Turkish UI text
+  // D9 + blank page count: the Calculator tab
   await page.click('#tab-button-calculator');
   await page.fill('#h-pageCount', '');
   let h = await page.textContent('#h-error');
-  check('AD6', /Sayfa sayısını girin/.test(h), `${label}: Hesapla boş sayfa sayısında "Sayfa sayısını girin"`, h.trim());
+  check('AD6', /Sayfa sayısını girin/.test(h), `${label}: the Calculator says "Sayfa sayısını girin" for an empty page count`, h.trim());  // turkish-ok: expected Turkish UI text
   await page.fill('#h-pageCount', '100');
   await page.fill('#h-sheetsPerSignature', '2.6');
   h = await page.textContent('#h-error');
-  check('AD6', /tam sayı/.test(h) && (await page.locator('#h-result tr').count()) === 0, `${label}: Hesapla forma yaprağı 2.6'yı reddeder (Düzenle ile aynı)`, h.trim());
+  check('AD6', /tam sayı/.test(h) && (await page.locator('#h-result tr').count()) === 0, `${label}: the Calculator rejects 2.6 sheets per signature (the same as Imposition)`, h.trim());  // turkish-ok: expected Turkish UI text
   await page.fill('#h-sheetsPerSignature', '4');
-  // AH: sert kapak ölçüleri (S = 12 → mukavva 144×216, şerit 16×216, kaplama 352×250)
+  // AH: hard cover measurements (S = 12 → board 144×216, stiffener 16×216, covering 352×250)
   await page.fill('#h-pageCount', '240');
   await page.selectOption('#h-bindingType', 'single1');
   const cell = (name) => page.textContent(`#h-result td[data-result="${name}"]`);
   const m1 = await cell('board'), s1 = await cell('spineStrip'), k1 = await cell('covering');
   const numbers = (x) => (x.replace(/\s/g, ' ').match(/\d+(?:,\d+)?/g) || []).join('/');
-  check('AH', numbers(m1) === '144/216' && numbers(s1) === '16/216' && numbers(k1) === '352/250', `${label}: Hesapla sert kapak ölçüleri 144×216, 16×216, 352×250`, `${m1} | ${s1} | ${k1}`);
+  check('AH', numbers(m1) === '144/216' && numbers(s1) === '16/216' && numbers(k1) === '352/250', `${label}: Calculator hard cover measurements 144×216, 16×216, 352×250`, `${m1} | ${s1} | ${k1}`);
   await page.selectOption('#h-spineRule', 'onlyS');
   const s2 = await cell('spineStrip'), k2 = await cell('covering');
-  check('AH', numbers(s2) === '12/216' && numbers(k2) === '352/250', `${label}: "yalnız S" kuralı şerit 12, kaplama yine 352×250`, `${s2} | ${k2}`);
+  check('AH', numbers(s2) === '12/216' && numbers(k2) === '352/250', `${label}: the "S only" rule stiffener 12, covering still 352×250`, `${s2} | ${k2}`);
   await page.selectOption('#h-spineRule', 'twoT');
   await page.selectOption('#h-spineShape', 'rounded');
   const uyA = await page.textContent('#h-warnings');
-  check('AH', /eğri boyunu ölçüp girin/.test(uyA) && numbers(await cell('spineStrip')) === '19/216', `${label}: yuvarlak sırt, eğri boyu boş → 19 mm ve uyarı`, uyA.trim().slice(0, 80));
+  check('AH', /eğri boyunu ölçüp girin/.test(uyA) && numbers(await cell('spineStrip')) === '19/216', `${label}: rounded spine, curve length empty → 19 mm and a warning`, uyA.trim().slice(0, 80));  // turkish-ok: expected Turkish UI text
   await page.fill('#h-curveLength', '20');
-  check('AH', numbers(await cell('spineStrip')) === '23/216' && (await page.textContent('#h-warnings')).trim() === '', `${label}: yuvarlak sırt, eğri boyu 20 → 23 mm, uyarı yok`);
+  check('AH', numbers(await cell('spineStrip')) === '23/216' && (await page.textContent('#h-warnings')).trim() === '', `${label}: rounded spine, curve length 20 → 23 mm, no warning`);
   await page.fill('#h-curveLength', ''); await page.selectOption('#h-spineShape', 'flat');
   await page.fill('#h-boardThickness', '4');
-  check('AH', /elle ayarlayın/.test(await page.textContent('#h-warnings')) && numbers(await cell('jointGap')) === '9', `${label}: t=4 → mafsal 9 ve "kaynak yok, elle ayarlayın" notu`);
+  check('AH', /elle ayarlayın/.test(await page.textContent('#h-warnings')) && numbers(await cell('jointGap')) === '9', `${label}: t=4 → joint 9 and the "no source, set it by hand" note`);  // turkish-ok: expected Turkish UI text
   await page.fill('#h-boardThickness', '0');
-  check('AH', /sıfırdan büyük/.test(await page.textContent('#h-error')), `${label}: t=0 rejected`);
+  check('AH', /sıfırdan büyük/.test(await page.textContent('#h-error')), `${label}: t=0 rejected`);  // turkish-ok: expected Turkish UI text
   await page.fill('#h-boardThickness', '2');
-  // kullanıcıya iç depo yolu (docs/…md) gösterilmez; not "atölye uygulaması" olarak kalır
+  // no inner repository path (docs/…md) is shown to the user; the note stays "workshop practice"
   const sourceNote = await page.textContent('#h-source');
-  check('AH', /atölye uygulaması/.test(sourceNote) && !/docs\/|\.md\b/.test(sourceNote), `${label}: Hesapla kaynak notu görünür, iç depo yolu yok`, sourceNote);
+  check('AH', /atölye uygulaması/.test(sourceNote) && !/docs\/|\.md\b/.test(sourceNote), `${label}: the Calculator source note is visible, no inner repository path`, sourceNote);  // turkish-ok: expected Turkish UI text
 }
 
 async function osStorageFlow(page, address, label) {
-  // O5: saklama alanı dolu → Süreç sekmesindeki yeni kitap Düzenle sekmesinde de görünür
+  // O5: storage full → the new project in the Projects tab shows in the Imposition tab too
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   await page.evaluate(() => { localStorage.clear(); });
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   await page.evaluate(() => {
-    // kota dolu benzetimi: kitapCilt.v1 yazımı atar
+    // full quota simulation: writing mucellit.projects throws
     const old = Storage.prototype.setItem;
     Storage.prototype.setItem = function (k, v) { if (k === 'mucellit.projects') throw new DOMException('filled', 'QuotaExceededError'); return old.call(this, k, v); };
   });
   await page.click('#tab-button-projects');
-  await page.fill('#yk-name', 'Dolu Kitap');
+  await page.fill('#yk-name', 'Full Book');
   await page.click('#yk-create');
   await page.waitForFunction(() => document.querySelectorAll('#steps .step').length > 0);
   const warning = await page.textContent('#storage-warning');
-  check('AD5', /saklama alanı/.test(warning) && /dolu/.test(warning), `${label}: kota doluyken Türkçe uyarı "saklama alanı ... dolu"`, warning.trim().slice(0, 80));
+  check('AD5', /saklama alanı/.test(warning) && /dolu/.test(warning), `${label}: with the quota full a Turkish warning "saklama alanı ... dolu"`, warning.trim().slice(0, 80));  // turkish-ok: expected Turkish UI text
   await page.click('#tab-button-impose');
   const options = await page.$$eval('#settings-book option', (l) => l.map((o) => o.textContent));
-  check('AD5', options.includes('Dolu Kitap'), `${label}: kota doluyken Düzenle sekmesi yeni kitabı listeler`, JSON.stringify(options));
+  check('AD5', options.includes('Full Book'), `${label}: with the quota full the Imposition tab lists the new project`, JSON.stringify(options));
 }
 
 // ------------------------------------------------------------------
-// EPUB → PDF. Fixture'lar epub-build.cjs ile test sırasında üretilir.
+// EPUB → PDF. The fixtures are built during the test with epub-build.cjs.
 // ------------------------------------------------------------------
 const EPUB_MIME = 'application/epub+zip';
 const E_MESSAGE = {
-  E1: 'Bu dosya okunamadı: geçerli bir EPUB (ZIP) değil ya da bozuk.',
-  E2: 'EPUB içinde META-INF/container.xml yok; dosya bozuk ya da EPUB değil.',
-  E3: "Bu EPUB DRM ile korunuyor (şifreli içerik). Mücellit DRM'li kitapları açmaz; DRM'siz bir kopya kullanın.",
-  E4: "Bu EPUB sabit sayfa düzeninde (fixed-layout). Mücellit yalnız akışkan (reflowable) EPUB'ları destekler; sabit düzenli EPUB'lar dizilemez.",
+  E1: 'Bu dosya okunamadı: geçerli bir EPUB (ZIP) değil ya da bozuk.',  // turkish-ok: expected Turkish UI text
+  E2: 'EPUB içinde META-INF/container.xml yok; dosya bozuk ya da EPUB değil.',  // turkish-ok: expected Turkish UI text
+  E3: "Bu EPUB DRM ile korunuyor (şifreli içerik). Mücellit DRM'li kitapları açmaz; DRM'siz bir kopya kullanın.",  // turkish-ok: expected Turkish UI text
+  E4: "Bu EPUB sabit sayfa düzeninde (fixed-layout). Mücellit yalnız akışkan (reflowable) EPUB'ları destekler; sabit düzenli EPUB'lar dizilemez.",  // turkish-ok: expected Turkish UI text
 };
 
 async function freshPage(page, address) {
@@ -676,7 +678,7 @@ async function freshPage(page, address) {
   await page.click('#tab-button-impose');
   await page.evaluate(() => {
     const E = (window.__e = {});
-    // EPUB'u eklentiyle doğrudan dönüştürür (arayüzdeki EPUB ayarları ve verilen ölçülerle)
+    // converts the EPUB straight with the plug-in (with the EPUB settings of the interface and the given sizes)
     E.convert = async (array, size) => {
       const f = new File([new Uint8Array(array)], 'x.epub', { type: 'application/epub+zip' });
       return Array.from(await window.Mucellit.epub.convert(f, Object.assign({ bookWidth: 148, bookHeight: 210, gutter: 0, outerMargin: 0 }, size || {})));
@@ -692,7 +694,7 @@ async function freshPage(page, address) {
       }
       return pages;
     };
-    // pdf-lib alt düzey: sayfa başına resim XObject sayısı; font sözlükleri
+    // pdf-lib low level: image XObject count per page; font dictionaries
     E.structure = async (array) => {
       const { PDFDocument, PDFName, PDFDict } = window.PDFLib;
       const doc = await PDFDocument.load(new Uint8Array(array), { updateMetadata: false });
@@ -706,7 +708,7 @@ async function freshPage(page, address) {
       doc.context.enumerateIndirectObjects().forEach(([, o]) => {
         if (!(o instanceof PDFDict)) return;
         const type = String(o.get(PDFName.of('Type')));
-        if (type === '/Font') fonts.push({ alt: String(o.get(PDFName.of('Subtype'))), name: String(o.get(PDFName.of('BaseFont'))) });
+        if (type === '/Font') fonts.push({ subtype: String(o.get(PDFName.of('Subtype'))), name: String(o.get(PDFName.of('BaseFont'))) });
         if (type === '/FontDescriptor') definitions.push(!!o.get(PDFName.of('FontFile2')));
       });
       return { withImages, fonts, definitions };
@@ -723,11 +725,11 @@ async function freshPage(page, address) {
   });
 }
 
-/** EPUB'u arayüzden seçer; "… yüklendi" ya da hata bildirimi gelince döner (önceki yüklemenin kartları beklemeyi kandırmasın). */
-async function epubSec(page, name, bytes, time = 90000) {
+/** Picks the EPUB in the interface; returns when the "… yüklendi" notice or an error notice comes (so that the cards of an earlier load do not fool the wait). */  // turkish-ok: expected Turkish UI text
+async function pickEpub(page, name, bytes, time = 90000) {
   await page.evaluate(() => { const b = document.getElementById('notice'); b.textContent = ''; b.className = ''; });
   await page.setInputFiles('#pdf-file', { name: name, mimeType: EPUB_MIME, buffer: bytes });
-  await page.waitForFunction(() => { const b = document.getElementById('notice'); return b.classList.contains('error') || / yüklendi /.test(b.textContent); }, null, { timeout: time });
+  await page.waitForFunction(() => { const b = document.getElementById('notice'); return b.classList.contains('error') || / yüklendi /.test(b.textContent); }, null, { timeout: time });  // turkish-ok: expected Turkish UI text
   return { card: await page.locator('#small-thumbs .card').count(), notice: (await page.textContent('#notice')) || '' };
 }
 
@@ -737,182 +739,182 @@ async function epubFlow(page, address, label) {
   const U = require('./epub-build.cjs');
   const tr = U.ready.trMini();
 
-  // ---- A7 kabul: IR'de sınıfla italik/kalın parçalar; gizli paragraf yok ----
+  // ---- A7 acceptance: italic/bold parts by class in the IR; no hidden paragraph ----
   await freshPage(page, address);
   const ir = await page.evaluate(([d]) => window.__e.ir(d, 'OEBPS/b1.xhtml'), [Array.from(tr)]);
   const part = ir.blocks.flatMap((b) => b.parts || []);
-  check('A7', part.some((p) => p.italic && /eğik yazılmış/.test(p.text)) && part.some((p) => p.bold && /kalın yazılmış/.test(p.text)) && part.some((p) => p.bold && /sınıfla kalın/.test(p.text)),
-    `${label}: trMini IR'sinde sınıfla italik, <strong> ve sınıfla kalın parçalar var`);
-  check('A7', !part.some((p) => /GIZLIMETIN/.test(p.text || '')) && ir.blocks.some((b) => b.kind === 'separator') && ir.blocks.some((b) => b.prefix === '•') && ir.blocks.some((b) => b.prefix === '2.'),
-    `${label}: display:none atlanır, @media kuralı uygulanmaz; ayraç ve liste önekleri (• / 2.)`);
+  check('A7', part.some((p) => p.italic && /eğik yazılmış/.test(p.text)) && part.some((p) => p.bold && /kalın yazılmış/.test(p.text)) && part.some((p) => p.bold && /sınıfla kalın/.test(p.text)),  // turkish-ok: expected Turkish UI text
+    `${label}: the trMini IR has italic by class, <strong> and bold-by-class parts`);
+  check('A7', !part.some((p) => /HIDDENTEXT/.test(p.text || '')) && ir.blocks.some((b) => b.kind === 'separator') && ir.blocks.some((b) => b.prefix === '•') && ir.blocks.some((b) => b.prefix === '2.'),
+    `${label}: display:none is skipped, the @media rule is not applied; separator and list prefixes (• / 2.)`);
   check('A7', ir.counter.skippedImage === 1 && ir.counter.table === 1 && ir.blocks.filter((b) => b.kind === 'image').length === 2 && ir.cover === 'OEBPS/images/cover.png',
-    `${label}: SVG atlandı (1), tablo düz metin (1), PNG + GIF resim bloğu (2), kapak cover-image`, JSON.stringify(ir.counter));
+    `${label}: SVG skipped (1), table as plain text (1), PNG + GIF image blocks (2), cover cover-image`, JSON.stringify(ir.counter));
 
-  // ---- B3 Türkçe: arayüzden yükle, kart = PDF sayfa ≥ 3; metin birebir ----
+  // ---- B3 Turkish: load through the interface, cards = PDF pages ≥ 3; text exactly ----
   await page.selectOption('#binding-type', 'sewn');
   await page.fill('#paper-width', '297'); await page.fill('#paper-height', '210');
   await page.fill('#book-width', '148'); await page.fill('#book-height', '210');
   await page.fill('#signature-sheet', '4'); await page.fill('#outer-margin', '0'); await page.fill('#binding-allowance', '0');
   await page.selectOption('#scaling', 'fit'); await page.selectOption('#output-mode', 'single');
-  const select = await epubSec(page, 'tr-mini.epub', tr);
+  const select = await pickEpub(page, 'tr-mini.epub', tr);
   const pdf0 = await page.evaluate(([d]) => window.__e.convert(d), [Array.from(tr)]);
   const s0 = await page.evaluate(([d]) => window.__e.inspect(d), [pdf0]);
   const text = withSpaces(s0.map((s) => s.elements.map((o) => o.str).join(' ')).join(' '));
-  check('B3', select.card === s0.length && s0.length >= 3, `${label}: trMini card sayısı = PDF page sayısı ≥ 3`, `card ${select.card}, PDF ${s0.length}; bildirim: ${select.notice}`);
-  check('B3', text.includes(U.B3_SENTENCE), `${label}: pdf.js metninde Türkçe cümle birebir`, text.includes(U.B3_SENTENCE) ? U.B3_SENTENCE : text.slice(0, 160));
-  check('B3', !text.includes('�') && text.includes('İ') && text.includes('ı'), `${label}: U+FFFD none; İ = U+0130 ve ı = U+0131 var`);
-  check('B3', /Birinci Bölüm/.test(withSpaces(s0[0].elements.map((o) => o.str).join(' '))) && !text.includes('GIZLIMETIN') && s0.some((s) => /^YENISAYFA/.test(withSpaces(s.elements.map((o) => o.str).join(' ')))),
-    `${label}: kapak atlandı (1. sayfa "Birinci Bölüm"), gizli paragraf yok, page-break-before yeni sayfa açtı`);
+  check('B3', select.card === s0.length && s0.length >= 3, `${label}: trMini card count = PDF page count ≥ 3`, `card ${select.card}, PDF ${s0.length}; notice: ${select.notice}`);
+  check('B3', text.includes(U.B3_SENTENCE), `${label}: the Turkish sentence exactly in the pdf.js text`, text.includes(U.B3_SENTENCE) ? U.B3_SENTENCE : text.slice(0, 160));
+  check('B3', !text.includes('�') && text.includes('İ') && text.includes('ı'), `${label}: no U+FFFD; İ = U+0130 and ı = U+0131 present`);  // turkish-ok: expected Turkish UI text
+  check('B3', /Birinci Bölüm/.test(withSpaces(s0[0].elements.map((o) => o.str).join(' '))) && !text.includes('HIDDENTEXT') && s0.some((s) => /^NEWPAGE/.test(withSpaces(s.elements.map((o) => o.str).join(' ')))),  // turkish-ok: expected Turkish UI text
+    `${label}: cover skipped (page 1 "Birinci Bölüm"), no hidden paragraph, page-break-before opened a new page`);  // turkish-ok: expected Turkish UI text
   const warning = await page.textContent('#epub-warning');
-  check('B3', /1 resim atlandı \(SVG, bozuk ya da bilinmeyen biçim\), 1 tablo düz metne çevrildi, 2 resim 300 dpi altında\./.test(warning), `${label}: U1 uyarısı`, warning.trim());
-  // BD/O4: uyarı varken kullanıcıya görünür (kapalı "EPUB ayarları" bölümünde gizli kalmaz)
-  check('O4', await page.isVisible('#epub-warning .warning'), `${label}: U1 uyarısı görünür (isVisible('#epub-warning .warning'))`,
-    `details açık: ${await page.evaluate(() => document.getElementById('epub-settings').open)}`);
+  check('B3', /1 resim atlandı \(SVG, bozuk ya da bilinmeyen biçim\), 1 tablo düz metne çevrildi, 2 resim 300 dpi altında\./.test(warning), `${label}: U1 warning`, warning.trim());  // turkish-ok: expected Turkish UI text
+  // BD/O4: with a warning it is visible to the user (not hidden in the closed "EPUB settings" section)
+  check('O4', await page.isVisible('#epub-warning .warning'), `${label}: the U1 warning is visible (isVisible('#epub-warning .warning'))`,
+    `details open: ${await page.evaluate(() => document.getElementById('epub-settings').open)}`);
 
-  // ---- B4 Vektör: resim yalnız resimli sayfalarda; Literata FontFile2; Standard 14 yok ----
+  // ---- B4 Vector: images only on the pages with images; Literata FontFile2; no Standard 14 ----
   const y = await page.evaluate(([d]) => window.__e.structure(d), [pdf0]);
   const withTextAll = s0.every((s) => s.elements.some((o) => o.str.trim()));
   check('B4', withTextAll && y.withImages.filter((n) => n > 0).length <= 2 && y.withImages.reduce((a, b) => a + b, 0) === 2 && y.withImages.filter((n) => n === 0).length >= s0.length - 2,
-    `${label}: her sayfada metin var; Image XObject yalnız 2 resimli sayfada, metin sayfalarında yok`, JSON.stringify(y.withImages));
-  const tip0 = y.fonts.filter((f) => f.alt === '/Type0');
-  check('B4', tip0.length > 0 && tip0.every((f) => /Literata/.test(f.name)) && y.definitions.length === tip0.length && y.definitions.every(Boolean) && !y.fonts.some((f) => f.alt === '/Type1'),
-    `${label}: fontlar Literata (Type0 + FontFile2), Standard 14 yok`, JSON.stringify(tip0.map((f) => f.name)));
+    `${label}: text on every page; Image XObject only on the 2 pages with images, not on the text pages`, JSON.stringify(y.withImages));
+  const tip0 = y.fonts.filter((f) => f.subtype === '/Type0');
+  check('B4', tip0.length > 0 && tip0.every((f) => /Literata/.test(f.name)) && y.definitions.length === tip0.length && y.definitions.every(Boolean) && !y.fonts.some((f) => f.subtype === '/Type1'),
+    `${label}: the fonts are Literata (Type0 + FontFile2), no Standard 14`, JSON.stringify(tip0.map((f) => f.name)));
 
-  // ---- B5 + B6: dizilmiş çıktı (cilt 0) → ölçek 1; formalı 297×210, forma 4 ----
+  // ---- B5 + B6: imposed output (gutter 0) → scale 1; sewn 297×210, 4 sheets per signature ----
   const lengths = [...new Set(s0.flatMap((s) => s.elements.filter((o) => o.str.trim()).map((o) => Math.abs(o.a))))];
   const scaleOne = (page) => page.elements.filter((o) => o.str.trim()).every((o) => lengths.some((b) => Math.abs(Math.abs(o.a) / b - 1) <= 0.001));
-  check('B5', s0.every((s) => Math.abs(s.width - 148) <= 0.5 && Math.abs(s.height - 210) <= 0.5), `${label}: cilt 0 / dış 0 → her sayfa 148×210 mm (±0,5)`, `${s0[0].width.toFixed(2)}×${s0[0].height.toFixed(2)}`);
+  check('B5', s0.every((s) => Math.abs(s.width - 148) <= 0.5 && Math.abs(s.height - 210) <= 0.5), `${label}: gutter 0 / outer 0 → every page 148×210 mm (±0.5)`, `${s0[0].width.toFixed(2)}×${s0[0].height.toFixed(2)}`);
   async function downloadImposed(expectedPage, size) {
     await page.waitForFunction(() => !document.getElementById('export-transfer').disabled);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-transfer')]);
     const output = await readFile(await download.path());
     await page.waitForSelector('#output-preview[data-ready="yes"]');
     const r = await page.evaluate(([d]) => window.__e.inspect(d), [Array.from(output)]);
-    check('B6', /-dizilmis\.pdf$/.test(download.suggestedFilename()) && r.length === expectedPage && r.every((s) => Math.abs(s.width - 297) <= 0.5 && Math.abs(s.height - 210) <= 0.5),
-      `${label}: ${size}: EPUB → formalı 297×210, forma 4 → ${download.suggestedFilename()}, ${expectedPage} sayfa, önizleme hazır`, `${r.length} page`);
+    check('B6', /-dizilmis\.pdf$/.test(download.suggestedFilename()) && r.length === expectedPage && r.every((s) => Math.abs(s.width - 297) <= 0.5 && Math.abs(s.height - 210) <= 0.5),  // turkish-ok: expected Turkish UI text
+      `${label}: ${size}: EPUB → sewn 297×210, 4 sheets per signature → ${download.suggestedFilename()}, ${expectedPage} pages, preview ready`, `${r.length} page`);
     const all = r.filter((s) => s.elements.some((o) => o.str.trim()));
-    check('B5', all.length > 0 && all.every(scaleOne), `${label}: ${size}: dizilmiş çıktıda ölçek 1 (metin a katsayısı kaynak boyutlarıyla ±0,001)`,
-      all.length ? JSON.stringify(all[0].elements.filter((o) => o.str.trim()).slice(0, 3).map((o) => +Math.abs(o.a).toFixed(4))) + ' / kaynak ' + JSON.stringify(lengths.map((b) => +b.toFixed(4))) : 'metin yok');
+    check('B5', all.length > 0 && all.every(scaleOne), `${label}: ${size}: scale 1 in the imposed output (text a factor ±0.001 with the source sizes)`,
+      all.length ? JSON.stringify(all[0].elements.filter((o) => o.str.trim()).slice(0, 3).map((o) => +Math.abs(o.a).toFixed(4))) + ' / source ' + JSON.stringify(lengths.map((b) => +b.toFixed(4))) : 'no text');
   }
   await page.waitForFunction(() => document.querySelectorAll('#sheet-preview .sheet-card').length > 0);
-  await downloadImposed(Math.ceil(select.card / 16) * 8, 'cilt 0');
-  // ölçü değişince "yeniden seçin" uyarısı
+  await downloadImposed(Math.ceil(select.card / 16) * 8, 'gutter 0');
+  // the "choose again" warning when the size changes
   await page.fill('#binding-allowance', '10');
   await page.waitForSelector('#plugin-size-warning', { timeout: 5000 });
-  check('B5', /EPUB bu ölçülerle dizilmişti/.test(await page.textContent('#plugin-size-warning')), `${label}: cilt payı değişince #plugin-size-warning görünür`);
-  // cilt payı 10 ile yeniden yükle → sayfa 138×210, dizilmiş ölçek 1
-  const sec10 = await epubSec(page, 'tr-mini.epub', tr);
+  check('B5', /EPUB bu ölçülerle dizilmişti/.test(await page.textContent('#plugin-size-warning')), `${label}: #plugin-size-warning shows when the gutter changes`);  // turkish-ok: expected Turkish UI text
+  // load again with gutter 10 → page 138×210, imposed scale 1
+  const picked10 = await pickEpub(page, 'tr-mini.epub', tr);
   await page.waitForTimeout(100);
   check('B5', (await page.locator('#plugin-size-warning').count()) === 0 && /138 × 210 mm/.test(await page.textContent('#source-info')),
-    `${label}: cilt payı 10 ile yeniden yüklenince uyarı kalkar, kaynak 138 × 210 mm`, await page.textContent('#source-info'));
+    `${label}: loading again with gutter 10 removes the warning, source 138 × 210 mm`, await page.textContent('#source-info'));
   const s10 = await page.evaluate(async ([d]) => window.__e.inspect(await window.__e.convert(d, { gutter: 10 })), [Array.from(tr)]);
-  check('B5', s10.every((s) => Math.abs(s.width - 138) <= 0.5 && Math.abs(s.height - 210) <= 0.5), `${label}: cilt payı 10 → her sayfa 138×210 mm (±0,5)`, `${s10[0].width.toFixed(2)}×${s10[0].height.toFixed(2)}`);
-  await downloadImposed(Math.ceil(sec10.card / 16) * 8, 'cilt 10');
+  check('B5', s10.every((s) => Math.abs(s.width - 138) <= 0.5 && Math.abs(s.height - 210) <= 0.5), `${label}: gutter 10 → every page 138×210 mm (±0.5)`, `${s10[0].width.toFixed(2)}×${s10[0].height.toFixed(2)}`);
+  await downloadImposed(Math.ceil(picked10.card / 16) * 8, 'gutter 10');
   await page.fill('#binding-allowance', '0');
 
-  // ---- enMini: EPUB 2 + NCX + &nbsp; (text/html yedeği) ----
+  // ---- enMini: EPUB 2 + NCX + &nbsp; (text/html fallback) ----
   await freshPage(page, address);
-  const en = await epubSec(page, 'en-mini.epub', U.ready.enMini());
-  const enMetin = withSpaces((await page.evaluate(async ([d]) => window.__e.inspect(await window.__e.convert(d)), [Array.from(U.ready.enMini())])).map((s) => s.elements.map((o) => o.str).join(' ')).join(' '));
-  check('A7', en.card >= 1 && /Hello world, this is an English paragraph/.test(enMetin), `${label}: enMini (EPUB 2, NCX, DTD'siz &nbsp;) hatasız dönüşür`, `card ${en.card}; ${enMetin.slice(0, 60)}`);
+  const en = await pickEpub(page, 'en-mini.epub', U.ready.enMini());
+  const enText = withSpaces((await page.evaluate(async ([d]) => window.__e.inspect(await window.__e.convert(d)), [Array.from(U.ready.enMini())])).map((s) => s.elements.map((o) => o.str).join(' ')).join(' '));
+  check('A7', en.card >= 1 && /Hello world, this is an English paragraph/.test(enText), `${label}: enMini (EPUB 2, NCX, &nbsp; without a DTD) converts without errors`, `card ${en.card}; ${enText.slice(0, 60)}`);
 
-  // ---- B7 DRM / fontGizli, B8 FXL, B9 bozuk / containerYok ----
+  // ---- B7 DRM / fontHidden, B8 FXL, B9 broken / noContainer ----
   const errorState = async (criterion, name, bytes, message) => {
     await freshPage(page, address);
-    const r = await epubSec(page, name, bytes);
+    const r = await pickEpub(page, name, bytes);
     const closed = await page.isDisabled('#export-transfer');
-    check(criterion, r.notice.includes(message) && r.card === 0 && closed, `${label}: ${name}: Türkçe mesaj, kart 0, indirme kapalı`, r.notice);
+    check(criterion, r.notice.includes(message) && r.card === 0 && closed, `${label}: ${name}: Turkish message, 0 cards, download disabled`, r.notice);
   };
   await errorState('B7', 'drm.epub', U.ready.drm(), E_MESSAGE.E3);
   await freshPage(page, address);
-  const fg = await epubSec(page, 'font-gizli.epub', U.ready.fontHidden());
-  check('B7', fg.card >= 3 && !/açılamadı/.test(fg.notice), `${label}: fontGizli.epub (yalnız yazı tipi gizleme) DRM sayılmaz, dönüşür`, `card ${fg.card}; ${fg.notice}`);
+  const fg = await pickEpub(page, 'font-hidden.epub', U.ready.fontHidden());
+  check('B7', fg.card >= 3 && !/açılamadı/.test(fg.notice), `${label}: font-hidden.epub (font obfuscation only) does not count as DRM, converts`, `card ${fg.card}; ${fg.notice}`);  // turkish-ok: expected Turkish UI text
   await errorState('B8', 'fxl.epub', U.ready.fxl(), E_MESSAGE.E4);
-  await errorState('B9', 'bozuk.epub', U.ready.corrupt(), E_MESSAGE.E1);
-  await errorState('B9', 'container-yok.epub', U.ready.noContainer(), E_MESSAGE.E2);
+  await errorState('B9', 'broken.epub', U.ready.corrupt(), E_MESSAGE.E1);
+  await errorState('B9', 'no-container.epub', U.ready.noContainer(), E_MESSAGE.E2);
 }
 
 // ------------------------------------------------------------------
-// EPUB düzeltme testleri (kodlama dahil), her iki koşuda
+// EPUB fix tests (encoding included), in both runs
 // ------------------------------------------------------------------
-// başlığı (IHDR) geçerli, IDAT'ı bozuk PNG
+// a PNG with a valid header (IHDR) and a broken IDAT
 const CORRUPT_PNG = Buffer.from('89504E470D0A1A0A0000000D49484452000000100000001008020000009091683600000010494441547801DEADBEEFDEADBEEFDEADBEEF00000000', 'hex');
-// windows-1254 tek bayt kodları (Türkçe harfler)
-const W1254 = { 'ğ': 0xf0, 'ı': 0xfd, 'İ': 0xdd, 'Ö': 0xd6, 'Ğ': 0xd0, 'Ü': 0xdc, 'Ş': 0xde, 'Ç': 0xc7, 'ü': 0xfc, 'ş': 0xfe, 'ö': 0xf6, 'ç': 0xe7 };
+// windows-1254 single byte codes (Turkish letters)
+const W1254 = { 'ğ': 0xf0, 'ı': 0xfd, 'İ': 0xdd, 'Ö': 0xd6, 'Ğ': 0xd0, 'Ü': 0xdc, 'Ş': 0xde, 'Ç': 0xc7, 'ü': 0xfc, 'ş': 0xfe, 'ö': 0xf6, 'ç': 0xe7 };  // turkish-ok: expected Turkish UI text
 function w1254(s) { return Buffer.from([...s].map((c) => (W1254[c] !== undefined ? W1254[c] : c.charCodeAt(0)))); }
 
 async function bdFlow(page, address, label) {
   const U = require('./epub-build.cjs');
   const paragraph = (n) => `<p>${U.paragraphText(U.random(n), 60)}</p>`;
 
-  // ---- O3: bozuk PNG'li EPUB dönüşür; U1'de 1 resim atlandı; yazı tipi uyarısı yok ----
-  const corruptEpub = U.epub({ title: 'Bozuk Resim', sections: [{ name: 'b.xhtml', xhtml: U.xhtml('<h1>Resimli Bölüm</h1>' + paragraph(1) + '<p><img src="r/bozuk.png" alt="corrupt"/></p>' + paragraph(2)) }],
-    files: { 'r/bozuk.png': CORRUPT_PNG } });
+  // ---- O3: an EPUB with a broken PNG converts; 1 image skipped in U1; no font warning ----
+  const corruptEpub = U.epub({ title: 'Broken Image', sections: [{ name: 'b.xhtml', xhtml: U.xhtml('<h1>Chapter with an image</h1>' + paragraph(1) + '<p><img src="r/broken.png" alt="corrupt"/></p>' + paragraph(2)) }],
+    files: { 'r/broken.png': CORRUPT_PNG } });
   await freshPage(page, address);
-  const o3 = await epubSec(page, 'bozuk-resim.epub', corruptEpub);
+  const o3 = await pickEpub(page, 'broken-image.epub', corruptEpub);
   const u3 = (await page.textContent('#epub-warning')).trim();
-  check('O3', o3.card >= 1 && !/açılamadı/.test(o3.notice), `${label}: bozuk PNG'li EPUB dönüşür (kart ≥ 1, hata yok)`, `card ${o3.card}; ${o3.notice}`);
-  check('O3', /^1 resim atlandı/.test(u3) && !/Yazı tipi/.test(u3) && !/Cannot|undefined/.test(o3.notice + u3), `${label}: U1 "1 resim atlandı", yazı tipi uyarısı ve ham İngilizce hata yok`, u3);
+  check('O3', o3.card >= 1 && !/açılamadı/.test(o3.notice), `${label}: an EPUB with a broken PNG converts (cards ≥ 1, no error)`, `card ${o3.card}; ${o3.notice}`);  // turkish-ok: expected Turkish UI text
+  check('O3', /^1 resim atlandı/.test(u3) && !/Yazı tipi/.test(u3) && !/Cannot|undefined/.test(o3.notice + u3), `${label}: U1 "1 resim atlandı", no font warning and no raw English error`, u3);  // turkish-ok: expected Turkish UI text
 
-  // ---- D4: EPUB uyarısı yeni (PDF) yüklemede temizlenir; bayat (yavaş) dönüşüm sonucu atılır ----
+  // ---- D4: the EPUB warning is cleared on a new (PDF) load; a stale (slow) conversion result is dropped ----
   await setupHelpers(page);
-  await epubSec(page, 'tr-mini.epub', U.ready.trMini()); // U1 uyarısı veren EPUB (1 SVG, 1 tablo)
+  await pickEpub(page, 'tr-mini.epub', U.ready.trMini()); // an EPUB that gives a U1 warning (1 SVG, 1 table)
   const onceWarning = (await page.textContent('#epub-warning')).trim();
   const pdf8 = Buffer.from(await page.evaluate(async () => Array.from(await window.__t.numberedPdf(8))));
-  await page.setInputFiles('#pdf-file', { name: 'sekiz.pdf', mimeType: 'application/pdf', buffer: pdf8 });
+  await page.setInputFiles('#pdf-file', { name: 'eight.pdf', mimeType: 'application/pdf', buffer: pdf8 });
   await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 8);
   const restWarning = (await page.textContent('#epub-warning')).trim();
-  check('D4', onceWarning !== '' && restWarning === '', `${label}: EPUB'dan sonra PDF yüklenince eski EPUB uyarısı temizlenir`, `önce: ${onceWarning.slice(0, 40) || '(boş)'}; sonra: ${restWarning || '(boş)'}`);
+  check('D4', onceWarning !== '' && restWarning === '', `${label}: loading a PDF after an EPUB clears the old EPUB warning`, `before: ${onceWarning.slice(0, 40) || '(empty)'}; after: ${restWarning || '(empty)'}`);
   await page.evaluate(async () => {
     const pdf3 = await window.__t.numberedPdf(3);
-    window.__slow = { current: 'çağrılmadı' };
-    window.Mucellit.plugins.register({ name: 'Yavaş deneme', extensions: ['.slow'], convert: async (f, s) => {
+    window.__slow = { current: 'not called' };
+    window.Mucellit.plugins.register({ name: 'Slow trial', extensions: ['.slow'], convert: async (f, s) => {
       await new Promise((ok) => setTimeout(ok, 1500));
-      window.__slow.current = s.isCurrent ? s.isCurrent() : 'isCurrent yok';
+      window.__slow.current = s.isCurrent ? s.isCurrent() : 'no isCurrent';
       return pdf3;
     } });
   });
   await page.setInputFiles('#pdf-file', { name: 'a.slow', mimeType: 'application/octet-stream', buffer: Buffer.from('slow') });
-  await page.setInputFiles('#pdf-file', { name: 'yeni-sekiz.pdf', mimeType: 'application/pdf', buffer: pdf8 });
-  await page.waitForFunction(() => /yeni-sekiz\.pdf/.test(document.getElementById('source-info').textContent));
-  await page.waitForFunction(() => window.__slow.current !== 'çağrılmadı', null, { timeout: 10000 });
+  await page.setInputFiles('#pdf-file', { name: 'new-eight.pdf', mimeType: 'application/pdf', buffer: pdf8 });
+  await page.waitForFunction(() => /new-eight\.pdf/.test(document.getElementById('source-info').textContent));
+  await page.waitForFunction(() => window.__slow.current !== 'not called', null, { timeout: 10000 });
   await page.waitForTimeout(500);
   const d4 = { card: await page.locator('#small-thumbs .card').count(), info: await page.textContent('#source-info'), current: await page.evaluate(() => window.__slow.current) };
-  check('D4', d4.card === 8 && /yeni-sekiz\.pdf/.test(d4.info) && d4.current === false, `${label}: yavaş dönüşüm sürerken seçilen PDF kalır; bayat sonuç atılır (isCurrent false)`, JSON.stringify(d4));
+  check('D4', d4.card === 8 && /new-eight\.pdf/.test(d4.info) && d4.current === false, `${label}: the PDF chosen while a slow conversion runs stays; the stale result is dropped (isCurrent false)`, JSON.stringify(d4));
 
-  // ---- D5: tablo hücresinde script/style/gizli metin yok; iç içe tablo satırı yinelenmez; satır içi önbellek sınırlı ----
-  const tableX = U.xhtml('<h1>Tablo</h1><table>' +
-    '<tr><td>DIS1<script>KOTUSCRIPT()</script><style>.k{}</style><span style="display:none">GIZLISTIL</span><span hidden="hidden">GIZLIOZ</span></td><td>DIS2</td></tr>' +
-    '<tr><td><table><tr><td>IC1</td><td>IC2</td></tr></table></td><td>DIS3</td></tr></table>' +
+  // ---- D5: no script/style/hidden text in a table cell; a nested table row is not repeated; the inline cache is limited ----
+  const tableX = U.xhtml('<h1>Table</h1><table>' +
+    '<tr><td>OUT1<script>BADSCRIPT()</script><style>.k{}</style><span style="display:none">HIDDENSTYLE</span><span hidden="hidden">HIDDENATTR</span></td><td>OUT2</td></tr>' +
+    '<tr><td><table><tr><td>IN1</td><td>IN2</td></tr></table></td><td>OUT3</td></tr></table>' +
     Array.from({ length: 2600 }, (_, i) => `<span style="margin-left: ${i}px">s${i} </span>`).join(''));
   const tableEpub = U.epub({ sections: [{ name: 't.xhtml', xhtml: tableX }] });
   const ir5 = await page.evaluate(([d]) => window.__e.ir(d, 'OEBPS/t.xhtml'), [Array.from(tableEpub)]);
-  const metin5 = ir5.blocks.flatMap((b) => (b.parts || []).map((p) => p.text || '')).join(' | ');
-  const ic1 = (metin5.match(/IC1/g) || []).length;
-  check('D5', !/KOTUSCRIPT|GIZLISTIL|GIZLIOZ|\.k\{/.test(metin5) && /DIS1/.test(metin5) && ic1 === 1 && /IC2/.test(metin5) && /DIS3/.test(metin5),
-    `${label}: tablo hücresinde script/style/gizli öğe yok; iç içe tablo satırı bir kez`, `IC1 ${ic1} times; ${metin5.slice(0, 120)}`);
-  check('D5', typeof ir5.inline === 'number' && ir5.inline > 0 && ir5.inline <= 2000, `${label}: satır içi stil önbelleği dönüşüme özel ve ≤ 2000 girdi (2600 farklı style)`, String(ir5.inline));
+  const text5 = ir5.blocks.flatMap((b) => (b.parts || []).map((p) => p.text || '')).join(' | ');
+  const in1 = (text5.match(/IN1/g) || []).length;
+  check('D5', !/BADSCRIPT|HIDDENSTYLE|HIDDENATTR|\.k\{/.test(text5) && /OUT1/.test(text5) && in1 === 1 && /IN2/.test(text5) && /OUT3/.test(text5),
+    `${label}: no script/style/hidden element in a table cell; a nested table row once`, `IN1 ${in1} times; ${text5.slice(0, 120)}`);
+  check('D5', typeof ir5.inline === 'number' && ir5.inline > 0 && ir5.inline <= 2000, `${label}: the inline style cache is per conversion and ≤ 2000 entries (2600 different styles)`, String(ir5.inline));
 
-  // ---- Kodlama: windows-1254 bildirimli XHTML doğru çözülür; desteklenmeyen kodlama U1'de bildirilir ----
-  const trSentence = 'Iğdır ılık İstanbul; ÖĞÜŞÇ ğüşıöçİ';
+  // ---- Encoding: XHTML declared windows-1254 is decoded right; an unsupported encoding is reported in U1 ----
+  const trSentence = 'Iğdır ılık İstanbul; ÖĞÜŞÇ ğüşıöçİ';  // turkish-ok: expected Turkish UI text
   const xhtml1254 = (code) => Buffer.concat([Buffer.from(`<?xml version="1.0" encoding="${code}"?>\n<html xmlns="${U.NS.xhtml}" xml:lang="tr"><head><title>K</title></head><body><h1>Encoding</h1><p>`), w1254(trSentence), Buffer.from('</p></body></html>')]);
-  const kodEpub = U.epub({ sections: [{ name: 'k.xhtml', xhtml: xhtml1254('windows-1254') }] });
-  const irK = await page.evaluate(([d]) => window.__e.ir(d, 'OEBPS/k.xhtml'), [Array.from(kodEpub)]);
-  const metinK = irK.blocks.flatMap((b) => (b.parts || []).map((p) => p.text || '')).join(' ');
-  check('CODE', metinK.includes(trSentence) && !metinK.includes('�'), `${label}: windows-1254 bildirimli XHTML Türkçe harflerle çözülür`, metinK.slice(0, 80));
+  const codeEpub = U.epub({ sections: [{ name: 'k.xhtml', xhtml: xhtml1254('windows-1254') }] });
+  const irK = await page.evaluate(([d]) => window.__e.ir(d, 'OEBPS/k.xhtml'), [Array.from(codeEpub)]);
+  const textK = irK.blocks.flatMap((b) => (b.parts || []).map((p) => p.text || '')).join(' ');
+  check('CODE', textK.includes(trSentence) && !textK.includes('�'), `${label}: XHTML declared windows-1254 is decoded with Turkish letters`, textK.slice(0, 80));
   const noCode = U.epub({ sections: [{ name: 'k.xhtml', xhtml: xhtml1254('x-unknown-code') }] });
   await freshPage(page, address);
-  const ky = await epubSec(page, 'kodlama.epub', noCode);
+  const ky = await pickEpub(page, 'encoding.epub', noCode);
   const uK = (await page.textContent('#epub-warning')).trim();
-  check('CODE', ky.card >= 1 && /Desteklenmeyen karakter kodlaması \(x-unknown-code\)/.test(uK) && await page.isVisible('#epub-warning .warning'),
-    `${label}: desteklenmeyen kodlama U1'de bildirilir (görünür)`, uK);
+  check('CODE', ky.card >= 1 && /Desteklenmeyen karakter kodlaması \(x-unknown-code\)/.test(uK) && await page.isVisible('#epub-warning .warning'),  // turkish-ok: expected Turkish UI text
+    `${label}: an unsupported encoding is reported in U1 (visible)`, uK);
 
-  // ---- Madde 13: başarılı yüklemeden sonra hatalı dosya → önceki belge temizlenir, indirme kapalı (EPUB ve PDF) ----
+  // ---- Item 13: a faulty file after a successful load → the earlier document is cleared, download disabled (EPUB and PDF) ----
   const pickFile = async (name, mime, bytes) => {
     await page.evaluate(() => { const b = document.getElementById('notice'); b.textContent = ''; b.className = ''; });
     await page.setInputFiles('#pdf-file', { name: name, mimeType: mime, buffer: bytes });
-    await page.waitForFunction(() => { const b = document.getElementById('notice'); return b.classList.contains('error') || / yüklendi /.test(b.textContent); }, null, { timeout: 90000 });
-    await page.waitForTimeout(150); // guncelle() requestAnimationFrame ile çizer
+    await page.waitForFunction(() => { const b = document.getElementById('notice'); return b.classList.contains('error') || / yüklendi /.test(b.textContent); }, null, { timeout: 90000 });  // turkish-ok: expected Turkish UI text
+    await page.waitForTimeout(150); // update() draws with requestAnimationFrame
     return { card: await page.locator('#small-thumbs .card').count(), notice: (await page.textContent('#notice')) || '',
       closed: await page.isDisabled('#export-transfer'), warning: (await page.textContent('#epub-warning')).trim(), info: await page.textContent('#source-info') };
   };
@@ -924,44 +926,44 @@ async function bdFlow(page, address, label) {
   };
   await freshPage(page, address);
   await setupSize();
-  const iyiE = await pickFile('tr-mini.epub', EPUB_MIME, U.ready.trMini());
+  const goodE = await pickFile('tr-mini.epub', EPUB_MIME, U.ready.trMini());
   await page.waitForFunction(() => !document.getElementById('export-transfer').disabled, null, { timeout: 20000 });
-  const badE = await pickFile('bozuk.epub', EPUB_MIME, U.ready.corrupt());
-  check('file-error', iyiE.card >= 3 && badE.card === 0 && badE.closed && badE.notice.includes(E_MESSAGE.E1) && badE.warning === '' && /açılamadı/.test(badE.info),
-    `${label}: trMini → bozuk.epub: kart 0, indirme kapalı, Türkçe E1, EPUB uyarısı temiz`, JSON.stringify({ once: iyiE.card, card: badE.card, closed: badE.closed, notice: badE.notice, warning: badE.warning, info: badE.info }));
+  const badE = await pickFile('broken.epub', EPUB_MIME, U.ready.corrupt());
+  check('file-error', goodE.card >= 3 && badE.card === 0 && badE.closed && badE.notice.includes(E_MESSAGE.E1) && badE.warning === '' && /açılamadı/.test(badE.info),  // turkish-ok: expected Turkish UI text
+    `${label}: trMini → broken.epub: 0 cards, download disabled, Turkish E1, EPUB warning clean`, JSON.stringify({ once: goodE.card, card: badE.card, closed: badE.closed, notice: badE.notice, warning: badE.warning, info: badE.info }));
   await setupHelpers(page);
-  const iyiP = await pickFile('sekiz.pdf', 'application/pdf', Buffer.from(await page.evaluate(async () => Array.from(await window.__t.numberedPdf(8)))));
+  const goodP = await pickFile('eight.pdf', 'application/pdf', Buffer.from(await page.evaluate(async () => Array.from(await window.__t.numberedPdf(8)))));
   await page.waitForFunction(() => !document.getElementById('export-transfer').disabled, null, { timeout: 20000 });
   const corruptPdf = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.from(Array.from({ length: 3000 }, (_, i) => (i * 37 + 11) % 256))]);
-  const badP = await pickFile('bozuk.pdf', 'application/pdf', corruptPdf);
-  check('file-error', iyiP.card === 8 && badP.card === 0 && badP.closed && /^Dosya açılamadı: dosya bozuk/.test(badP.notice) && !/Invalid|structure|Error/i.test(badP.notice),
-    `${label}: geçerli PDF → bozuk PDF: kart 0, indirme kapalı, Türkçe hata`, JSON.stringify({ once: iyiP.card, card: badP.card, closed: badP.closed, notice: badP.notice }));
+  const badP = await pickFile('broken.pdf', 'application/pdf', corruptPdf);
+  check('file-error', goodP.card === 8 && badP.card === 0 && badP.closed && /^Dosya açılamadı: dosya bozuk/.test(badP.notice) && !/Invalid|structure|Error/i.test(badP.notice),  // turkish-ok: expected Turkish UI text
+    `${label}: valid PDF → broken PDF: 0 cards, download disabled, Turkish error`, JSON.stringify({ once: goodP.card, card: badP.card, closed: badP.closed, notice: badP.notice }));
 }
 
 async function epubPerformance(page, address, label) {
   const U = require('./epub-build.cjs');
   const long = U.ready.long();
   await freshPage(page, address);
-  // önceki akıştan localStorage'da kalmış ölçü olmasın: A5, cilt payı ve dış kenar 0
+  // no size left in localStorage from the earlier flow: A5, gutter and outer margin 0
   await page.fill('#book-width', '148'); await page.fill('#book-height', '210'); await page.fill('#outer-margin', '0'); await page.fill('#binding-allowance', '0');
   const head = Date.now();
-  const r = await epubSec(page, 'uzun.epub', long, 120000);
+  const r = await pickEpub(page, 'long.epub', long, 120000);
   const sure = (Date.now() - head) / 1000;
-  console.log(`bilgi: ${label}: uzun.epub (~90 000 kelime, ${long.length} bayt) dönüşüm ${sure.toFixed(1)} s, ${r.card} page`);
-  check('B14', r.card > 100 && sure < 60, `${label}: uzun.epub (~90 bin kelime) dönüşümü < 60 s`, `${sure.toFixed(1)} s, ${r.card} page; ${r.notice}`);
+  console.log(`info: ${label}: long.epub (~90 000 words, ${long.length} bytes) conversion ${sure.toFixed(1)} s, ${r.card} page`);
+  check('B14', r.card > 100 && sure < 60, `${label}: long.epub (~90 thousand words) conversion < 60 s`, `${sure.toFixed(1)} s, ${r.card} page; ${r.notice}`);
 }
 
 function agCheck(iz, localPrefix, label, criterion) {
   const out = iz.requests.filter((u) => !(u.startsWith(localPrefix) || u.startsWith('data:') || u.startsWith('blob:')));
-  // file:// ve yerel sunucu dışındaki her istek (http/https dahil) izinsizdir
-  check(criterion, out.length === 0, `${label}: dış ağ isteği yok (yalnız yerel istekler)`,
-    out.length ? JSON.stringify([...new Set(out)]) : `${iz.requests.length} istek, hepsi yerel`);
+  // every request other than file:// and the local server (http/https included) is not allowed
+  check(criterion, out.length === 0, `${label}: no outside network request (only local requests)`,
+    out.length ? JSON.stringify([...new Set(out)]) : `${iz.requests.length} requests, all local`);
 }
 
 // ------------------------------------------------------------------
-//: onay geçişi. Tauri'nin dialog eklentisi window.confirm'ü Promise döndüren işlevle ezer;
-// eski `if (!confirm(...)) return;` kalıbı Promise'i "evet" sayıp onaysız silerdi. Her işlem için:
-// (a) yerel confirm "hayır" (dialog.dismiss), (b) Tauri benzeri async confirm → false; ikisinde de veri değişmez.
+// confirm pass: Tauri's dialog plug-in overrides window.confirm with a function that returns a Promise;
+// the old `if (!confirm(...)) return;` pattern took the Promise as "yes" and deleted without asking. For every action:
+// (a) native confirm "no" (dialog.dismiss), (b) a Tauri-like async confirm → false; the data does not change in either.
 // ------------------------------------------------------------------
 async function confirmFlow(page, address, iz, label) {
   const O = 'G5';
@@ -973,15 +975,15 @@ async function confirmFlow(page, address, iz, label) {
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   await page.click('#tab-button-projects');
-  for (const name of ['Onay Bir', 'Onay İki']) {
+  for (const name of ['Confirm One', 'Confirm Two']) {
     await page.fill('#yk-name', name);
     await page.selectOption('#yk-kind', 'sewn');
     await page.click('#yk-create');
     await page.waitForFunction((a) => document.querySelector('#book-detail h2') && document.querySelector('#book-detail h2').textContent === a, name);
   }
   const first = await readStorage(page);
-  check(O, first && first.projects.length === 2, `${label}: onay hazırlığı: 2 kitap`, first && first.projects.length);
-  const backupPath = join(await fsp.mkdtemp(join(os.tmpdir(), 'mc-confirmation-')), 'yedek.json');
+  check(O, first && first.projects.length === 2, `${label}: confirm set-up: 2 projects`, first && first.projects.length);
+  const backupPath = join(await fsp.mkdtemp(join(os.tmpdir(), 'mc-confirmation-')), 'backup.json');
   await fsp.writeFile(backupPath, JSON.stringify(Object.assign({}, first, { projects: [first.projects[0]] })));
 
   const asyncConfirm = (response) => page.evaluate((y) => {
@@ -993,15 +995,15 @@ async function confirmFlow(page, address, iz, label) {
   const calm = () => page.evaluate(() => new Promise((r) => setTimeout(r, 150)));
   const stepCount = () => page.locator('#steps .step').count();
 
-  // her işlem: tetik() → önce/sonra veri karşılaştırması
+  // every action: trigger() → compare the data before/after
   const operations = [
-    { name: 'Kitabı sil', trigger: () => page.click('#book-remove') },
-    { name: 'Adımı çıkar', trigger: () => page.locator('#steps .step-remove').first().click() },
-    { name: 'Tümünü temizle', trigger: () => page.click('#data-clear') },
-    { name: 'İçe aktar (değiştir)', trigger: () => page.setInputFiles('#json-import', backupPath) },
+    { name: 'Kitabı sil', trigger: () => page.click('#book-remove') },  // turkish-ok: expected Turkish UI text
+    { name: 'Adımı çıkar', trigger: () => page.locator('#steps .step-remove').first().click() },  // turkish-ok: expected Turkish UI text
+    { name: 'Tümünü temizle', trigger: () => page.click('#data-clear') },  // turkish-ok: expected Turkish UI text
+    { name: 'İçe aktar (değiştir)', trigger: () => page.setInputFiles('#json-import', backupPath) },  // turkish-ok: expected Turkish UI text
   ];
   for (const is of operations) {
-    // (a) yerel confirm "hayır"
+    // (a) native confirm "no"
     const once = await readStorage(page);
     const stepOnce = await stepCount();
     iz.confirms.length = 0;
@@ -1012,8 +1014,8 @@ async function confirmFlow(page, address, iz, label) {
     iz.confirmRed = false;
     const afterA = await readStorage(page);
     check(O, iz.confirms.length === 1 && isDeepStrictEqual(afterA, once) && (await stepCount()) === stepOnce,
-      `${label}: ${is.name}: yerel onay "hayır" → veri değişmedi`, `confirmation penceresi ${iz.confirms.length}, kitap ${afterA && afterA.projects.length}`);
-    // (b) Tauri dialog eklentisi benzeri: confirm Promise<false> döner
+      `${label}: ${is.name}: native confirm "no" → data unchanged`, `confirmation penceresi ${iz.confirms.length}, projects ${afterA && afterA.projects.length}`);
+    // (b) like the Tauri dialog plug-in: confirm returns Promise<false>
     await asyncConfirm(false);
     await is.trigger();
     await page.waitForFunction(() => window.__confirmCounter > 0, null, { timeout: 10000 }).catch(() => {});
@@ -1022,26 +1024,26 @@ async function confirmFlow(page, address, iz, label) {
     await localConfirm();
     const afterB = await readStorage(page);
     check(O, counter === 1 && isDeepStrictEqual(afterB, once) && (await stepCount()) === stepOnce,
-      `${label}: ${is.name}: Promise döndüren onay "hayır" (Tauri benzeri) → veri değişmedi`, `onay çağrısı ${counter}, kitap ${afterB && afterB.projects.length}`);
+      `${label}: ${is.name}: a confirm returning a Promise "no" (Tauri-like) → data unchanged`, `confirm calls ${counter}, projects ${afterB && afterB.projects.length}`);
   }
 
-  // "evet" yolları: async true ile kitap silinir; yerel "evet" ile içe aktarma değiştirir
+  // "yes" paths: with async true the project is removed; with a native "yes" the import replaces
   const selected = await page.textContent('#book-detail h2');
   await asyncConfirm(true);
   await page.click('#book-remove');
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 1, null, { timeout: 10000 }).catch(() => {});
   await localConfirm();
   const remove = await readStorage(page);
-  check(O, remove.projects.length === 1 && remove.projects[0].name !== selected, `${label}: Kitabı sil: Promise döndüren onay "evet" → seçili kitap silindi`, `${selected}; kalan ${remove.projects.map((k) => k.name).join(', ')}`);
-  const yedek2 = join(dirname(backupPath), 'yedek2.json');
-  await fsp.writeFile(yedek2, JSON.stringify(first));
+  check(O, remove.projects.length === 1 && remove.projects[0].name !== selected, `${label}: Remove project: a confirm returning a Promise "yes" → the selected project was removed`, `${selected}; left ${remove.projects.map((k) => k.name).join(', ')}`);
+  const backup2 = join(dirname(backupPath), 'backup2.json');
+  await fsp.writeFile(backup2, JSON.stringify(first));
   iz.confirms.length = 0;
-  await page.setInputFiles('#json-import', yedek2);
+  await page.setInputFiles('#json-import', backup2);
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 2, null, { timeout: 10000 }).catch(() => {});
   const importData = await readStorage(page);
-  check(O, iz.confirms.length === 1 && isDeepStrictEqual(importData, first), `${label}: İçe aktar: yerel onay "evet" → veri yedekle değişti`, `confirmation penceresi ${iz.confirms.length}, kitap ${importData.projects.length}`);
+  check(O, iz.confirms.length === 1 && isDeepStrictEqual(importData, first), `${label}: Import: native confirm "yes" → the data changed with the backup`, `confirmation penceresi ${iz.confirms.length}, projects ${importData.projects.length}`);
 
-  // D9: Adım çıkar "evet" (Promise döndüren onay, Tauri benzeri) → seçili kitabın ilk adımı çıkar
+  // D9: Remove step "yes" (a confirm returning a Promise, Tauri-like) → the first step of the selected project is removed
   const stepBook = await page.textContent('#book-detail h2');
   const stepOnce = await stepCount();
   const stepNames = (v) => (v.projects.find((k) => k.name === stepBook) || { steps: [] }).steps.map((a) => a.name);
@@ -1053,19 +1055,19 @@ async function confirmFlow(page, address, iz, label) {
   await localConfirm();
   const nextStep = stepNames(await readStorage(page));
   check('confirmation', stepCounter === 1 && (await stepCount()) === stepOnce - 1 && isDeepStrictEqual(nextStep, firstStep.slice(1)),
-    `${label}: Adımı çıkar: Promise döndüren onay "evet" → ilk adım çıktı`, `onay çağrısı ${stepCounter}, adım ${stepOnce} → ${await stepCount()}`);
+    `${label}: Remove step: a confirm returning a Promise "yes" → the first step was removed`, `confirm calls ${stepCounter}, steps ${stepOnce} → ${await stepCount()}`);
 
-  // D9: Tümünü temizle yerel onay "evet" → bütün süreç verisi silinir
+  // D9: Clear all native confirm "yes" → all the Projects data is removed
   iz.confirms.length = 0;
   await page.click('#data-clear');
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 0, null, { timeout: 10000 }).catch(() => {});
   const clean = await readStorage(page);
   check('confirmation', iz.confirms.length === 1 && (!clean || clean.projects.length === 0) && (await page.locator('#book-list li').count()) === 0,
-    `${label}: Tümünü temizle: yerel onay "evet" → bütün kitaplar silindi`, `confirmation penceresi ${iz.confirms.length}, kitap ${clean ? clean.projects.length : 0}`);
+    `${label}: Clear all: native confirm "yes" → all projects removed`, `confirmation penceresi ${iz.confirms.length}, projects ${clean ? clean.projects.length : 0}`);
   await fsp.rm(dirname(backupPath), { recursive: true, force: true });
 }
 
-//: sayfaya dosya bırakma PDF'i açar ve sayfadan ayrılmaz; ızgara içi sürükleme çalışır.
+// dropping a file on the page opens the PDF and does not leave the page; dragging inside the grid works.
 async function releaseFlow(page, address, label) {
   const O = 'G8';
   await page.goto(address);
@@ -1074,7 +1076,7 @@ async function releaseFlow(page, address, label) {
   const pdf = await makeTestPdf(page);
   const result = await page.evaluate((array) => {
     const dt = new DataTransfer();
-    dt.items.add(new File([new Uint8Array(array)], 'birak.pdf', { type: 'application/pdf' }));
+    dt.items.add(new File([new Uint8Array(array)], 'drop.pdf', { type: 'application/pdf' }));
     const target = document.querySelector('main') || document.body;
     const ov = new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true });
     target.dispatchEvent(ov);
@@ -1086,10 +1088,10 @@ async function releaseFlow(page, address, label) {
   const card = await page.locator('#small-thumbs .card').count();
   const info = (await page.textContent('#source-info')) || '';
   const tab = await page.getAttribute('#tab-button-impose', 'aria-selected');
-  check(O, result.ov && result.dr && card === 37 && /birak\.pdf/.test(info) && tab === 'true' && page.url() === address,
-    `${label}: sayfaya bırakılan PDF açıldı, Düzenle sekmesine geçildi, sayfadan ayrılmadı`, JSON.stringify({ result, card, tab, info: info.slice(0, 60) }));
+  check(O, result.ov && result.dr && card === 37 && /drop\.pdf/.test(info) && tab === 'true' && page.url() === address,
+    `${label}: the PDF dropped on the page opened, moved to the Imposition tab, did not leave the page`, JSON.stringify({ result, card, tab, info: info.slice(0, 60) }));
 
-  // ızgara içi sürükleme: 1. kartı 3. kartın sağ yarısına bırak → sıra 2, 3, 1, 4…
+  // dragging inside the grid: drop card 1 on the right half of card 3 → order 2, 3, 1, 4…
   const sourceOrder = () => page.$$eval('#small-thumbs .card', (l) => l.slice(0, 4).map((k) => k.getAttribute('data-id')));
   const once = await sourceOrder();
   const target = page.locator('#small-thumbs .card').nth(2);
@@ -1098,21 +1100,21 @@ async function releaseFlow(page, address, label) {
   await page.waitForTimeout(200);
   const after = await sourceOrder();
   check(O, JSON.stringify(after.slice(0, 3)) === JSON.stringify([once[1], once[2], once[0]]),
-    `${label}: ızgara içi sürükleme (1. sayfa → 3.'nün arkası) çalışır, dosya bırakma işleyicisi karışmaz`, JSON.stringify({ once, after }));
+    `${label}: dragging inside the grid (page 1 → behind page 3) works, the file drop handler does not interfere`, JSON.stringify({ once, after }));
 }
 
 // ------------------------------------------------------------------
-//: CSP ve Object.prototype dondurma; içe aktarmada platform.dosyaSec sonucu.
+// CSP and freezing Object.prototype; the platform.pickFile result on import.
 // ------------------------------------------------------------------
 async function m1FixFlow(page, address, iz, label, cspTest) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const rotated = await page.evaluate(() => ({ rotated: Object.isFrozen(Object.prototype), pdfLib: !!window.PDFLib, pdfjs: !!window.pdfjsLib }));
-  check('security', rotated.rotated && rotated.pdfLib && rotated.pdfjs, `${label}: Object.prototype dondurulmuş, pdf-lib ve pdf.js yüklü`, JSON.stringify(rotated));
+  check('security', rotated.rotated && rotated.pdfLib && rotated.pdfjs, `${label}: Object.prototype frozen, pdf-lib and pdf.js loaded`, JSON.stringify(rotated));
 
   if (cspTest) {
-    // Ayrı sekme: CSP fetch'i ağa çıkmadan reddetmeli. Güvenlik ağı: example.com isteği Playwright'ta kesilir
-    // (CSP yoksa fetch yine reddedilir ama ihlal olayı olmaz → KALDI; gerçek ağa istek çıkmaz).
+    // A separate tab: the CSP must reject the fetch without reaching the network. Safety net: the example.com request is cut in Playwright
+    // (without a CSP the fetch is still rejected but there is no violation event → FAIL; no request reaches the real network).
     const p2 = await page.context().newPage();
     let cut = 0;
     await p2.route('https://example.com/**', (r) => { cut += 1; return r.abort(); });
@@ -1128,15 +1130,15 @@ async function m1FixFlow(page, address, iz, label, cspTest) {
     });
     await p2.close();
     check('security', s.rejected && /^connect-src/.test(s.violation || '') && cut === 0,
-      `${label}: CSP etkin: fetch('https://example.com') connect-src ile reddedildi, istek ağa çıkmadı`, JSON.stringify({ ...s, cut, csp: TAURI_CSP ? 'var' : 'none' }));
+      `${label}: CSP active: fetch('https://example.com') rejected by connect-src, the request did not reach the network`, JSON.stringify({ ...s, cut, csp: TAURI_CSP ? 'var' : 'none' }));
   }
 
-  // O4: dosyaSec File döndürürse (yerel diyalog) içe aktarma çalışır; reddedilirse bildirim, işlenmemiş red yok.
+  // O4: when pickFile returns a File (native dialog) the import works; when it is rejected a notice, no unhandled rejection.
   await page.evaluate(() => { localStorage.removeItem('mucellit.projects'); localStorage.removeItem('mucellit.selectedProject'); });
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   await page.click('#tab-button-projects');
-  await page.fill('#yk-name', 'Seçici Kitap');
+  await page.fill('#yk-name', 'Picker Book');
   await page.selectOption('#yk-kind', 'sewn');
   await page.click('#yk-create');
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 1);
@@ -1150,35 +1152,35 @@ async function m1FixFlow(page, address, iz, label, cspTest) {
     const P = window.Mucellit.platform;
     window.__selectOriginalFile = P.pickFile;
     window.__choiceCounter = 0;
-    P.pickFile = function () { window.__choiceCounter += 1; return Promise.resolve(new File([json], 'yedek.json', { type: 'application/json' })); };
+    P.pickFile = function () { window.__choiceCounter += 1; return Promise.resolve(new File([json], 'backup.json', { type: 'application/json' })); };
   }, JSON.stringify(backup));
   await page.click('#json-import-button');
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 1, null, { timeout: 10000 }).catch(() => {});
   const importData = await readStorage(page);
-  const secim1 = await page.evaluate(() => window.__choiceCounter);
-  check('import-transfer', secim1 === 1 && isDeepStrictEqual(importData, backup), `${label}: içe aktar: pickFile File döndürünce yedek içe aktarıldı`,
-    `seçici ${secim1}, kitap ${importData ? importData.projects.length : 0}`);
+  const picks1 = await page.evaluate(() => window.__choiceCounter);
+  check('import-transfer', picks1 === 1 && isDeepStrictEqual(importData, backup), `${label}: import: when pickFile returns a File the backup is imported`,
+    `picker ${picks1}, projects ${importData ? importData.projects.length : 0}`);
 
-  await page.evaluate(() => { window.Mucellit.platform.pickFile = function () { return Promise.reject(new Error('seçici açılamadı')); }; });
+  await page.evaluate(() => { window.Mucellit.platform.pickFile = function () { return Promise.reject(new Error('picker could not open')); }; });
   await page.click('#json-import-button');
-  await page.waitForFunction(() => /İçe aktarılamadı: seçici açılamadı/.test(document.getElementById('notice').textContent), null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => /İçe aktarılamadı: picker could not open/.test(document.getElementById('notice').textContent), null, { timeout: 5000 }).catch(() => {});  // turkish-ok: expected Turkish UI text
   await page.waitForTimeout(150);
   const notice = await page.textContent('#notice');
   const after = await readStorage(page);
-  check('import-transfer', /İçe aktarılamadı: seçici açılamadı/.test(notice) && iz.errors.length === errorOnce && isDeepStrictEqual(after, backup),
-    `${label}: içe aktar: pickFile reddi bildirime gider, işlenmemiş hata yok, veri değişmez`, `bildirim: ${notice}; yeni konsol hatası ${iz.errors.length - errorOnce}`);
+  check('import-transfer', /İçe aktarılamadı: picker could not open/.test(notice) && iz.errors.length === errorOnce && isDeepStrictEqual(after, backup),  // turkish-ok: expected Turkish UI text
+    `${label}: import: a pickFile rejection goes to a notice, no unhandled error, data unchanged`, `notice: ${notice}; new console errors ${iz.errors.length - errorOnce}`);
   await page.evaluate(() => { window.Mucellit.platform.pickFile = window.__selectOriginalFile; });
 }
 
 // ------------------------------------------------------------------
-// klasör paketi EPUB'un tarayıcı sıkıştırması ("<ad>.epub.zip"; Safari/WebKit Apple Kitaplar klasör paketini
-// böyle verir): tek üst klasör öneki atılır, içerik sıradan EPUB gibi işlenir. Her iki koşuda.
+// the browser's compression of a folder package EPUB ("<name>.epub.zip"; Safari/WebKit gives an Apple Books folder package
+// like this): the single top folder prefix is dropped, the content is handled like an ordinary EPUB. In both runs.
 // ------------------------------------------------------------------
 async function prefixedEpubZip(U, epubBytes, prefix, suffixes) {
   const Z = require('../js/plugins/epub/zip.js');
   const z = Z.read(new Uint8Array(epubBytes));
   const g = [];
-  for (const a of z.names()) g.push({ name: prefix + a, data: Buffer.from(await z.open(a)), method: 8 }); // WebKit: hepsi deflate
+  for (const a of z.names()) g.push({ name: prefix + a, data: Buffer.from(await z.open(a)), method: 8 }); // WebKit: all deflated
   return U.makeZip([{ name: prefix, data: '', method: 0 }].concat(g, suffixes || []));
 }
 
@@ -1207,45 +1209,45 @@ async function m2EpubZipFlow(page, address, label) {
   ]);
   await page.evaluate(() => { const b = document.getElementById('notice'); b.textContent = ''; b.className = ''; });
   await page.setInputFiles('#pdf-file', { name: 'tr-mini.epub.zip', mimeType: 'application/zip', buffer: zipped });
-  await page.waitForFunction(() => { const b = document.getElementById('notice'); return b.classList.contains('error') || / yüklendi /.test(b.textContent); }, null, { timeout: 90000 });
+  await page.waitForFunction(() => { const b = document.getElementById('notice'); return b.classList.contains('error') || / yüklendi /.test(b.textContent); }, null, { timeout: 90000 });  // turkish-ok: expected Turkish UI text
   const card = await page.locator('#small-thumbs .card').count();
   const notice = (await page.textContent('#notice')) || '';
   const info = (await page.textContent('#source-info')) || '';
-  check('file', card === expected && expected >= 3 && /^tr-mini\.pdf yüklendi/.test(notice) && /^tr-mini\.pdf — /.test(info),
-    `${label}: .epub.zip (tek üst klasör, deflate, __MACOSX + .DS_Store) sıradan EPUB gibi dönüşür; ad tr-mini.pdf`, `card ${card}/${expected}; ${notice}; ${info}`);
+  check('file', card === expected && expected >= 3 && /^tr-mini\.pdf yüklendi/.test(notice) && /^tr-mini\.pdf — /.test(info),  // turkish-ok: expected Turkish UI text
+    `${label}: .epub.zip (one top folder, deflate, __MACOSX + .DS_Store) converts like an ordinary EPUB; name tr-mini.pdf`, `card ${card}/${expected}; ${notice}; ${info}`);
   await page.waitForFunction(() => !document.getElementById('export-transfer').disabled);
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-transfer')]);
-  check('file', download.suggestedFilename() === 'tr-mini-dizilmis.pdf', `${label}: .epub.zip'ten dizilmiş çıktı adı tr-mini-dizilmis.pdf (".epub.zip" atıldı)`, download.suggestedFilename());
+  check('file', download.suggestedFilename() === 'tr-mini-dizilmis.pdf', `${label}: the imposed output name from .epub.zip is tr-mini-dizilmis.pdf (".epub.zip" dropped)`, download.suggestedFilename());  // turkish-ok: expected Turkish UI text
 
-  // repo fixture'ı (sentetik klasör paketi) klasör ZIP'i olarak: dönüşür, metin PDF'te
+  // the repository fixture (a synthetic folder package) as a folder ZIP: converts, the text is in the PDF
   const fz = folderFixtureZip(U, 'folder-package.epub/');
   const text = await page.evaluate(async ([d]) => {
     const f = new File([new Uint8Array(d)], 'folder-package.epub.zip', { type: 'application/zip' });
     const pdf = await window.Mucellit.epub.convert(f, { bookWidth: 148, bookHeight: 210, gutter: 0, outerMargin: 0 });
     return (await window.__e.inspect(Array.from(pdf))).map((s) => s.elements.map((o) => o.str).join(' ')).join(' ');
   }, [Array.from(fz)]).then(withSpaces);
-  check('file', /KLASORPAKETI/.test(text) && /Birinci Bölüm/.test(text) && !text.includes('�'),
-    `${label}: app/test/fixtures/folder-package.epub (klasör ZIP'i) dönüşür; iki bölümün metni PDF'te`,
-    JSON.stringify({ mark: /KLASORPAKETI/.test(text), chapter: /Birinci Bölüm/.test(text), fffd: text.includes('�'), head: text.slice(0, 60) }));
+  check('file', /KLASORPAKETI/.test(text) && /Birinci Bölüm/.test(text) && !text.includes('�'),  // turkish-ok: expected Turkish UI text
+    `${label}: app/test/fixtures/folder-package.epub (folder ZIP) converts; the text of both chapters is in the PDF`,
+    JSON.stringify({ mark: /KLASORPAKETI/.test(text), chapter: /Birinci Bölüm/.test(text), fffd: text.includes('�'), head: text.slice(0, 60) }));  // turkish-ok: expected Turkish UI text
 
-  // kusurlu: iki üst klasör → önek atılmaz → E2 (container yok); kart 0, indirme kapalı
+  // faulty: two top folders → the prefix is not dropped → E2 (no container); 0 cards, download disabled
   await freshPage(page, address);
-  const iki = await prefixedEpubZip(U, tr, 'A.epub/', [{ name: 'B/okubeni.txt', data: 'x' }]);
-  const r = await epubSec(page, 'iki-klasor.epub.zip', iki);
+  const two = await prefixedEpubZip(U, tr, 'A.epub/', [{ name: 'B/okubeni.txt', data: 'x' }]);
+  const r = await pickEpub(page, 'two-folders.epub.zip', two);
   check('file', r.notice.includes(E_MESSAGE.E2) && r.card === 0 && await page.isDisabled('#export-transfer'),
-    `${label}: iki üst klasörlü .epub.zip: E2 Türkçe mesaj, kart 0, indirme kapalı`, r.notice);
+    `${label}: .epub.zip with two top folders: E2 Turkish message, 0 cards, download disabled`, r.notice);
 }
 
 // ------------------------------------------------------------------
-// Tauri benzetimi: sahte window.__TAURI__ (init betiği) ile platform-tauri.js gerçek sayfada çalışır.
-// Dizilmiş PDF ve JSON yedeği yerel Kaydet penceresinden (sahte dosya_kaydet) geçer: vazgeçilince "kaydedilmedi",
-// yazılınca gerçek yol; tarayıcı indirmesi hiç başlamaz. Açılışta otomatik yedek geri yüklenir; değişiklik yedeklenir.
+// Tauri simulation: platform-tauri.js runs on the real page with a fake window.__TAURI__ (init script).
+// The imposed PDF and the JSON backup go through the native Save dialog (fake save_file): "not saved" on cancel,
+// the real path when written; no browser download ever starts. At start-up the automatic backup is restored; changes are backed up.
 // ------------------------------------------------------------------
 const FAKE_TAURI = `(() => {
   const record = (window.__fake = { call: [], saveResponse: null, saveOrder: null, saveError: null, saveGate: null,
     backup: sessionStorage.getItem('fakeBackup') || '{"version":2,"projects":[]}', listener: {}, openResponse: null, table: {}, pending: [] });
   const bytes = (b64) => { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
-  // Rust'ın initialization_script'i (i18n::init_script): system language page betiklerinden önce
+  // Rust's initialization_script (i18n::init_script): the system language before the page scripts
   Object.defineProperty(window, '__MC_LANG__', { value: Object.freeze({ system: sessionStorage.getItem('fakeSystem') || 'tr' }) });
   window.__TAURI__ = {
     core: { invoke: async (command, arg, options) => {
@@ -1258,9 +1260,9 @@ const FAKE_TAURI = `(() => {
         const y = record.saveOrder ? record.saveOrder.shift() : record.saveResponse;
         return y ? { name: y.split('/').pop(), path: y } : null;
       }
-      // yazdırma (Rust print: true = yazdırıldı, false = vazgeçildi; dize/Error = Rust hatası) ve Önizleme'de Aç
+      // printing (Rust print: true = printed, false = cancelled; a string/Error = a Rust error) and Open in Preview
       if (command === 'print') {
-        record.call[record.call.length - 1].notAn = (document.getElementById('notice') || {}).textContent;
+        record.call[record.call.length - 1].noteAtPrint = (document.getElementById('notice') || {}).textContent;
         if (record.printGate) await record.printGate;
         const y = record.printOrder && record.printOrder.length ? record.printOrder.shift() : true;
         if (typeof y !== 'boolean') throw y;
@@ -1274,17 +1276,17 @@ const FAKE_TAURI = `(() => {
       if (command === 'open_file') return record.openResponse;
       if (command === 'read_file') {
         const b = record.table[arg.id];
-        delete record.table[arg.id]; // Rust'taki like single kullanımlık id
-        if (!b) throw 'UNKNOWN: bu kimlikle açılmış file none';
+        delete record.table[arg.id]; // a single use id, as in Rust
+        if (!b) throw 'UNKNOWN: no file opened with this id';
         return bytes(b);
       }
       if (command === 'read_backup') return record.backup;
       if (command === 'backup_data') { record.lastBackup = arg.json; return null; }
       if (command === 'pending_opens') { const k = record.pending; record.pending = []; return k; }
       if (command === 'recent_files') return [];
-      // system: Rust'ın NSLocale + Apple kuralıyla bulduğu system language (benzetimde öntanımlı tr = tr-TR tarayıcı)
-      // read_language anındaki (Rust kararı gelmeden önceki, first square) arayüz language
-      if (command === 'read_language' && !record.firstSquare) record.firstSquare = { lang: document.documentElement.lang, tab: (document.getElementById('tab-button-impose') || {}).textContent };
+      // system: the system language Rust finds with NSLocale + the Apple rule (default tr in the simulation = a tr-TR browser)
+      // the interface language at the time of read_language (the first frame, before Rust's decision arrives)
+      if (command === 'read_language' && !record.firstFrame) record.firstFrame = { lang: document.documentElement.lang, tab: (document.getElementById('tab-button-impose') || {}).textContent };
       if (command === 'read_language') return { code: sessionStorage.getItem('fakeI18nCode') || 'tr', choice: sessionStorage.getItem('fakeI18nChoice') || 'system', system: sessionStorage.getItem('fakeSystem') || 'tr' };
       if (command === 'set_language') {
         record.i18nSettings = (record.i18nSettings || []).concat([[arg.code, arg.choice]]);
@@ -1292,10 +1294,10 @@ const FAKE_TAURI = `(() => {
         if (arg.choice === 'system') sessionStorage.removeItem('fakeI18nChoice'); else sessionStorage.setItem('fakeI18nChoice', arg.choice);
         return null;
       }
-      throw new Error('beklenmeyen command: ' + command);
+      throw new Error('unexpected command: ' + command);
     } },
     event: { listen: async (name, f) => { record.listener[name] = f; return () => {}; } },
-    // local confirmation (dialog eklentisi): soru kaydedilir; yanıt askOrder'dan (ifMissing yes)
+    // native confirmation (dialog plug-in): the question is recorded; the answer from askOrder (yes when missing)
     dialog: { ask: async (m) => { (record.questions = record.questions || []).push(m); return record.askOrder && record.askOrder.length ? record.askOrder.shift() : true; } },
   };
 })();`;
@@ -1303,23 +1305,23 @@ const FAKE_TAURI = `(() => {
 async function m2TauriSimulation(page, address, label) {
   await page.addInitScript({ content: FAKE_TAURI });
   const clearNotice = () => page.evaluate(() => { const b = document.getElementById('notice'); b.textContent = ''; b.className = ''; });
-  // O2: localStorage boş + yedek boş (kasıtlı temizlik sonrası): geri yüklenmez, "geri yüklendi" bildirimi çıkmaz
+  // O2: localStorage empty + backup empty (after a deliberate clean-up): not restored, no "restored" notice
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   await page.waitForTimeout(500);
   const blank = await page.evaluate(() => ({ name: window.Mucellit.platform.name, button: document.getElementById('export-transfer').textContent,
     ls: localStorage.getItem('mucellit.projects'), notice: document.getElementById('notice').textContent }));
-  check('file', blank.name === 'tauri' && blank.button === "Dizilmiş PDF'i kaydet…" && blank.ls === null && !/geri yüklendi/.test(blank.notice),
-    `${label}: platform tauri; Kaydet düğmesi metni; BOŞ yedek geri yüklenmedi, "geri yüklendi" bildirimi yok (O2)`, JSON.stringify(blank));
-  // dolu yedek, boş localStorage: geri yüklenir ve bildirilir
-  const filledBackup = JSON.stringify({ version: 2, projects: [{ id: 'k-restored', name: 'Geri Gelen Kitap', bindingType: 'single', steps: [] }] });
+  check('file', blank.name === 'tauri' && blank.button === "Dizilmiş PDF'i kaydet…" && blank.ls === null && !/geri yüklendi/.test(blank.notice),  // turkish-ok: expected Turkish UI text
+    `${label}: platform tauri; Save button text; an EMPTY backup was not restored, no "restored" notice (O2)`, JSON.stringify(blank));
+  // filled backup, empty localStorage: restored and reported
+  const filledBackup = JSON.stringify({ version: 2, projects: [{ id: 'k-restored', name: 'Restored Book', bindingType: 'single', steps: [] }] });
   await page.evaluate((y) => { sessionStorage.setItem('fakeBackup', y); localStorage.clear(); }, filledBackup);
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const startup = await page.evaluate(() => localStorage.getItem('mucellit.projects'));
-  check('file', startup === filledBackup, `${label}: boş localStorage dolu otomatik yedekten geri yüklendi`, String(startup));
-  await page.waitForFunction(() => /otomatik yedekten geri yüklendi/.test(document.getElementById('notice').textContent), null, { timeout: 5000 })
-    .then(() => check('file', true, `${label}: "otomatik yedekten geri yüklendi" bildirimi`), () => check('file', false, `${label}: "otomatik yedekten geri yüklendi" bildirimi`));
+  check('file', startup === filledBackup, `${label}: an empty localStorage was restored from the filled automatic backup`, String(startup));
+  await page.waitForFunction(() => /otomatik yedekten geri yüklendi/.test(document.getElementById('notice').textContent), null, { timeout: 5000 })  // turkish-ok: expected Turkish UI text
+    .then(() => check('file', true, `${label}: the "otomatik yedekten geri yüklendi" notice`), () => check('file', false, `${label}: the "otomatik yedekten geri yüklendi" notice`));  // turkish-ok: expected Turkish UI text
 
   let downloadCount = 0;
   page.on('download', () => { downloadCount += 1; });
@@ -1327,7 +1329,7 @@ async function m2TauriSimulation(page, address, label) {
   const pdf64 = pdf.toString('base64');
   await page.click('#tab-button-impose');
   await page.selectOption('#binding-type', 'sewn');
-  // D11: yerel Aç penceresi → dosya_ac {amac: belge} → dosya_oku {kimlik} ham ArrayBuffer → File → yüklenir
+  // D11: native Open dialog → open_file {purpose: document} → read_file {id} raw ArrayBuffer → File → loaded
   await page.evaluate((b) => { window.__fake.openResponse = { id: 'k-open-1', name: 'test-37.pdf', kind: 'pdf' }; window.__fake.table['k-open-1'] = b; }, pdf64);
   await clearNotice();
   await page.click('#pdf-select');
@@ -1335,35 +1337,35 @@ async function m2TauriSimulation(page, address, label) {
   const open = await page.evaluate(() => ({ notice: document.getElementById('notice').textContent,
     call: window.__fake.call.filter((c) => c.command === 'open_file' || c.command === 'read_file').map((c) => [c.command, c.purpose || c.id]),
     rest: Object.keys(window.__fake.table).length }));
-  check('file', /test-37\.pdf yüklendi \(37 sayfa\)/.test(open.notice) && JSON.stringify(open.call) === '[["open_file","document"],["read_file","k-open-1"]]' && open.rest === 0,
-    `${label}: D11 yerel Aç → open_file + read_file (ham ArrayBuffer) → 37 sayfa yüklendi`, JSON.stringify(open));
-  if (!opened) { // akışın geri kalanı sınansın diye PDF gizli girdiyle yüklenir (yukarıdaki kontrol zaten KALDI)
+  check('file', /test-37\.pdf yüklendi \(37 sayfa\)/.test(open.notice) && JSON.stringify(open.call) === '[["open_file","document"],["read_file","k-open-1"]]' && open.rest === 0,  // turkish-ok: expected Turkish UI text
+    `${label}: D11 native Open → open_file + read_file (raw ArrayBuffer) → 37 pages loaded`, JSON.stringify(open));
+  if (!opened) { // the PDF is loaded with the hidden input so that the rest of the flow is tested (the check above already FAILED)
     await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
     await page.waitForFunction(() => !document.getElementById('export-transfer').disabled, null, { timeout: 30000 });
   }
   async function exportNotice() {
     await clearNotice();
     await page.click('#export-transfer');
-    await page.waitForFunction(() => /Kaydedildi|kaydedilmedi|kaydedilemedi/.test(document.getElementById('notice').textContent), null, { timeout: 30000 });
+    await page.waitForFunction(() => /Kaydedildi|kaydedilmedi|kaydedilemedi/.test(document.getElementById('notice').textContent), null, { timeout: 30000 });  // turkish-ok: expected Turkish UI text
     return { text: await page.textContent('#notice'), error: await page.evaluate(() => document.getElementById('notice').classList.contains('error')) };
   }
-  // vazgeç
-  const vaz = await exportNotice();
+  // cancel
+  const cancelled = await exportNotice();
   const c1 = await page.evaluate(() => window.__fake.call.filter((c) => c.command === 'save_file'));
-  check('file', /^Dizilmiş PDF kaydedilmedi/.test(vaz.text) && vaz.error && !/hazır/.test(vaz.text) && c1.length === 1 && c1[0].name === 'test-37-dizilmis.pdf' && c1[0].kind === 'pdf' && c1[0].size > 1000,
-    `${label}: D7 Kaydet'te vazgeç → "kaydedilmedi" (hata), "hazır" yok; save_file ham bayt + önerilen ad`, `${vaz.text} / ${JSON.stringify(c1)}`);
-  // yaz
-  await page.evaluate(() => { window.__fake.saveResponse = '/Users/deneme/Masaüstü/test-37-dizilmis.pdf'; });
+  check('file', /^Dizilmiş PDF kaydedilmedi/.test(cancelled.text) && cancelled.error && !/hazır/.test(cancelled.text) && c1.length === 1 && c1[0].name === 'test-37-dizilmis.pdf' && c1[0].kind === 'pdf' && c1[0].size > 1000,  // turkish-ok: expected Turkish UI text
+    `${label}: D7 cancel in Save → "kaydedilmedi" (error), no "hazır"; save_file raw bytes + suggested name`, `${cancelled.text} / ${JSON.stringify(c1)}`);  // turkish-ok: expected Turkish UI text
+  // write
+  await page.evaluate(() => { window.__fake.saveResponse = '/Users/test/Desktop/test-37-dizilmis.pdf'; });  // turkish-ok: expected Turkish UI text
   const write = await exportNotice();
-  check('file', write.text === 'Kaydedildi: /Users/deneme/Masaüstü/test-37-dizilmis.pdf (24 yüz).' && !write.error,
-    `${label}: D7 Kaydet'te yazıldı → gerçek yol ile başarı bildirimi`, write.text);
-  // D11 hatali dalı: Kaydet yazamadı → "kaydedilemedi: <Rust hatası>" (hata), başarı yok
-  await page.evaluate(() => { window.__fake.saveError = 'yazılamadı: Operation not permitted (os error 1)'; });
-  const hat = await exportNotice();
+  check('file', write.text === 'Kaydedildi: /Users/test/Desktop/test-37-dizilmis.pdf (24 yüz).' && !write.error,  // turkish-ok: expected Turkish UI text
+    `${label}: D7 written in Save → a success notice with the real path`, write.text);
+  // D11 failed branch: Save could not write → "kaydedilemedi: <Rust error>" (error), no success  // turkish-ok: expected Turkish UI text
+  await page.evaluate(() => { window.__fake.saveError = 'could not write: Operation not permitted (os error 1)'; });
+  const failedSave = await exportNotice();
   await page.evaluate(() => { window.__fake.saveError = null; });
-  check('file', hat.text === 'test-37-dizilmis.pdf kaydedilemedi: yazılamadı: Operation not permitted (os error 1)' && hat.error,
-    `${label}: D11 Kaydet hatası → "kaydedilemedi" + Rust hata metni (hata stili)`, hat.text);
-  // D10: Kaydet penceresi açıkken ⌘S → yok sayılır (ikinci pencere yok, "Önce bir PDF" yok); sonra sonuç bildirilir
+  check('file', failedSave.text === 'test-37-dizilmis.pdf kaydedilemedi: could not write: Operation not permitted (os error 1)' && failedSave.error,  // turkish-ok: expected Turkish UI text
+    `${label}: D11 Save error → "kaydedilemedi" + the Rust error text (error style)`, failedSave.text);  // turkish-ok: expected Turkish UI text
+  // D10: ⌘S while the Save dialog is open → ignored (no second dialog, no "Önce bir PDF"); then the result is reported  // turkish-ok: expected Turkish UI text
   await page.evaluate(() => { const s = window.__fake; s.saveGate = new Promise((r) => { s.openGate = r; }); s.call.length = 0; });
   await clearNotice();
   await page.click('#export-transfer');
@@ -1371,62 +1373,62 @@ async function m2TauriSimulation(page, address, label) {
   const isOpen = await page.evaluate(() => { window.Mucellit.platform.onMenu('file-save'); return { notice: document.getElementById('notice').textContent,
     busy: document.getElementById('export-transfer').getAttribute('aria-busy') }; });
   await page.evaluate(() => { const s = window.__fake; s.saveGate = null; s.openGate(); });
-  await page.waitForFunction(() => /Kaydedildi/.test(document.getElementById('notice').textContent), null, { timeout: 30000 });
+  await page.waitForFunction(() => /Kaydedildi/.test(document.getElementById('notice').textContent), null, { timeout: 30000 });  // turkish-ok: expected Turkish UI text
   const after = await page.evaluate(() => ({ save: window.__fake.call.filter((c) => c.command === 'save_file').length,
     busy: document.getElementById('export-transfer').getAttribute('aria-busy'), closed: document.getElementById('export-transfer').disabled }));
-  check('file', isOpen.busy === 'true' && !/Önce bir PDF/.test(isOpen.notice) && after.save === 1 && after.busy === null && !after.closed,
-    `${label}: D10 Kaydet penceresi açıkken ⌘S yok sayıldı (tek pencere, yanlış bildirim yok); bitince düğme serbest`, JSON.stringify({ isOpen, after }));
-  // D9: iki PDF modunda önler yazıldı, arkalar vazgeçildi → yalnız yazılanın yüz sayısı
+  check('file', isOpen.busy === 'true' && !/Önce bir PDF/.test(isOpen.notice) && after.save === 1 && after.busy === null && !after.closed,  // turkish-ok: expected Turkish UI text
+    `${label}: D10 ⌘S ignored while the Save dialog is open (one dialog, no wrong notice); the button is free at the end`, JSON.stringify({ isOpen, after }));
+  // D9: in the two PDF mode the fronts were written, the backs cancelled → only the page count of what was written
   await page.selectOption('#output-mode', 'pair');
   await page.waitForFunction(() => !document.getElementById('export-transfer').disabled);
-  await page.evaluate(() => { window.__fake.call.length = 0; window.__fake.saveOrder = ['/Users/deneme/Masaüstü/test-37-onler.pdf', null]; });
+  await page.evaluate(() => { window.__fake.call.length = 0; window.__fake.saveOrder = ['/Users/test/Desktop/test-37-onler.pdf', null]; });  // turkish-ok: expected Turkish UI text
   const pair = await exportNotice();
   await page.evaluate(() => { window.__fake.saveOrder = null; });
   const c2 = await page.evaluate(() => window.__fake.call.filter((c) => c.command === 'save_file').map((c) => c.name));
-  check('file', c2.length === 2 && /-onler\.pdf$/.test(c2[0]) && /-arkalar\.pdf$/.test(c2[1]),
-    `${label}: iki PDF modu → iki Kaydet penceresi sırayla (önler, arkalar)`, JSON.stringify(c2));
-  check('file', pair.text === 'Kaydedildi: /Users/deneme/Masaüstü/test-37-onler.pdf (12 yüz). Kaydedilmedi (vazgeçildi): test-37-arkalar.pdf.' && pair.error,
-    `${label}: D9 kısmi kayıt → yalnız yazılan dosyanın yüz sayısı (12, toplam 24 değil)`, pair.text);
+  check('file', c2.length === 2 && /-onler\.pdf$/.test(c2[0]) && /-arkalar\.pdf$/.test(c2[1]),  // turkish-ok: expected Turkish UI text
+    `${label}: two PDF mode → two Save dialogs in turn (fronts, backs)`, JSON.stringify(c2));
+  check('file', pair.text === 'Kaydedildi: /Users/test/Desktop/test-37-onler.pdf (12 yüz). Kaydedilmedi (vazgeçildi): test-37-arkalar.pdf.' && pair.error,  // turkish-ok: expected Turkish UI text
+    `${label}: D9 partial save → only the page count of the written file (12, not the total 24)`, pair.text);
   await page.selectOption('#output-mode', 'single');
-  // D11: Dock/Finder'dan açılış: dosya-acildi olayı → bekleyen_acilanlar → dosya_oku → yüklenir; okunamayan bildirilir
+  // D11: opening from the Dock/Finder: file-opened event → pending_opens → read_file → loaded; an unreadable one is reported
   await page.click('#tab-button-projects');
   await page.evaluate((b) => { const s = window.__fake; s.call.length = 0; s.table['k-dock-1'] = b;
     s.pending = [{ id: 'k-dock-1', name: 'dock-37.pdf', kind: 'pdf' }]; }, pdf64);
   await clearNotice();
   await page.evaluate(() => window.__fake.listener['file-opened']({ payload: null }));
-  await page.waitForFunction(() => /dock-37\.pdf yüklendi \(37 sayfa\)/.test(document.getElementById('notice').textContent), null, { timeout: 30000 })
+  await page.waitForFunction(() => /dock-37\.pdf yüklendi \(37 sayfa\)/.test(document.getElementById('notice').textContent), null, { timeout: 30000 })  // turkish-ok: expected Turkish UI text
     .catch(() => {});
   const dock = await page.evaluate(() => ({ notice: document.getElementById('notice').textContent,
     impose: !document.getElementById('tab-impose').hidden, call: window.__fake.call.map((c) => c.command + (c.id ? ':' + c.id : '')) }));
-  check('file', /dock-37\.pdf yüklendi \(37 sayfa\)/.test(dock.notice) && dock.impose && JSON.stringify(dock.call) === '["pending_opens","read_file:k-dock-1"]',
-    `${label}: D11 Opened (file-opened) → pending_opens → read_file → Düzenle'de 37 sayfa`, JSON.stringify(dock));
-  await page.evaluate(() => { window.__fake.pending = [{ id: 'k-none', name: 'kayip.pdf', kind: 'pdf' }]; });
+  check('file', /dock-37\.pdf yüklendi \(37 sayfa\)/.test(dock.notice) && dock.impose && JSON.stringify(dock.call) === '["pending_opens","read_file:k-dock-1"]',  // turkish-ok: expected Turkish UI text
+    `${label}: D11 Opened (file-opened) → pending_opens → read_file → 37 pages in Imposition`, JSON.stringify(dock));
+  await page.evaluate(() => { window.__fake.pending = [{ id: 'k-none', name: 'missing.pdf', kind: 'pdf' }]; });
   await clearNotice();
   await page.evaluate(() => window.__fake.listener['file-opened']({ payload: null }));
-  await page.waitForFunction(() => /Dosya açılamadı/.test(document.getElementById('notice').textContent), null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => /Dosya açılamadı/.test(document.getElementById('notice').textContent), null, { timeout: 5000 }).catch(() => {});  // turkish-ok: expected Turkish UI text
   const loss = await page.evaluate(() => ({ text: document.getElementById('notice').textContent, error: document.getElementById('notice').classList.contains('error') }));
-  check('file', /^Dosya açılamadı: UNKNOWN/.test(loss.text) && loss.error, `${label}: D11 okunamayan dış açılış hata bildirimine gider`, loss.text);
-  // JSON yedeği: vazgeç ve yaz
+  check('file', /^Dosya açılamadı: UNKNOWN/.test(loss.text) && loss.error, `${label}: D11 an unreadable outside open goes to an error notice`, loss.text);  // turkish-ok: expected Turkish UI text
+  // JSON backup: cancel and write
   await page.click('#tab-button-projects');
   await page.evaluate(() => { window.__fake.saveResponse = null; const b = document.getElementById('notice'); b.textContent = ''; });
   await page.click('#json-export');
-  await page.waitForFunction(() => /kaydedilmedi|dışa aktarıldı/.test(document.getElementById('notice').textContent));
+  await page.waitForFunction(() => /kaydedilmedi|dışa aktarıldı/.test(document.getElementById('notice').textContent));  // turkish-ok: expected Turkish UI text
   const jv = await page.textContent('#notice');
-  await page.evaluate(() => { window.__fake.saveResponse = '/Users/deneme/Belgeler/mucellit-yedek.json'; const b = document.getElementById('notice'); b.textContent = ''; });
+  await page.evaluate(() => { window.__fake.saveResponse = '/Users/test/Documents/mucellit-yedek.json'; const b = document.getElementById('notice'); b.textContent = ''; });  // turkish-ok: expected Turkish UI text
   await page.click('#json-export');
-  await page.waitForFunction(() => /kaydedilmedi|dışa aktarıldı/.test(document.getElementById('notice').textContent));
+  await page.waitForFunction(() => /kaydedilmedi|dışa aktarıldı/.test(document.getElementById('notice').textContent));  // turkish-ok: expected Turkish UI text
   const jy = await page.textContent('#notice');
   const jc = await page.evaluate(() => window.__fake.call.filter((c) => c.command === 'save_file' && c.kind === 'json').length);
-  check('file', /^JSON yedeği kaydedilmedi/.test(jv) && /dışa aktarıldı: \/Users\/deneme\/Belgeler\/mucellit-yedek\.json\.$/.test(jy) && jc === 2,
-    `${label}: JSON yedeği: vazgeç → "kaydedilmedi", yazıldı → yol`, `${jv} / ${jy}`);
-  check('file', downloadCount === 0, `${label}: Tauri modunda tarayıcı indirmesi hiç başlamadı (<a download> yok)`, `${downloadCount} download`);
-  // otomatik yedek: kitap ekle → veri_yedekle (oturum + sıra)
-  await page.fill('#yk-name', 'Yedek Kitabı');
+  check('file', /^JSON yedeği kaydedilmedi/.test(jv) && /dışa aktarıldı: \/Users\/test\/Documents\/mucellit-yedek\.json\.$/.test(jy) && jc === 2,  // turkish-ok: expected Turkish UI text
+    `${label}: JSON backup: cancel → "kaydedilmedi", written → path`, `${jv} / ${jy}`);  // turkish-ok: expected Turkish UI text
+  check('file', downloadCount === 0, `${label}: no browser download ever started in Tauri mode (no <a download>)`, `${downloadCount} download`);
+  // automatic backup: add a project → backup_data (session + sequence)
+  await page.fill('#yk-name', 'Backup Book');
   await page.click('#yk-create');
-  await page.waitForFunction(() => window.__fake.lastBackup && /Yedek Kitabı/.test(window.__fake.lastBackup), null, { timeout: 5000 })
-    .then(() => check('file', true, `${label}: Süreç değişikliği otomatik yedeğe (backup_data) gitti`),
-      () => check('file', false, `${label}: Süreç değişikliği otomatik yedeğe (backup_data) gitti`));
-  // O2: Tümünü temizle → boş veri yedeği BEKLEMEDEN (eski 1 sn bekletme yok; kapanışta Rust yazar)
+  await page.waitForFunction(() => window.__fake.lastBackup && /Backup Book/.test(window.__fake.lastBackup), null, { timeout: 5000 })
+    .then(() => check('file', true, `${label}: a Projects change went to the automatic backup (backup_data)`),
+      () => check('file', false, `${label}: a Projects change went to the automatic backup (backup_data)`));
+  // O2: Clear all → the empty data backup WITHOUT WAITING (no old 1 s delay; Rust writes on quit)
   const t0 = await page.evaluate(() => Date.now());
   await page.click('#data-clear');
   const clean = await page.waitForFunction((t) => {
@@ -1434,24 +1436,24 @@ async function m2TauriSimulation(page, address, label) {
     return y ? { delay: y.time - t, session: y.session, order: y.order } : false;
   }, t0, { timeout: 900 }).then((h) => h.jsonValue(), () => null);
   check('file', clean && clean.delay < 900 && typeof clean.session === 'string' && clean.order > 0,
-    `${label}: O2 Tümünü temizle → boş yedek bekletmeden Rust'a gitti (oturum + sıra)`, JSON.stringify(clean));
-  // Rust'taki gecikmeli yazım başarısızsa (yedek-yazilamadi olayı) hata bildirimi
+    `${label}: O2 Clear all → the empty backup went to Rust without waiting (session + sequence)`, JSON.stringify(clean));
+  // when the delayed write in Rust fails (backup-writeFailed event) an error notice
   await clearNotice();
-  await page.evaluate(() => window.__fake.listener['backup-writeFailed']({ payload: 'yedek yazılamadı: No space left on device' }));
+  await page.evaluate(() => window.__fake.listener['backup-writeFailed']({ payload: 'backup could not be written: No space left on device' }));
   const yh = await page.evaluate(() => ({ text: document.getElementById('notice').textContent, error: document.getElementById('notice').classList.contains('error') }));
-  check('file', /otomatik yedeği yazılamadı: yedek yazılamadı: No space left on device/.test(yh.text) && yh.error,
-    `${label}: O2 backup-writeFailed olayı hata bildirimine gider`, yh.text);
+  check('file', /otomatik yedeği yazılamadı: backup could not be written: No space left on device/.test(yh.text) && yh.error,  // turkish-ok: expected Turkish UI text
+    `${label}: O2 the backup-writeFailed event goes to an error notice`, yh.text);
 }
 
 // ------------------------------------------------------------------
-// arayüz dili
+// interface language
 // ------------------------------------------------------------------
-const TR_LETTER = /[çğıöşüÇĞİÖŞÜ]/;
-// uygulama adı "Mücellit" çevrilmez (yalnız tam sözcük, sözcük sınırı; "Mücellitler" gibi uzantılı sözcük muaf değil)
+const TR_LETTER = /[çğıöşüÇĞİÖŞÜ]/;  // turkish-ok: Turkish visible text check
+// the app name "Mücellit" is not translated (only the whole word, word bounded; a word with a suffix like "Mücellitler" is not exempt)  // turkish-ok: Turkish visible text check
 const trLetter = (m) => TR_LETTER.test(String(m).replace(/\bMücellit\b/g, ''));
 const OLD_RECORD = join(FIXTURE, 'legacy');
 
-/** Görünen gövde metni (dil seçicideki "Türkçe" adı ve verilen kullanıcı metinleri hariç). */
+/** The visible body text (except the name "Türkçe" in the language picker and the given user texts). */  // turkish-ok: Turkish visible text check
 async function visibleText(page, except = []) {
   const m = await page.evaluate(() => {
     const copy = document.body.cloneNode(true);
@@ -1464,18 +1466,19 @@ async function visibleText(page, except = []) {
 
 async function noMissingKey(page, label) {
   const e = await page.evaluate(() => window.Mucellit.i18n.missingKeys());
-  check('i18n', e.length === 0, `${label}: sözlükte eksik anahtar yok`, JSON.stringify(e));
+  check('i18n', e.length === 0, `${label}: no key missing from the dictionary`, JSON.stringify(e));
 }
 
 /**
- * sayı alanları ve Hesapla sonuç tablosu arayüz dilinin ondalık ayracıyla (en ".", tr ","); giriş iki ayraçla
- * da kabul edilir ve alandan çıkınca dilin biçimine döner; ↑ tuşu adımı (eski type=number davranışı) korunur.
+ * The number fields and the Calculator result table use the decimal separator of the interface language (en ".", tr
+ * ","); the input is accepted with both separators and goes back to the language's format when the field is left;
+ * the ↑ key step (the old type=number behaviour) is kept.
  */
 async function decimalFlow(page, label, i18n) {
   const ay = i18n === 'tr' ? ',' : '.', other = i18n === 'tr' ? '.' : ',';
   const first = await page.evaluate(() => ['paper-thickness', 'paper-width', 'h-paperThickness', 'h-square', 'yk-thickness', 'outer-margin'].map((id) => document.getElementById(id).value));
   check('print', JSON.stringify(first) === JSON.stringify(['0' + ay + '1', '297', '0' + ay + '1', '3', '0' + ay + '1', '0']),
-    `${label}: sayı alanları ${i18n} ondalık ayracıyla ("0${ay}1")`, JSON.stringify(first));
+    `${label}: number fields ${i18n} with the decimal separator ("0${ay}1")`, JSON.stringify(first));
   await page.click('#tab-button-calculator');
   let entry = null;
   try {
@@ -1484,19 +1487,19 @@ async function decimalFlow(page, label, i18n) {
     entry = await page.evaluate(() => ({ field: document.getElementById('h-paperThickness').value, spine: document.querySelector('[data-result="spineThickness"]').textContent }));
   } catch (e) { entry = { error: String(e.message).split('\n')[0] }; }
   check('print', entry && entry.field === '0' + ay + '123' && entry.spine === '12' + ay + '8 mm',
-    `${label}: "0${other}123" (öbür ayraç) kabul edildi, alandan çıkınca "0${ay}123"; sırt 12${ay}8 mm`, JSON.stringify(entry));
+    `${label}: "0${other}123" (the other separator) accepted, "0${ay}123" after leaving the field; spine 12${ay}8 mm`, JSON.stringify(entry));
   await page.focus('#h-square');
   await page.keyboard.press('ArrowUp');
   const table = await page.evaluate(() => ({ square: document.getElementById('h-square').value,
     cell: Array.from(document.querySelectorAll('#h-result td')).map((e) => e.textContent).join(' | ') }));
   const foreign = new RegExp('\\d\\' + other + '\\d');
   check('print', table.square === '3' + ay + '5' && !foreign.test(table.cell) && table.cell.includes(ay === ',' ? ',' : '.'),
-    `${label}: ↑ ile adım (3 → 3${ay}5); sonuç tablosunda (değer + formül) yalnız "${ay}" ondalık ayracı`, JSON.stringify({ square: table.square, foreign: (table.cell.match(new RegExp('.{0,12}' + foreign.source + '.{0,12}')) || [''])[0] }));
+    `${label}: step with ↑ (3 → 3${ay}5); only the "${ay}" decimal separator in the result table (value + formula)`, JSON.stringify({ square: table.square, foreign: (table.cell.match(new RegExp('.{0,12}' + foreign.source + '.{0,12}')) || [''])[0] }));
   await page.fill('#h-paperThickness', '0' + ay + '1');
   await page.fill('#h-square', '3');
   await page.press('#h-square', 'Tab');
-  // binliğe benzeyen sayfa sayısı ("1.200" tr / "1,200" en) sessizce 1,2 okunmaz; açık hata, sonuç yok.
-  // "1200" ise 1200 sayfa. Alan aria-invalid, bildirimde aynı hata.
+  // a page count that looks like thousands ("1.200" tr / "1,200" en) is not silently read as 1.2; a clear error, no result.
+  // "1200" is 1200 pages. The field is aria-invalid, the same error in the notice.
   const ambiguous = '1' + other + '200';
   await page.fill('#h-pageCount', ambiguous);
   await page.press('#h-pageCount', 'Tab');
@@ -1506,17 +1509,17 @@ async function decimalFlow(page, label, i18n) {
   await page.press('#h-pageCount', 'Tab');
   const b2 = await page.evaluate(() => ({ total: (document.querySelector('[data-result="totalPages"]') || {}).textContent, error: document.getElementById('h-error').textContent,
     invalid: document.getElementById('h-pageCount').getAttribute('aria-invalid') }));
-  const thousandsWord = i18n === 'tr' ? /binlik/ : /thousands/;
+  const thousandsWord = i18n === 'tr' ? /binlik/ : /thousands/;  // turkish-ok: expected Turkish UI text
   check('print', thousandsWord.test(b1.error) && b1.error.includes(ambiguous) && b1.line === 0 && b1.invalid === 'true' && thousandsWord.test(b1.notice) &&
     b2.total === '1200' && b2.error === '' && b2.invalid === null,
-    `${label}: Hesapla'da "${ambiguous}" açık hata (sonuç yok, alan geçersiz, bildirim); "1200" → 1200 sayfa`, JSON.stringify({ b1, b2 }));
+    `${label}: in the Calculator "${ambiguous}" is a clear error (no result, the field invalid, a notice); "1200" → 1200 pages`, JSON.stringify({ b1, b2 }));
   await page.fill('#h-pageCount', '200');
   await page.press('#h-pageCount', 'Tab');
 }
 
 /**
- * dil seçici başlıkta küçük bir seçici (tam genişlik çubuk değil): başlıkla aynı satırda, dar; erişilebilir
- * adı ve klavye erişimi korunur. Pencere 1280 px (Playwright öntanımlısı; Mac penceresi en az 1000 px).
+ * The language picker is a small picker in the header (not a full width bar): on the same line as the title, narrow;
+ * its accessible name and keyboard access are kept. Window 1280 px (the Playwright default; the Mac window is at least 1000 px).
  */
 async function i18nPickerLayout(page, label) {
   for (const width of [1280, 1000]) {
@@ -1528,29 +1531,29 @@ async function i18nPickerLayout(page, label) {
         headHeight: Math.round(r(head).height), aria: select.getAttribute('aria-label'), tab: select.tabIndex, punto: parseFloat(getComputedStyle(select).fontSize) };
     });
     check('print', o.width <= 240 && o.width < o.basGen / 3 && o.sameLine && o.aria && o.tab >= 0 && o.punto >= 12,
-      `${label}: ${width} px: dil seçici başlıkta küçük (≤ 240 px, başlık satırında), erişilebilir ad + klavye`, JSON.stringify(o));
+      `${label}: ${width} px: the language picker is small in the header (≤ 240 px, on the title line), accessible name + keyboard`, JSON.stringify(o));
   }
   await page.setViewportSize({ width: 1280, height: 720 });
 }
 
-/** Türkçe koşuların sonunda: html lang tr, sekmeler Türkçe (bugünkü metin), eksik anahtar yok. */
+/** At the end of the Turkish runs: html lang tr, the tabs in Turkish (today's text), no missing key. */
 async function m6TrCheck(page, address, label) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const d = await page.evaluate(() => ({ lang: document.documentElement.lang, tab: Array.from(document.querySelectorAll('nav [role="tab"]')).map((b) => b.textContent),
     button: document.getElementById('export-transfer').textContent, code: window.Mucellit.i18n.code(), choice: document.getElementById('i18n-select').value }));
-  check('i18n', d.lang === 'tr' && d.code === 'tr' && JSON.stringify(d.tab) === '["Düzenle","Süreç","Hesapla","Öğren"]' && /Dizilmiş PDF'i (indir|kaydet…)/.test(d.button) && d.choice === 'system',
-    `${label}: tr-TR tarayıcıda sistem dili Türkçe; sekmeler ve düğme bugünkü metinle`, JSON.stringify(d));
+  check('i18n', d.lang === 'tr' && d.code === 'tr' && JSON.stringify(d.tab) === '["Düzenle","Süreç","Hesapla","Öğren"]' && /Dizilmiş PDF'i (indir|kaydet…)/.test(d.button) && d.choice === 'system',  // turkish-ok: expected Turkish UI text
+    `${label}: in a tr-TR browser the system language is Turkish; tabs and button with today's text`, JSON.stringify(d));
   const storage = await page.textContent('#storage-hint');
-  check('i18n', storage === 'Veri bu tarayıcıda saklanır. Tarayıcı verisi silinirse kaybolur; ara ara JSON yedeği alın.',
-    `${label}: tarayıcıda saklama ipucu bugünkü Türkçe metin (Mac metni yalnız Tauri'de)`, storage);
+  check('i18n', storage === 'Veri bu tarayıcıda saklanır. Tarayıcı verisi silinirse kaybolur; ara ara JSON yedeği alın.',  // turkish-ok: expected Turkish UI text
+    `${label}: the storage hint in the browser is today's Turkish text (the Mac text only in Tauri)`, storage);
   await decimalFlow(page, label, 'tr');
   await i18nPickerLayout(page, label);
   await printingHidden(page, label);
   await noMissingKey(page, label);
 }
 
-/** İngilizce arayüz (en-US): duman + eski Türkçe kayıt + elle dil seçimi. */
+/** English interface (en-US): smoke + an old Turkish record + a manual language choice. */
 async function m6MostFlow(page, address, iz, label, tam) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
@@ -1558,9 +1561,9 @@ async function m6MostFlow(page, address, iz, label, tam) {
     button: document.getElementById('export-transfer').textContent, source: document.getElementById('source-info').textContent, choice: document.getElementById('i18n-select').value,
     options: Array.from(document.getElementById('i18n-select').options).map((o) => o.value + '=' + o.textContent) }));
   check('i18n', head.lang === 'en' && head.title === 'Mücellit' && JSON.stringify(head.tab) === '["Imposition","Projects","Calculator","Learn"]' && head.button === 'Download imposed PDF' &&
-    head.source === 'No PDF loaded yet.' && head.choice === 'system' && JSON.stringify(head.options) === '["system=System language (English)","en=English","tr=Türkçe"]',
-    `${label}: en-US tarayıcıda arayüz İngilizce (sekmeler, düğme, dil seçici)`, JSON.stringify(head));
-  // değişen İngilizce metinler arayüzde
+    head.source === 'No PDF loaded yet.' && head.choice === 'system' && JSON.stringify(head.options) === '["system=System language (English)","en=English","tr=Türkçe"]',  // turkish-ok: expected Turkish UI text
+    `${label}: in an en-US browser the interface is in English (tabs, button, language picker)`, JSON.stringify(head));
+  // the changed English texts in the interface
   const dm = await page.evaluate(() => {
     const m = (a) => (document.querySelector(`[data-i18n="${a}"]`) || {}).textContent;
     return { blank: [m('impose.blank_to_start'), m('impose.blank_before'), m('impose.blank_to_end')], spine: m('calculator.spine_shape'), endpapers: m('calculator.endpaper_allowance'), rule: m('calculator.spine_rule'),
@@ -1569,10 +1572,10 @@ async function m6MostFlow(page, address, iz, label, tam) {
   check('i18n', JSON.stringify(dm.blank) === '["Insert blank at start","Insert blank before selected","Insert blank at end"]' && dm.spine === 'Spine shape' &&
     dm.endpapers === 'Endpaper thickness allowance (mm)' && dm.rule === 'Spine stiffener rule (flat spine)' && !/docs\//.test(dm.source) &&
     dm.hint === 'First sides of the exported file (actual output).' && /stored in this browser/.test(dm.storage),
-    `${label}: değişen İngilizce metinler görünür; tarayıcıda saklama ipucu tarayıcı metni`, JSON.stringify(dm));
+    `${label}: the changed English texts are visible; in the browser the storage hint is the browser text`, JSON.stringify(dm));
   const first = await visibleText(page);
-  check('i18n', !trLetter(first), `${label}: açılışta görünen metinde Türkçe karakter yok`, (first.match(new RegExp('.{0,30}' + TR_LETTER.source + '.{0,30}')) || [''])[0]);
-  // PDF yükle + dışa aktar
+  check('i18n', !trLetter(first), `${label}: no Turkish letter in the visible text at start-up`, (first.match(new RegExp('.{0,30}' + TR_LETTER.source + '.{0,30}')) || [''])[0]);
+  // load a PDF + export
   await page.click('#tab-button-impose');
   const pdf = await makeTestPdf(page);
   await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
@@ -1585,39 +1588,39 @@ async function m6MostFlow(page, address, iz, label, tam) {
     title: document.querySelector('#sheet-preview .sheet-card .title').textContent, card: document.querySelector('#small-thumbs .card .label .small').textContent }));
   check('i18n', /^test-37\.pdf — 37 pages, first page 148 × 210 mm$/.test(height.source) && height.summary === '37 pages → padded to 48 (11 blank) · 3 signatures · 12 printer sheets (24 sides)' &&
     /^Signature 1 · sheet 1 \(outer\)output p\. 1–2$/.test(height.title) && height.card === 'source p. 1',
-    `${label}: yüklenen PDF bilgisi, dizilim özeti (tekil/çoğul), yaprak başlığı İngilizce`, JSON.stringify(height));
+    `${label}: loaded PDF information, imposition summary (singular/plural), sheet title in English`, JSON.stringify(height));
   if (tam) {
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-transfer')]);
     await page.waitForFunction(() => /ready/.test(document.getElementById('notice').textContent), null, { timeout: 30000 });
     const b = await page.textContent('#notice');
     check('i18n', download.suggestedFilename() === 'test-37-imposed.pdf' && b === 'test-37-imposed.pdf ready (24 sides).',
-      `${label}: dışa aktarılan dosya adı -imposed, bildirim İngilizce`, download.suggestedFilename() + ' | ' + b);
+      `${label}: exported file name -imposed, the notice in English`, download.suggestedFilename() + ' | ' + b);
     await page.selectOption('#output-mode', 'pair');
     await page.check('#back-reversed');
-    const iki = [];
-    page.on('download', (d) => iki.push(d.suggestedFilename()));
+    const two = [];
+    page.on('download', (d) => two.push(d.suggestedFilename()));
     await page.click('#export-transfer');
     await page.waitForFunction(() => /and/.test(document.getElementById('notice').textContent), null, { timeout: 30000 });
     await page.waitForTimeout(1500);
-    check('i18n', JSON.stringify(iki.sort()) === '["test-37-backs-reversed.pdf","test-37-fronts.pdf"]', `${label}: iki PDF: -fronts / -backs-reversed`, JSON.stringify(iki));
+    check('i18n', JSON.stringify(two.sort()) === '["test-37-backs-reversed.pdf","test-37-fronts.pdf"]', `${label}: two PDFs: -fronts / -backs-reversed`, JSON.stringify(two));
     await page.selectOption('#output-mode', 'single');
-    // kusurlu girdi bildirimi İngilizce: EPUB değil
-    await page.setInputFiles('#pdf-file', { name: 'bozuk.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('bu bir zip değil') });
+    // a faulty input notice in English: not an EPUB
+    await page.setInputFiles('#pdf-file', { name: 'broken.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('this is not a zip') });
     await page.waitForFunction(() => /couldn't be opened/.test(document.getElementById('notice').textContent), null, { timeout: 30000 }).catch(() => {});
     const bz = await page.textContent('#notice');
-    check('i18n', bz === "The file couldn't be opened: This file couldn't be read: it isn't a valid EPUB (ZIP) or it is damaged.", `${label}: bozuk EPUB hatası İngilizce`, bz);
-    // Hesapla: ondalık nokta, İngilizce satırlar
+    check('i18n', bz === "The file couldn't be opened: This file couldn't be read: it isn't a valid EPUB (ZIP) or it is damaged.", `${label}: the broken EPUB error in English`, bz);
+    // Calculator: decimal point, English rows
     await page.click('#tab-button-calculator');
     const h = await page.evaluate(() => ({ line: Array.from(document.querySelectorAll('#h-result th')).map((e) => e.textContent).slice(0, 4), spine: document.querySelector('[data-result="spineThickness"]').textContent }));
     check('i18n', JSON.stringify(h.line) === '["Total pages (blanks included)","Leaves","Signatures","Spine thickness S"]' && h.spine === '10.4 mm',
-      `${label}: Hesapla satırları İngilizce`, JSON.stringify(h));
+      `${label}: the Calculator rows in English`, JSON.stringify(h));
     await page.fill('#h-paperThickness', '0.123');
     const decimal = await page.textContent('[data-result="spineThickness"]');
-    check('i18n', decimal === '12.8 mm', `${label}: Hesapla ondalık ayracı nokta (en-US)`, decimal);
+    check('i18n', decimal === '12.8 mm', `${label}: the Calculator decimal separator is a point (en-US)`, decimal);
     await page.fill('#h-paperThickness', '0.1');
     await decimalFlow(page, label, 'en');
   }
-  // Süreç: yeni proje İngilizce adımlarla; eski Türkçe kayıt İngilizce görünür, kullanıcı adımı aynen
+  // Projects: a new project with English steps; an old Turkish record shows in English, the user step as it is
   await page.click('#tab-button-projects');
   await page.fill('#yk-name', 'Notebook');
   await page.click('#yk-create');
@@ -1625,36 +1628,36 @@ async function m6MostFlow(page, address, iz, label, tam) {
   const fresh = await page.evaluate(() => ({ first: document.querySelector('#steps .step-name').textContent, summary: document.getElementById('book-progress').textContent,
     data: JSON.parse(localStorage.getItem('mucellit.projects')).projects.slice(-1)[0].steps[6] }));
   check('i18n', fresh.first === '1. Prep / PDF' && /^Sewn signatures \+ hardcover \(case binding\) · 0 \/ 14 steps done · created \d{4}-\d\d-\d\d$/.test(fresh.summary) && fresh.data.template === 'sewing' && fresh.data.name === 'Sewing',
-    `${label}: yeni projede adımlar İngilizce, kayıtta şablon anahtarı`, JSON.stringify(fresh));
+    `${label}: steps in English in a new project, the template key in the record`, JSON.stringify(fresh));
   const old = readFileSync(join(OLD_RECORD, 'local-storage-v1.json'), 'utf8');
-  await page.evaluate((e) => { localStorage.removeItem('mucellit.projects'); localStorage.removeItem('mucellit.selectedProject'); localStorage.setItem('kitapCilt.v1', e); localStorage.setItem('kitapCilt.seciliKitap', 'k-mzeski-1'); }, old);
+  await page.evaluate((e) => { localStorage.removeItem('mucellit.projects'); localStorage.removeItem('mucellit.selectedProject'); localStorage.setItem('kitapCilt.v1', e); localStorage.setItem('kitapCilt.seciliKitap', 'k-mzeski-1'); }, old);  // turkish-ok: legacy storage names (migration test)
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]');
   await page.click('#tab-button-projects');
   await page.waitForSelector('#steps .step');
   const e = await page.evaluate(() => ({ names: Array.from(document.querySelectorAll('#steps .step-name')).map((x) => x.textContent),
-    settings: (document.querySelector('#book-detail p.small') || {}).textContent, ls: localStorage.getItem('mucellit.projects'), legacy: localStorage.getItem('kitapCilt.v1') + '|' + localStorage.getItem('kitapCilt.seciliKitap') }));
-  check('i18n', e.names.length === 15 && e.names[0] === '1. Prep / PDF' && e.names[6] === '7. Sewing' && e.names[14] === '15. Ayraç takma' &&
-    /^Saved imposition settings: sewn signatures, paper 297×210 mm, book 148×210 mm, 4 sheets per signature$/.test(e.settings) && e.legacy === 'null|null' && JSON.parse(e.ls).version === 2 && JSON.parse(e.ls).projects[0].steps.length === 15 && JSON.parse(e.ls).projects[0].name === JSON.parse(old).kitaplar[0].ad,
-    `${label}: eski Türkçe kayıt açıldı: şablon adımları İngilizce, kullanıcı adımı aynen, kayıt değişmedi`, JSON.stringify({ names: [e.names[0], e.names[6], e.names[14]], settings: e.settings }));
-  const sm = await visibleText(page, ['Çiğdemköy (deneme)', 'Ayraç takma', 'kuşe kağıt', '80 g/m² kitap kağıdı']);
-  check('i18n', !trLetter(sm), `${label}: Süreç görünümünde (kullanıcı metinleri dışında) Türkçe karakter yok`, (sm.match(new RegExp('.{0,30}' + TR_LETTER.source + '.{0,30}')) || [''])[0]);
+    settings: (document.querySelector('#book-detail p.small') || {}).textContent, ls: localStorage.getItem('mucellit.projects'), legacy: localStorage.getItem('kitapCilt.v1') + '|' + localStorage.getItem('kitapCilt.seciliKitap') }));  // turkish-ok: legacy storage names (migration test)
+  check('i18n', e.names.length === 15 && e.names[0] === '1. Prep / PDF' && e.names[6] === '7. Sewing' && e.names[14] === '15. Ayraç takma' &&  // turkish-ok: expected Turkish UI text
+    /^Saved imposition settings: sewn signatures, paper 297×210 mm, book 148×210 mm, 4 sheets per signature$/.test(e.settings) && e.legacy === 'null|null' && JSON.parse(e.ls).version === 2 && JSON.parse(e.ls).projects[0].steps.length === 15 && JSON.parse(e.ls).projects[0].name === JSON.parse(old).kitaplar[0].ad,  // turkish-ok: legacy storage names (migration test)
+    `${label}: the old Turkish record opened: template steps in English, the user step as it is, the record unchanged`, JSON.stringify({ names: [e.names[0], e.names[6], e.names[14]], settings: e.settings }));
+  const sm = await visibleText(page, ['Çiğdemköy (deneme)', 'Ayraç takma', 'kuşe kağıt', '80 g/m² kitap kağıdı']);  // turkish-ok: expected Turkish UI text
+  check('i18n', !trLetter(sm), `${label}: no Turkish letter in the Projects view (except the user texts)`, (sm.match(new RegExp('.{0,30}' + TR_LETTER.source + '.{0,30}')) || [''])[0]);
   await noMissingKey(page, label);
-  // elle dil seçimi: açık belge yok → onaysız; Türkçeye geçer ve kalıcı; sistem diline dönünce İngilizce
+  // manual language choice: no open document → no confirmation; switches to Turkish and stays; back to the system language → English
   const confirmCount = iz.confirms.length;
   await Promise.all([page.waitForEvent('load'), page.selectOption('#i18n-select', 'tr')]);
   await page.waitForSelector('html[data-ready="yes"]');
   await page.click('#tab-button-projects');
   const tr = await page.evaluate(() => ({ lang: document.documentElement.lang, tab: document.getElementById('tab-button-impose').textContent, choice: localStorage.getItem('mucellit.language'),
     value: document.getElementById('i18n-select').value, step: (document.querySelector('#steps .step-name') || {}).textContent }));
-  check('i18n', tr.lang === 'tr' && tr.tab === 'Düzenle' && tr.choice === 'tr' && tr.value === 'tr' && tr.step === '1. Hazırlık / PDF' && iz.confirms.length === confirmCount,
-    `${label}: elle Türkçe seçimi (belge yokken onaysız) sayfayı yeniden yükler, kalıcı, adımlar Türkçe`, JSON.stringify(tr));
-  const ipTr = await page.evaluate(() => document.getElementById('i18n-select').getAttribute('title'));
-  check('print', ipTr === 'Dil', `${label}: Türkçeye geçince dil seçici ipucu "Dil"`, String(ipTr));
+  check('i18n', tr.lang === 'tr' && tr.tab === 'Düzenle' && tr.choice === 'tr' && tr.value === 'tr' && tr.step === '1. Hazırlık / PDF' && iz.confirms.length === confirmCount,  // turkish-ok: expected Turkish UI text
+    `${label}: a manual Turkish choice (no confirmation without a document) reloads the page, stays, the steps in Turkish`, JSON.stringify(tr));
+  const hintTr = await page.evaluate(() => document.getElementById('i18n-select').getAttribute('title'));
+  check('print', hintTr === 'Dil', `${label}: after switching to Turkish the language picker tooltip is "Dil"`, String(hintTr));  // turkish-ok: expected Turkish UI text
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]');
-  check('i18n', await page.evaluate(() => document.documentElement.lang) === 'tr', `${label}: elle seçim yeniden açılışta duruyor (en-US tarayıcıda Türkçe)`);
-  // açık belge varken dil değişimi onay ister; vazgeçilince değişmez
+  check('i18n', await page.evaluate(() => document.documentElement.lang) === 'tr', `${label}: the manual choice stays on reopening (Turkish in an en-US browser)`);
+  // with an open document the language change asks for confirmation; nothing changes on cancel
   await page.click('#tab-button-impose');
   await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
   await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 37);
@@ -1663,66 +1666,66 @@ async function m6MostFlow(page, address, iz, label, tam) {
   await page.waitForTimeout(500);
   iz.confirmRed = false;
   const red = await page.evaluate(() => ({ lang: document.documentElement.lang, choice: localStorage.getItem('mucellit.language'), value: document.getElementById('i18n-select').value, card: document.querySelectorAll('#small-thumbs .card').length }));
-  check('i18n', iz.confirms.length === confirmCount + 1 && /Dil değişince pencere yeniden yüklenir/.test(iz.confirms[iz.confirms.length - 1]) && red.lang === 'tr' && red.choice === 'tr' && red.value === 'tr' && red.card === 37,
-    `${label}: belge açıkken dil değişimi onay ister (Türkçe metin); Vazgeç → dil, seçim ve belge değişmez`, JSON.stringify({ red, confirmation: iz.confirms.slice(-1) }));
+  check('i18n', iz.confirms.length === confirmCount + 1 && /Dil değişince pencere yeniden yüklenir/.test(iz.confirms[iz.confirms.length - 1]) && red.lang === 'tr' && red.choice === 'tr' && red.value === 'tr' && red.card === 37,  // turkish-ok: expected Turkish UI text
+    `${label}: with an open document the language change asks for confirmation (Turkish text); Cancel → language, choice and document unchanged`, JSON.stringify({ red, confirmation: iz.confirms.slice(-1) }));
   await Promise.all([page.waitForEvent('load'), page.selectOption('#i18n-select', 'system')]);
   await page.waitForSelector('html[data-ready="yes"]');
   const restored = await page.evaluate(() => ({ lang: document.documentElement.lang, choice: localStorage.getItem('mucellit.language'), value: document.getElementById('i18n-select').value }));
-  check('i18n', restored.lang === 'en' && restored.choice === null && restored.value === 'system', `${label}: "Sistem dili" seçimi elle seçimi siler, en-US'te İngilizceye döner (onay kabul)`, JSON.stringify(restored));
+  check('i18n', restored.lang === 'en' && restored.choice === null && restored.value === 'system', `${label}: choosing "System language" removes the manual choice, back to English in en-US (confirmation accepted)`, JSON.stringify(restored));
   const ipEn = await page.evaluate(() => document.getElementById('i18n-select').getAttribute('title'));
-  check('print', ipEn === 'Language', `${label}: İngilizceye dönünce dil seçici ipucu "Language"`, String(ipEn));
+  check('print', ipEn === 'Language', `${label}: back to English the language picker tooltip is "Language"`, String(ipEn));
   await printingHidden(page, label);
   await noMissingKey(page, label);
 }
 
-/** Tauri benzetimi: açılışta dil_oku + dil_ayarla; menüden dil:en; WebKit verisi silinince seçim Rust yedeğinden döner. */
+/** Tauri simulation: read_language + set_language at start-up; language:en from the menu; when the WebKit data is removed the choice comes back from the Rust backup. */
 async function m6TauriI18n(page, address, label) {
   await page.evaluate(() => { localStorage.clear(); sessionStorage.removeItem('fakeI18nChoice'); sessionStorage.removeItem('fakeI18nCode'); window.__fake.call = []; });
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const a = await page.evaluate(() => ({ call: window.__fake.call.filter((c) => /_language$/.test(c.command)).map((c) => c.command), settings: window.__fake.i18nSettings, lang: document.documentElement.lang,
     button: document.getElementById('export-transfer').textContent }));
-  check('i18n', JSON.stringify(a.call) === '["read_language","set_language"]' && JSON.stringify(a.settings.slice(-1)) === '[["tr","system"]]' && a.lang === 'tr' && a.button === "Dizilmiş PDF'i kaydet…",
-    `${label}: açılışta read_language, after set_language {tr, system} (menü JS ile aynı inLang); Save düğmesi Türkçe`, JSON.stringify(a));
-  // Görünüm > Dil > English (belge açık değil: onaysız) → Rust'a {en, en}, sayfa yeniden yüklenir, İngilizce
+  check('i18n', JSON.stringify(a.call) === '["read_language","set_language"]' && JSON.stringify(a.settings.slice(-1)) === '[["tr","system"]]' && a.lang === 'tr' && a.button === "Dizilmiş PDF'i kaydet…",  // turkish-ok: expected Turkish UI text
+    `${label}: read_language at start-up, then set_language {tr, system} (the menu in the same language as JS); the Save button in Turkish`, JSON.stringify(a));
+  // View > Language > English (no open document: no confirmation) → {en, en} to Rust, the page reloads, English
   await Promise.all([page.waitForEvent('load'), page.evaluate(() => window.__fake.listener.menu({ payload: 'i18n:en' }))]);
   await page.waitForSelector('html[data-ready="yes"]');
   const b = await page.evaluate(() => ({ lang: document.documentElement.lang, button: document.getElementById('export-transfer').textContent, ls: localStorage.getItem('mucellit.language'), settings: window.__fake.i18nSettings,
     tab: document.getElementById('tab-button-projects').textContent }));
   check('i18n', b.lang === 'en' && b.button === 'Save imposed PDF…' && b.ls === 'en' && b.tab === 'Projects' && JSON.stringify(b.settings.slice(-1)) === '[["en","en"]]',
-    `${label}: menü i18n:en → set_language {en, en}, again yüklenir, arayüz ve Save düğmesi İngilizce`, JSON.stringify(b));
-  // WebKit verisi silindi (localStorage boş) ama Rust'ta yedek var → seçim geri gelir
+    `${label}: menu language:en → set_language {en, en}, reloaded, the interface and the Save button in English`, JSON.stringify(b));
+  // the WebKit data was removed (localStorage empty) but Rust has a backup → the choice comes back
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]');
   const c = await page.evaluate(() => ({ lang: document.documentElement.lang, ls: localStorage.getItem('mucellit.language'), tab: document.getElementById('tab-button-calculator').textContent, source: document.getElementById('source-info').textContent }));
   check('i18n', c.lang === 'en' && c.ls === 'en' && c.tab === 'Calculator' && c.source === 'No PDF loaded yet.',
-    `${label}: localStorage silinince elle seçim Rust yedeğinden (read_language) geri gelir; tr-TR sistemde İngilizce`, JSON.stringify(c));
-  // kusurlu menü kimliği yok sayılır
+    `${label}: when localStorage is removed the manual choice comes back from the Rust backup (read_language); English on a tr-TR system`, JSON.stringify(c));
+  // a faulty menu id is ignored
   await page.evaluate(() => { window.__fake.listener.menu({ payload: 'i18n:xx' }); window.__fake.listener.menu({ payload: 'i18n:' }); });
   await page.waitForTimeout(300);
-  check('i18n', await page.evaluate(() => document.documentElement.lang + '|' + localStorage.getItem('mucellit.language')) === 'en|en', `${label}: kusurlu dil menü kimliği (dil:xx, dil:) yok sayılır`);
+  check('i18n', await page.evaluate(() => document.documentElement.lang + '|' + localStorage.getItem('mucellit.language')) === 'en|en', `${label}: a faulty language menu id (language:xx, language:) is ignored`);
   await noMissingKey(page, label);
-  // "Sistem dili" menüdeki gibi Rust'tan (NSLocale + Apple kuralı); tarayıcı tr-TR iken Rust en derse arayüz en
+  // "System language" from Rust as in the menu (NSLocale + the Apple rule); with a tr-TR browser and Rust saying en the interface is en
   await page.evaluate(() => { localStorage.clear(); sessionStorage.removeItem('fakeI18nChoice'); sessionStorage.removeItem('fakeI18nCode'); sessionStorage.setItem('fakeSystem', 'en'); window.__fake.i18nSettings = []; });
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]');
   const r = await page.evaluate(() => ({ lang: document.documentElement.lang, options: Array.from(document.getElementById('i18n-select').options).map((o) => o.value + '=' + o.textContent),
     value: document.getElementById('i18n-select').value, settings: window.__fake.i18nSettings, tab: document.getElementById('tab-button-impose').textContent, hint: document.getElementById('storage-hint').textContent }));
   check('i18n', r.lang === 'en' && r.options[0] === 'system=System language (English)' && r.value === 'system' && r.tab === 'Imposition' && JSON.stringify(r.settings.slice(-1)) === '[["en","system"]]',
-    `${label}: sistem dili Rust'tan (read_language.system en, tarayıcı tr-TR): arayüz ve "System language (English)" seçeneği menüyle aynı kaynaktan`, JSON.stringify(r));
-  check('i18n', /this Mac/.test(r.hint) && !/browser/i.test(r.hint), `${label}: Mac uygulamasında saklama ipucu Mac metniyle (tarayıcı demez)`, r.hint);
-  const first = await page.evaluate(() => window.__fake.firstSquare);
+    `${label}: the system language from Rust (read_language.system en, browser tr-TR): the interface and the "System language (English)" option from the same source as the menu`, JSON.stringify(r));
+  check('i18n', /this Mac/.test(r.hint) && !/browser/i.test(r.hint), `${label}: the storage hint in the Mac app is the Mac text (does not say browser)`, r.hint);
+  const first = await page.evaluate(() => window.__fake.firstFrame);
   check('print', first && first.lang === 'en' && first.tab === 'Imposition',
-    `${label}: ilk kare (read_language dönmeden) Rust'ın sistem dilinde (ön betik __MC_LANG__; tarayıcı tr-TR, Rust en): navigator.languages → Rust geçişi yok`, JSON.stringify(first));
+    `${label}: the first frame (before read_language returns) is in Rust's system language (pre-script __MC_LANG__; browser tr-TR, Rust en): no navigator.languages → Rust switch`, JSON.stringify(first));
   await page.evaluate(() => { sessionStorage.removeItem('fakeSystem'); localStorage.clear(); sessionStorage.removeItem('fakeI18nCode'); });
 }
 
 /**
- * Mac uygulamasında yazdırma (sahte __TAURI__): düğmeler yalnız platform.yazdir varken; baskı öncesi not (çift yüz =
- * araçtaki seçim, %100); tek PDF gönderildi / vazgeçildi / Rust hatası; iki PDF önler → "desteyi çevir" onayı → arkalar
- * ve yarıda kalma; çıktı hazırlanırken/pencere açıkken ⌘P ve ⌘S yok sayılır; menü ⌘P; Önizleme'de Aç ve açılamazsa
- * seçenek E (Kaydet + not). Tarayıcı indirmesi hiç başlamaz.
+ * Printing in the Mac app (fake __TAURI__): the buttons only with platform.print; the note before printing (two-sided =
+ * the choice in the tool, 100%); one PDF sent / cancelled / Rust error; two PDFs fronts → "turn the stack over"
+ * confirmation → backs and stopping halfway; ⌘P and ⌘S are ignored while the output is prepared / the dialog is open;
+ * menu ⌘P; Open in Preview and, when it cannot open, option E (Save + note). No browser download ever starts.
  */
 async function m3Printing(page, address, label) {
   let download = 0;
@@ -1732,7 +1735,7 @@ async function m3Printing(page, address, label) {
   await page.click('#tab-button-impose');
   const clearNotice = () => page.evaluate(() => { const b = document.getElementById('notice'); b.textContent = ''; b.className = ''; window.__fake.call.length = 0; window.__fake.questions = []; });
   const state = () => page.evaluate(() => ({ notice: document.getElementById('notice').textContent, error: document.getElementById('notice').classList.contains('error'),
-    print: window.__fake.call.filter((c) => c.command === 'print').map((c) => ({ name: c.name, size: c.size, notAn: c.notAn })),
+    print: window.__fake.call.filter((c) => c.command === 'print').map((c) => ({ name: c.name, size: c.size, noteAtPrint: c.noteAtPrint })),
     preview: window.__fake.call.filter((c) => c.command === 'open_in_preview').map((c) => c.name), save: window.__fake.call.filter((c) => c.command === 'save_file').map((c) => c.name),
     questions: window.__fake.questions || [] }));
   const finished = (re) => page.waitForFunction((k) => new RegExp(k).test(document.getElementById('notice').textContent), re.source, { timeout: 30000 }).catch(() => {});
@@ -1740,69 +1743,69 @@ async function m3Printing(page, address, label) {
     note: document.getElementById('print-note').hidden ? null : document.getElementById('print-note').textContent, duplex: document.getElementById('duplex').selectedOptions[0].textContent,
     text: [document.getElementById('print').textContent, document.getElementById('inPreview-open').textContent],
     visible: [!!document.getElementById('print').offsetParent, !!document.getElementById('inPreview-open').offsetParent, !!document.getElementById('print-note').offsetParent] }));
-  check('print', g.field === false && JSON.stringify(g.visible) === '[true,true,true]' && g.button === true && g.preview === false && JSON.stringify(g.text) === '["Yazdır…","Önizleme\'de Aç"]' &&
-    // seçenek baskı penceresinin adıyla ("Açık (Kısa Kenar)" / Düzen: "Kısa Kenardan Ciltli"), araçtaki ad ayrıca
-    g.note === `Baskı penceresinde: Çift Taraflı → “Açık (Kısa Kenar)” seçin (buradaki “${g.duplex}” ile aynı; Düzen bölümünde: Çift Taraflı → “Kısa Kenardan Ciltli”), ölçeği %100 bırakın, “Kâğıt boyutuna sığdır”ı seçmeyin.`,
-    `${label}: Yazdır… ve Önizleme'de Aç görünür (PDF yokken kapalı); baskı notu araçtaki çift yüz seçimini söyler`, JSON.stringify(g));
+  check('print', g.field === false && JSON.stringify(g.visible) === '[true,true,true]' && g.button === true && g.preview === false && JSON.stringify(g.text) === '["Yazdır…","Önizleme\'de Aç"]' &&  // turkish-ok: expected Turkish UI text
+    // the option with the name of the print dialog ("Açık (Kısa Kenar)" / Layout: "Kısa Kenardan Ciltli"), the tool's name apart  // turkish-ok: expected Turkish UI text
+    g.note === `Baskı penceresinde: Çift Taraflı → “Açık (Kısa Kenar)” seçin (buradaki “${g.duplex}” ile aynı; Düzen bölümünde: Çift Taraflı → “Kısa Kenardan Ciltli”), ölçeği %100 bırakın, “Kâğıt boyutuna sığdır”ı seçmeyin.`,  // turkish-ok: expected Turkish UI text
+    `${label}: Print… and Open in Preview visible (disabled without a PDF); the print note names the two-sided choice of the tool`, JSON.stringify(g));
   await clearNotice();
   await page.evaluate(() => window.Mucellit.platform.onMenu('file-print'));
   const none = await state();
-  check('print', none.notice === 'Önce bir PDF açın, sonra yazdırın.' && none.error && none.print.length === 0, `${label}: PDF yokken ⌘P → "Önce bir PDF açın" (baskı penceresi yok)`, JSON.stringify(none));
+  check('print', none.notice === 'Önce bir PDF açın, sonra yazdırın.' && none.error && none.print.length === 0, `${label}: ⌘P without a PDF → "Önce bir PDF açın" (no print dialog)`, JSON.stringify(none));  // turkish-ok: expected Turkish UI text
   const pdf = await makeTestPdf(page);
   await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
   await page.waitForFunction(() => !document.getElementById('print').disabled, null, { timeout: 30000 });
   await page.selectOption('#binding-type', 'sewn');
   await page.selectOption('#output-mode', 'single');
-  // tek PDF: yazdırıldı
+  // one PDF: printed
   await clearNotice();
   await page.click('#print');
-  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı/);
+  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı/);  // turkish-ok: expected Turkish UI text
   const single = await state();
-  check('print', single.notice === 'Yazıcıya gönderildi: test-37-dizilmis.pdf.' && !single.error && single.print.length === 1 && single.print[0].name === 'test-37-dizilmis.pdf' && single.print[0].size > 1000 &&
-    /^Baskı penceresinde: Çift Taraflı → “Açık.*%100.*sığdır/.test(single.print[0].notAn) && single.questions.length === 0,
-    `${label}: tek PDF → yazdir (ham bayt, ad), baskı penceresinden önce not gösterildi, "Yazıcıya gönderildi"`, JSON.stringify(single));
-  // tek PDF: vazgeçildi
+  check('print', single.notice === 'Yazıcıya gönderildi: test-37-dizilmis.pdf.' && !single.error && single.print.length === 1 && single.print[0].name === 'test-37-dizilmis.pdf' && single.print[0].size > 1000 &&  // turkish-ok: expected Turkish UI text
+    /^Baskı penceresinde: Çift Taraflı → “Açık.*%100.*sığdır/.test(single.print[0].noteAtPrint) && single.questions.length === 0,  // turkish-ok: expected Turkish UI text
+    `${label}: one PDF → print (raw bytes, name), the note shown before the print dialog, "Yazıcıya gönderildi"`, JSON.stringify(single));  // turkish-ok: expected Turkish UI text
+  // one PDF: cancelled
   await clearNotice();
   await page.evaluate(() => { window.__fake.printOrder = [false]; });
   await page.click('#print');
-  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı/);
-  const vaz = await state();
-  check('print', vaz.notice === 'Yazdırılmadı (baskı penceresinden vazgeçildi).' && vaz.error && vaz.print.length === 1, `${label}: baskı penceresinde Vazgeç → "Yazdırılmadı" (hata), uygulama sürer`, JSON.stringify(vaz));
-  // Rust hatası (Apple dışı platform metni)
+  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı/);  // turkish-ok: expected Turkish UI text
+  const cancelled = await state();
+  check('print', cancelled.notice === 'Yazdırılmadı (baskı penceresinden vazgeçildi).' && cancelled.error && cancelled.print.length === 1, `${label}: Cancel in the print dialog → "Yazdırılmadı" (error), the app goes on`, JSON.stringify(cancelled));  // turkish-ok: expected Turkish UI text
+  // Rust error (the non-Apple platform text)
   await clearNotice();
-  await page.evaluate(() => { window.__fake.printOrder = ['bu platformda yazdırma henüz yok']; });
+  await page.evaluate(() => { window.__fake.printOrder = ['bu platformda yazdırma henüz yok']; });  // turkish-ok: expected Turkish UI text
   await page.click('#print');
-  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı/);
+  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı/);  // turkish-ok: expected Turkish UI text
   const rh = await state();
-  check('print', rh.notice === 'test-37-dizilmis.pdf yazdırılamadı: bu platformda yazdırma henüz yok' && rh.error, `${label}: Rust hatası (Apple dışı: "bu platformda yazdırma henüz yok") bildirilir`, rh.notice);
-  // iki PDF: önler → çevir onayı → arkalar
+  check('print', rh.notice === 'test-37-dizilmis.pdf yazdırılamadı: bu platformda yazdırma henüz yok' && rh.error, `${label}: a Rust error (non-Apple: "bu platformda yazdırma henüz yok") is reported`, rh.notice);  // turkish-ok: expected Turkish UI text
+  // two PDFs: fronts → turn-over confirmation → backs
   await page.selectOption('#output-mode', 'pair');
   await page.waitForFunction(() => !document.getElementById('print').disabled);
-  const notIki = await page.textContent('#print-note');
+  const noteTwo = await page.textContent('#print-note');
   await clearNotice();
   await page.evaluate(() => { window.__fake.printOrder = [true, true]; window.__fake.askOrder = [true]; });
   await page.click('#print');
-  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı|Yalnız önler/);
-  const iki = await state();
-  check('print', iki.notice === 'Yazıcıya gönderildi: test-37-onler.pdf ve test-37-arkalar.pdf.' && JSON.stringify(iki.print.map((y) => y.name)) === '["test-37-onler.pdf","test-37-arkalar.pdf"]' &&
-    iki.questions.length === 1 && /^Önler \(test-37-onler\.pdf\) yazıcıya gönderildi\. .*desteyi .*çevirip .*geri koyun/.test(iki.questions[0]) && /Çift Taraflı → “Kapalı”/.test(notIki),
-    `${label}: iki PDF → önler, "desteyi çevirip geri koyun" onayı, arkalar; not "Çift Taraflı → Kapalı"`, JSON.stringify({ ...iki, notIki }));
-  // iki PDF: çevir onayında Vazgeç → yarıda (yalnız önler)
+  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı|Yalnız önler/);  // turkish-ok: expected Turkish UI text
+  const two = await state();
+  check('print', two.notice === 'Yazıcıya gönderildi: test-37-onler.pdf ve test-37-arkalar.pdf.' && JSON.stringify(two.print.map((y) => y.name)) === '["test-37-onler.pdf","test-37-arkalar.pdf"]' &&  // turkish-ok: expected Turkish UI text
+    two.questions.length === 1 && /^Önler \(test-37-onler\.pdf\) yazıcıya gönderildi\. .*desteyi .*çevirip .*geri koyun/.test(two.questions[0]) && /Çift Taraflı → “Kapalı”/.test(noteTwo),  // turkish-ok: expected Turkish UI text
+    `${label}: two PDFs → fronts, the "desteyi çevirip geri koyun" confirmation, backs; note "Çift Taraflı → Kapalı"`, JSON.stringify({ ...two, noteTwo }));  // turkish-ok: expected Turkish UI text
+  // two PDFs: Cancel at the turn-over confirmation → halfway (only the fronts)
   await clearNotice();
   await page.evaluate(() => { window.__fake.printOrder = [true]; window.__fake.askOrder = [false]; });
   await page.click('#print');
-  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı|Yalnız önler/);
+  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı|Yalnız önler/);  // turkish-ok: expected Turkish UI text
   const half = await state();
-  check('print', half.notice === 'Yalnız önler yazıcıya gönderildi (test-37-onler.pdf); arkalar (test-37-arkalar.pdf) basılmadı (vazgeçildi).' && half.error && half.print.length === 1,
-    `${label}: iki PDF, çevir onayında Vazgeç → yarıda kalma doğru bildirildi (yalnız önler)`, JSON.stringify(half));
-  // iki PDF: arkaların baskı penceresinde Vazgeç
+  check('print', half.notice === 'Yalnız önler yazıcıya gönderildi (test-37-onler.pdf); arkalar (test-37-arkalar.pdf) basılmadı (vazgeçildi).' && half.error && half.print.length === 1,  // turkish-ok: expected Turkish UI text
+    `${label}: two PDFs, Cancel at the turn-over confirmation → stopping halfway reported correctly (only the fronts)`, JSON.stringify(half));
+  // two PDFs: Cancel in the print dialog of the backs
   await clearNotice();
   await page.evaluate(() => { window.__fake.printOrder = [true, false]; window.__fake.askOrder = [true]; });
   await page.click('#print');
-  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı|Yalnız önler/);
-  const yar2 = await state();
-  check('print', /^Yalnız önler yazıcıya gönderildi/.test(yar2.notice) && yar2.error && yar2.print.length === 2, `${label}: iki PDF, arkalarda Vazgeç → yarıda`, JSON.stringify(yar2));
-  // meşgulken ⌘P / ⌘S yok sayılır; sonra düğmeler serbest
+  await finished(/Yazıcıya gönderildi|Yazdırılmadı|yazdırılamadı|Yalnız önler/);  // turkish-ok: expected Turkish UI text
+  const half2 = await state();
+  check('print', /^Yalnız önler yazıcıya gönderildi/.test(half2.notice) && half2.error && half2.print.length === 2, `${label}: two PDFs, Cancel at the backs → halfway`, JSON.stringify(half2));  // turkish-ok: expected Turkish UI text
+  // ⌘P / ⌘S ignored while busy; then the buttons are free
   await page.selectOption('#output-mode', 'single');
   await page.waitForFunction(() => !document.getElementById('print').disabled);
   await clearNotice();
@@ -1812,26 +1815,26 @@ async function m3Printing(page, address, label) {
   const busy = await page.evaluate(() => { const P = window.Mucellit.platform; P.onMenu('file-print'); P.onMenu('file-save'); P.onMenu('file-preview');
     return { write: document.getElementById('print').getAttribute('aria-busy'), creep: document.getElementById('export-transfer').getAttribute('aria-busy'), closed: document.getElementById('export-transfer').disabled }; });
   await page.evaluate(() => { const s = window.__fake; s.printGate = null; s.openGate(); });
-  await finished(/Yazıcıya gönderildi/);
+  await finished(/Yazıcıya gönderildi/);  // turkish-ok: expected Turkish UI text
   const after = await state();
   const free = await page.evaluate(() => ['print', 'export-transfer', 'inPreview-open'].map((id) => [document.getElementById(id).disabled, document.getElementById(id).getAttribute('aria-busy')]));
   check('print', busy.write === 'true' && busy.creep === 'true' && busy.closed && after.print.length === 1 && after.save.length === 0 && after.preview.length === 0 &&
     JSON.stringify(free) === '[[false,null],[false,null],[false,null]]',
-    `${label}: baskı penceresi açıkken ⌘P/⌘S/⌥⌘P yok sayıldı (tek pencere); bitince düğmeler serbest`, JSON.stringify({ busy, after, free }));
-  // baskı penceresi açıkken ayar değişirse (önizleme yeniden çizilir) çıktı düğmeleri açılmaz,
-  // aria-busy kalkmaz; ikinci çıktı işi (Kaydet tıklaması) başlamaz.
+    `${label}: ⌘P/⌘S/⌥⌘P ignored while the print dialog is open (one dialog); the buttons are free at the end`, JSON.stringify({ busy, after, free }));
+  // when a setting changes while the print dialog is open (the preview is drawn again) the output buttons do not turn on,
+  // aria-busy stays; no second output job (Save click) starts.
   await clearNotice();
   await page.evaluate(() => { const s = window.__fake; s.printGate = new Promise((r) => { s.openGate = r; });
     const C = window.Mucellit.output, u = C.build; window.__countMake = 0; C.build = function () { window.__countMake += 1; return u.apply(this, arguments); }; });
   await page.click('#print');
   await page.waitForFunction(() => window.__fake.call.some((c) => c.command === 'print'), null, { timeout: 30000 });
-  await page.click('#cropMarks'); // kesim işareti aç/kapa: yerleşim sığmaya devam eder (D.engel false), önizleme yeniden çizilir
-  await page.waitForTimeout(400); // önizleme yeniden çizimi (requestAnimationFrame + pdf.js)
+  await page.click('#cropMarks'); // toggle the crop marks: the layout still fits (D.blocked false), the preview is drawn again
+  await page.waitForTimeout(400); // drawing the preview again (requestAnimationFrame + pdf.js)
   const configured = await page.evaluate(() => ['print', 'export-transfer', 'inPreview-open'].map((id) => [document.getElementById(id).disabled, document.getElementById(id).getAttribute('aria-busy')]));
   await page.evaluate(() => { document.getElementById('export-transfer').click(); document.getElementById('inPreview-open').click(); });
-  await page.waitForTimeout(800); // ikinci iş başladıysa uret çağrılır, Kaydet/Önizleme komutu gider
+  await page.waitForTimeout(800); // when a second job started, build is called and the Save/Preview command goes
   await page.evaluate(() => { const s = window.__fake; s.printGate = null; s.openGate(); });
-  await finished(/Yazıcıya gönderildi/);
+  await finished(/Yazıcıya gönderildi/);  // turkish-ok: expected Turkish UI text
   await page.waitForTimeout(300);
   const settingsAfter = { ...(await state()), build: await page.evaluate(() => window.__countMake) };
   const settingsFree = await page.evaluate(() => ['print', 'export-transfer', 'inPreview-open'].map((id) => [document.getElementById(id).disabled, document.getElementById(id).getAttribute('aria-busy')]));
@@ -1840,52 +1843,52 @@ async function m3Printing(page, address, label) {
   check('print', JSON.stringify(configured) === '[[true,"true"],[true,"true"],[true,"true"]]' && settingsAfter.print.length === 1 && settingsAfter.save.length === 0 &&
     settingsAfter.preview.length === 0 && settingsAfter.build === 1 &&
     JSON.stringify(settingsFree) === '[[false,null],[false,null],[false,null]]',
-    `${label}: baskı penceresi açıkken ayar değişince çıktı düğmeleri kapalı + aria-busy kalır; Kaydet ikinci iş başlatmaz`, JSON.stringify({ configured, settingsFree, settingsAfter }));
-  // menü ⌘P (olay yolu)
+    `${label}: when a setting changes while the print dialog is open the output buttons stay disabled + aria-busy; Save starts no second job`, JSON.stringify({ configured, settingsFree, settingsAfter }));
+  // menu ⌘P (event path)
   await clearNotice();
   await page.evaluate(() => window.__fake.listener.menu({ payload: 'file-print' }));
-  await finished(/Yazıcıya gönderildi/);
+  await finished(/Yazıcıya gönderildi/);  // turkish-ok: expected Turkish UI text
   const menu = await state();
-  check('print', menu.print.length === 1 && menu.notice === 'Yazıcıya gönderildi: test-37-dizilmis.pdf.', `${label}: Dosya > Yazdır… (⌘P menü olayı) baskı penceresini açar`, JSON.stringify(menu));
-  // Önizleme'de Aç: açıldı
+  check('print', menu.print.length === 1 && menu.notice === 'Yazıcıya gönderildi: test-37-dizilmis.pdf.', `${label}: File > Print… (⌘P menu event) opens the print dialog`, JSON.stringify(menu));  // turkish-ok: expected Turkish UI text
+  // Open in Preview: opened
   await clearNotice();
   await page.click('#inPreview-open');
-  await finished(/Önizleme/);
+  await finished(/Önizleme/);  // turkish-ok: expected Turkish UI text
   const on = await state();
-  check('print', on.notice === "Önizleme'de açıldı: test-37-dizilmis.pdf. Önizleme'den “Gerçek Boyut” (%100) ile basın." && JSON.stringify(on.preview) === '["test-37-dizilmis.pdf"]',
-    `${label}: Önizleme'de Aç → open_in_preview, "Gerçek Boyut" notu`, JSON.stringify(on));
-  // açılamadı (sandbox) → seçenek E: onay → Kaydet → kaydedildi + not
+  check('print', on.notice === "Önizleme'de açıldı: test-37-dizilmis.pdf. Önizleme'den “Gerçek Boyut” (%100) ile basın." && JSON.stringify(on.preview) === '["test-37-dizilmis.pdf"]',  // turkish-ok: expected Turkish UI text
+    `${label}: Open in Preview → open_in_preview, the "Gerçek Boyut" note`, JSON.stringify(on));  // turkish-ok: expected Turkish UI text
+  // could not open (sandbox) → option E: confirm → Save → saved + note
   await clearNotice();
-  await page.evaluate(() => { const s = window.__fake; s.previewOrder = ['The application “Preview” does not have permission to open “test-37-dizilmis.pdf.”']; s.askOrder = [true]; s.saveResponse = '/Users/deneme/Belgeler/test-37-dizilmis.pdf'; });
+  await page.evaluate(() => { const s = window.__fake; s.previewOrder = ['The application “Preview” does not have permission to open “test-37-dizilmis.pdf.”']; s.askOrder = [true]; s.saveResponse = '/Users/test/Documents/test-37-dizilmis.pdf'; });  // turkish-ok: expected Turkish UI text
   await page.click('#inPreview-open');
-  await finished(/Kaydedildi|açamadı|kaydedilmedi/);
+  await finished(/Kaydedildi|açamadı|kaydedilmedi/);  // turkish-ok: expected Turkish UI text
   const e = await state();
   await page.evaluate(() => { window.__fake.saveResponse = null; });
-  check('print', /^Kaydedildi: \/Users\/deneme\/Belgeler\/test-37-dizilmis\.pdf \(24 yüz\)\. Önizleme'de açıp “Gerçek Boyut” \(%100\) ile basın\.$/.test(e.notice) &&
-    e.questions.length === 1 && /^Önizleme PDF'i açamadı \(The application/.test(e.questions[0]) && JSON.stringify(e.save) === '["test-37-dizilmis.pdf"]',
-    `${label}: Önizleme açamadı → anlaşılır soru → Kaydet (seçenek E) + "Önizleme'de basın" notu`, JSON.stringify(e));
-  // açılamadı → Vazgeç
+  check('print', /^Kaydedildi: \/Users\/test\/Documents\/test-37-dizilmis\.pdf \(24 yüz\)\. Önizleme'de açıp “Gerçek Boyut” \(%100\) ile basın\.$/.test(e.notice) &&  // turkish-ok: expected Turkish UI text
+    e.questions.length === 1 && /^Önizleme PDF'i açamadı \(The application/.test(e.questions[0]) && JSON.stringify(e.save) === '["test-37-dizilmis.pdf"]',  // turkish-ok: expected Turkish UI text
+    `${label}: Preview could not open → a clear question → Save (option E) + the "Önizleme'de basın" note`, JSON.stringify(e));  // turkish-ok: expected Turkish UI text
+  // could not open → Cancel
   await clearNotice();
-  await page.evaluate(() => { const s = window.__fake; s.previewOrder = ['izin yok']; s.askOrder = [false]; });
+  await page.evaluate(() => { const s = window.__fake; s.previewOrder = ['no permission']; s.askOrder = [false]; });
   await page.click('#inPreview-open');
-  await finished(/açamadı|Kaydedildi/);
+  await finished(/açamadı|Kaydedildi/);  // turkish-ok: expected Turkish UI text
   const ev = await state();
-  check('print', ev.notice === "Önizleme PDF'i açamadı: izin yok" && ev.error && ev.save.length === 0, `${label}: Önizleme açamadı + Vazgeç → hata bildirimi, Kaydet yok`, JSON.stringify(ev));
-  check('print', download === 0, `${label}: yazdırma/Önizleme akışlarında tarayıcı indirmesi yok`, `${download} download`);
+  check('print', ev.notice === "Önizleme PDF'i açamadı: no permission" && ev.error && ev.save.length === 0, `${label}: Preview could not open + Cancel → an error notice, no Save`, JSON.stringify(ev));  // turkish-ok: expected Turkish UI text
+  check('print', download === 0, `${label}: no browser download in the printing/Preview flows`, `${download} download`);
 }
 
-/** tarayıcıda (platform.yazdir yok) yazdırma düğmeleri ve not gizli. */
+/** In the browser (no platform.print) the print buttons and the note are hidden. */
 async function printingHidden(page, label) {
-  await page.click('#tab-button-impose'); // görünürlük Düzenle sekmesi açıkken ölçülür
+  await page.click('#tab-button-impose'); // the visibility is measured with the Imposition tab open
   const g = await page.evaluate(() => ({ print: window.Mucellit.platform.print, field: document.getElementById('print-field').hidden, note: document.getElementById('print-note').hidden,
     visible: !!document.getElementById('print').offsetParent }));
-  check('print', g.print === null && g.field && g.note && !g.visible, `${label}: tarayıcıda Yazdır / Önizleme düğmeleri ve baskı notu gizli`, JSON.stringify(g));
+  check('print', g.print === null && g.field && g.note && !g.visible, `${label}: in the browser the Print / Preview buttons and the print note are hidden`, JSON.stringify(g));
 }
 
 /**
- * Tauri benzetiminde i18n.js hata atarsa (yüklenemezse) platform-tauri.js fazladan
- * konsol hatası üretmez: konsoldaki tek hata benzetimin kendisi (KC-BENZETIM); arayüz statik İngilizce, başlatma hatası
- * İngilizce bildirilir. Benzetim hataları kontrolden sonra düşülür (koşu sonu "konsol hatası yok" denetimi için).
+ * When i18n.js throws (cannot load) in the Tauri simulation, platform-tauri.js makes no extra console error: the only
+ * error in the console is the simulation itself (MC-SIMULATION); the interface is static English, the start-up error
+ * is reported in English. The simulation errors are dropped after the check (for the "no console error" check at the end of the run).
  */
 async function m3NoTauriI18n(page, address, iz, label) {
   await page.route('**/js/i18n.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'throw new Error("MC-SIMULATION i18n.js");' }));
@@ -1898,16 +1901,16 @@ async function m3NoTauriI18n(page, address, iz, label) {
   const fresh = iz.errors.slice(once);
   const outside = fresh.filter((h) => !/MC-SIMULATION/.test(h));
   check('print', b.name === 'tauri' && outside.length === 0 && fresh.length >= 1 && b.tab === 'Imposition' && /^The app couldn't start: /.test(b.notice) && /this Mac/.test(b.storage),
-    `${label}: i18n.js yokken platform-tauri.js fazladan konsol hatası üretmez (yalnız benzetim hatası); arayüz statik İngilizce, Mac saklama ipucu İngilizce, başlatma hatası bildirildi`,
+    `${label}: without i18n.js platform-tauri.js makes no extra console error (only the simulation error); the interface static English, the Mac storage hint English, the start-up error reported`,
     JSON.stringify({ ...b, console: fresh.map((h) => h.slice(0, 140)) }));
-  iz.errors.splice(once); // benzetim (ve varsa kaldı sayılan) hataları koşu sonu denetiminden düşülür; kontrol yukarıda
+  iz.errors.splice(once); // the simulation errors (and the ones counted as failed, if any) are dropped from the end-of-run check; the check is above
   await page.unroute('**/js/i18n.js');
 }
 
 /**
- * Başlangıç hatası benzetimi. (a) platform.hazir reddedilir, (b) i18n.js hata atar,
- * (c) tr sözlüğü bozuk. Üçünde de etiketler boş değil: (a) seçili dilde (tr-TR → Türkçe), (b) statik İngilizce
- * (index.html), (c) İngilizce ve uygulama çalışır. Benzetim hataları (KC-BENZETIM) konsol denetiminden düşülür.
+ * Start-up error simulation. (a) platform.ready is rejected, (b) i18n.js throws, (c) the tr dictionary is broken. In
+ * all three the labels are not empty: (a) in the chosen language (tr-TR → Turkish), (b) static English (index.html),
+ * (c) English and the app works. The simulation errors (MC-SIMULATION) are dropped from the console check.
  */
 async function m6StartupError(page, address, iz, label) {
   const I18n = require('../js/i18n.js');
@@ -1916,7 +1919,7 @@ async function m6StartupError(page, address, iz, label) {
   const labels = () => page.evaluate(() => Array.from(document.querySelectorAll('[data-i18n]')).map((e) => [e.getAttribute('data-i18n'), e.textContent]));
   const different = (l, s) => l.filter(([a, m]) => !m || m !== s[a]);
   const platformJs = readFileSync(join(APP, 'js', 'platform.js'), 'utf8');
-  if (!platformJs.includes('ready: Promise.resolve(),')) throw new Error('platform.js benzetim noktası bulunamadı');
+  if (!platformJs.includes('ready: Promise.resolve(),')) throw new Error('platform.js simulation point not found');
   const fallSimulation = () => { const once = iz.errors.length; iz.errors = iz.errors.filter((h) => !/MC-SIMULATION/.test(h)); return once - iz.errors.length; };
   // (a)
   await page.route('**/js/platform.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: platformJs.replace('ready: Promise.resolve(),', "ready: Promise.reject(new Error('MC-SIMULATION ready')),") }));
@@ -1925,10 +1928,10 @@ async function m6StartupError(page, address, iz, label) {
   const a = await page.evaluate(() => ({ lang: document.documentElement.lang, ready: document.documentElement.getAttribute('data-ready'), notice: document.getElementById('notice').textContent,
     options: document.getElementById('i18n-select').options.length }));
   const la = await labels();
-  check('i18n', la.length >= 100 && different(la, TR).length === 0 && a.lang === 'tr' && a.ready === null && /^Uygulama başlatılamadı: MC-SIMULATION ready$/.test(a.notice) && a.options === 3,
-    `${label}: (a) platform.ready reddedildi: ${la.length} etiket boş değil ve Türkçe (tr-TR), dil seçici dolu, başlatma hatası bildirildi`, JSON.stringify({ ...a, difference: different(la, TR).slice(0, 3) }));
+  check('i18n', la.length >= 100 && different(la, TR).length === 0 && a.lang === 'tr' && a.ready === null && /^Uygulama başlatılamadı: MC-SIMULATION ready$/.test(a.notice) && a.options === 3,  // turkish-ok: expected Turkish UI text
+    `${label}: (a) platform.ready rejected: ${la.length} labels not empty and in Turkish (tr-TR), language picker filled, start-up error reported`, JSON.stringify({ ...a, difference: different(la, TR).slice(0, 3) }));
   await page.unroute('**/js/platform.js');
-  fallSimulation(); // (a): benzetimde hazir oluşturulurken reddedildiği için tarayıcı "işlenmemiş red" de yazabilir
+  fallSimulation(); // (a): as ready is rejected while being created in the simulation, the browser may also write "unhandled rejection"
   // (b)
   await page.route('**/js/i18n.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'throw new Error("MC-SIMULATION i18n.js");' }));
   await page.goto(address);
@@ -1938,11 +1941,11 @@ async function m6StartupError(page, address, iz, label) {
   const bError = iz.errors.slice();
   const bFallen = fallSimulation();
   check('i18n', lb.length >= 100 && different(lb, EN).length === 0 && b.lang === 'en' && b.aria === 'Language' && /^The app couldn't start: /.test(b.notice) && bFallen >= 1,
-    `${label}: (b) i18n.js hata attı: ${lb.length} etiket statik İngilizce (index.html), başlatma hatası İngilizce bildirildi`, JSON.stringify({ ...b, difference: different(lb, EN).slice(0, 3), console: bError.slice(0, 3).map((h) => h.slice(0, 120)) }));
-  // (b)'de başka hata (benzetimin dolaylı sonucu) varsa ayrıca görünür kalsın diye listelenir ve düşülür
+    `${label}: (b) i18n.js threw: ${lb.length} labels static English (index.html), the start-up error reported in English`, JSON.stringify({ ...b, difference: different(lb, EN).slice(0, 3), console: bError.slice(0, 3).map((h) => h.slice(0, 120)) }));
+  // in (b) any other error (an indirect result of the simulation) is listed so that it stays visible, and dropped
   const indirect = iz.errors.length;
   iz.errors = [];
-  check('i18n', indirect <= 3, `${label}: (b) i18n.js yokken benzetim dışı konsol hatası en çok birkaç dolaylı hata (${indirect})`, JSON.stringify(bError.map((h) => h.slice(0, 120))));
+  check('i18n', indirect <= 3, `${label}: (b) without i18n.js at most a few indirect console errors outside the simulation (${indirect})`, JSON.stringify(bError.map((h) => h.slice(0, 120))));
   await page.unroute('**/js/i18n.js');
   // (c)
   await page.route('**/i18n/tr.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'self.MucellitDictionaries = (self.MucellitDictionaries || []).concat([{ "_name": "MC-SIMULATION corrupt" }]);' }));
@@ -1951,30 +1954,30 @@ async function m6StartupError(page, address, iz, label) {
   const lc = await labels();
   const c = await page.evaluate(() => ({ lang: document.documentElement.lang, code: window.Mucellit.i18n.code(), languages: window.Mucellit.i18n.languages() }));
   check('i18n', lc.length >= 100 && different(lc, EN).length === 0 && c.lang === 'en' && c.code === 'en' && JSON.stringify(c.languages) === '["en"]',
-    `${label}: (c) tr sözlüğü bozuk: i18n.js çalışır, tr-TR kullanıcısı İngilizce görür, uygulama başlar`, JSON.stringify({ ...c, difference: different(lc, EN).slice(0, 3) }));
+    `${label}: (c) the tr dictionary broken: i18n.js runs, a tr-TR user sees English, the app starts`, JSON.stringify({ ...c, difference: different(lc, EN).slice(0, 3) }));
   await page.unroute('**/i18n/tr.js');
-  // benzetimden sonra olağan açılış
+  // the normal start-up after the simulation
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const ld = await labels();
-  check('i18n', different(ld, TR).length === 0, `${label}: benzetim kalkınca olağan Türkçe açılış`, JSON.stringify(different(ld, TR).slice(0, 3)));
+  check('i18n', different(ld, TR).length === 0, `${label}: the normal Turkish start-up when the simulation is removed`, JSON.stringify(different(ld, TR).slice(0, 3)));
 }
 
 // ------------------------------------------------------------------
-// Öğren rehberi
+// Learn guide
 // ------------------------------------------------------------------
 const LEARN_FOLDER = join(APP, 'js', 'learn');
 const { inject: injectLearnCheck } = require('./learn-probe.cjs');
 /**
- * denetim arayüzü yalnız testte. learn.js isteği yakalanır, ürün dosyası test enjeksiyonuyla sunulur
- * (app/test/learn-probe.cjs; kapanıştan önce KitapCilt.ogren.denetim eklenir). Ürün kodu diskte değişmez.
+ * The probe interface only in the test. The learn.js request is caught and the product file is served with the test
+ * injection (app/test/learn-probe.cjs; Mucellit.learn.probe is added before the closing). The product code on disk does not change.
  */
 async function setupLearnCheck(page) {
   const source = injectLearnCheck(readFileSync(join(LEARN_FOLDER, 'learn.js'), 'utf8'));
   await page.route('**/js/learn/learn.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: source }));
 }
 const LEARN_LICENSE = readFileSync(join(LEARN_FOLDER, 'LICENSE'), 'utf8').trim();
-/** Rehber betiklerinin üst düzey bildirdiği adlar (global ad denetimi adayları). */
+/** The names the guide scripts declare at the top level (candidates for the global name check). */
 function learnCandidates() {
   const l = [];
   (function walk(k) { for (const g of readdirSync(k, { withFileTypes: true })) { const y = join(k, g.name); if (g.isDirectory()) walk(y); else if (g.name.endsWith('.js')) l.push(y); } })(LEARN_FOLDER);
@@ -1985,12 +1988,12 @@ function learnCandidates() {
   }
   return [...candidate];
 }
-/** Test izleri (Playwright enjekte eder; ürün kodu değil): CSP ihlalleri ve rAF çağrı sayısı. */
+/** Test traces (injected by Playwright; not product code): CSP violations and the rAF call count. */
 const LEARN_IZ = `(() => { window.__kcCsp = []; document.addEventListener('securitypolicyviolation', (e) => window.__kcCsp.push(e.violatedDirective + ' ' + (e.blockedURI || '')));
   const r = window.requestAnimationFrame.bind(window); window.__kcRaf = 0; window.requestAnimationFrame = (f) => { window.__kcRaf++; return r(f); }; })();`;
 const learnState = (page) => page.evaluate(() => { const d = window.Mucellit.learn.probe.state();
   return { a: d.a, i: d.i, n: d.n, flow: d.flow, finished: d.finished, playing: d.playing, installed: d.installed, visible: d.visible, figure: d.figure, manual: d.manual, match: d.match, input: d.input, isOpen: d.st ? d.st.open : null, done: d.done }; });
-/** Sayı paneli tablosu: { anahtar: [sayılar] } (dilin ondalık/binlik ayracıyla okunur). */
+/** The numbers panel table: { key: [numbers] } (read with the decimal/thousands separator of the language). */
 function extractNumbers(text, i18n) {
   return (String(text).match(/\d[\d.,]*/g) || []).map((x) => Number(i18n === 'tr' ? x.replace(/\./g, '').replace(',', '.') : x.replace(/,/g, '')));
 }
@@ -2006,23 +2009,23 @@ async function writeCalculator(page, id, value) {
   else { await page.fill('#' + id, String(value)); await page.dispatchEvent('#' + id, 'change'); }
 }
 
-/** Öğren koşusu (sunucu, Tauri CSP başlığı). dil: 'tr' | 'en' (tarayıcı yerel ayarı). */
+/** Learn run (server, Tauri CSP header). language: 'tr' | 'en' (browser locale). */
 async function m7LearnFlow(page, address, iz, label, i18n) {
   const D = require('../js/i18n.js');
-  const PROMISE = D.extractJson(readFileSync(join(APP, 'i18n', i18n + '.js'), 'utf8'));
+  const DICT = D.extractJson(readFileSync(join(APP, 'i18n', i18n + '.js'), 'utf8'));
   await page.addInitScript({ content: LEARN_IZ });
   await setupLearnCheck(page);
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
-  // ---- sekme açılmadan rehber kurulmaz; boşta rAF yok
+  // ---- the guide is not set up before the tab opens; no rAF when idle
   const r0 = await page.evaluate(() => window.__kcRaf);
   await page.waitForTimeout(600);
   const once = await learnState(page);
   const blank = await page.evaluate((r0) => ({ stage: document.getElementById('guide-stage').childElementCount, raf: window.__kcRaf - r0, hidden: document.getElementById('tab-learn').hidden,
     tab: document.getElementById('tab-button-learn').textContent }), r0);
-  check('learn', !once.installed && !once.figure && blank.stage === 0 && blank.raf === 0 && blank.hidden && blank.tab === PROMISE['tab.learn'],
-    `${label}: Öğren sekmesi açılmadan rehber kurulmaz, figür ve rAF yok; 4. sekme "${PROMISE['tab.learn']}"`, JSON.stringify({ once, blank }));
-  // ---- sekme açılır; panel öntanımlıları Hesapla ile aynı (aynı sonuç nesnesi)
+  check('learn', !once.installed && !once.figure && blank.stage === 0 && blank.raf === 0 && blank.hidden && blank.tab === DICT['tab.learn'],
+    `${label}: the guide is not set up before the Learn tab opens, no figure and no rAF; tab 4 "${DICT['tab.learn']}"`, JSON.stringify({ once, blank }));
+  // ---- the tab opens; the panel defaults are the same as the Calculator (the same result object)
   await page.click('#tab-button-learn');
   await page.waitForFunction(() => window.Mucellit.learn.probe.state().figure, null, { timeout: 10000 });
   const open = await learnState(page);
@@ -2034,31 +2037,31 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const field = await page.evaluate(() => ['signatureCount', 'sheetsPerSignature', 'bookWidth', 'bookHeight', 'paperThickness'].map((a) => document.getElementById('guide-g-' + a).value));
   check('learn', open.installed && open.figure && open.visible && !open.manual && same && difference.length === 0 && Object.keys(og).length >= 12 && og.page[0] === 208 && og.signature[0] === 13 &&
     JSON.stringify(field) === JSON.stringify(['13', '4', '148', '210', i18n === 'tr' ? '0,1' : '0.1']),
-    `${label}: sekme açılınca rehber kurulur; sayı paneli öntanımlıları Hesapla ile aynı (aynı hesap sonucu nesnesi, 12 değer)`, JSON.stringify({ difference, same, field, og: og.page }));
-  // ---- global ad: yalnız KitapCilt altında
+    `${label}: the guide is set up when the tab opens; the numbers panel defaults are the same as the Calculator (the same calculation result object, 12 values)`, JSON.stringify({ difference, same, field, og: og.page }));
+  // ---- global names: only under Mucellit
   const candidate = learnCandidates();
   const base = new Set(await page.evaluate(() => { const f = document.createElement('iframe'); document.body.appendChild(f); const l = Object.getOwnPropertyNames(f.contentWindow); f.remove(); return l; }));
   const defined = [];
   for (const a of candidate) { if (base.has(a)) continue; if (await page.evaluate(`typeof ${a} !== 'undefined'`).catch(() => false)) defined.push(a); }
-  // id'li öğeler tarayıcının adlı erişimiyle (window.fig === #fig) görünür: betik bildirimi değil, ayrı sayılır
+  // elements with an id show through the browser's named access (window.fig === #fig): not a script declaration, counted apart
   const idElement = await page.evaluate((l) => l.filter((a) => { const e = document.getElementById(a); return !!e && window[a] === e; }), defined);
   const reported = defined.filter((a) => !idElement.includes(a));
   const window = await page.evaluate(() => ({ name: ['__st', '__ln', 'CF_SPEED', 'FIG_A', 'LBL_U', 'cfMount', 'mountFigure', 'PALS'].filter((a) => a in window),
     learn: Object.keys(window.Mucellit.learn).sort(), nolabels: document.documentElement.classList.contains('nolabels'), accent: document.documentElement.style.getPropertyValue('--accent'),
     dataErrors: document.documentElement.hasAttribute('data-errors') }));
   check('learn', reported.length === 0 && window.name.length === 0 && !window.nolabels && !window.accent && !window.dataErrors && ['cf', 'probe', 'size', 'tab'].every((a) => window.learn.includes(a)),
-    `${label}: global ad yalnız Mucellit altında (${candidate.length} aday bildirimden küresel ${reported.length}; id'li öğe adları ayrı: ${idElement.length}; html sınıf/değişken/data-errors kalıntısı yok)`, JSON.stringify({ reported, idElement, window }));
-  // ---- lisans paneli (Mac'te kullanıcının erişebildiği MIT tam metni)
+    `${label}: global names only under Mucellit (${candidate.length} candidate declarations, global ${reported.length}; names of elements with an id apart: ${idElement.length}; no html class/variable/data-errors leftover)`, JSON.stringify({ reported, idElement, window }));
+  // ---- licence panel (the full MIT text the user can reach on the Mac)
   const lis = await page.evaluate(() => { const d = document.getElementById('guide-license'), p = document.getElementById('guide-license-text');
-    // görünürlük: checkVisibility (kapalı details içeriği content-visibility ile gizli; offsetHeight Chromium'da 0 değil)
+    // visibility: checkVisibility (the content of a closed details is hidden with content-visibility; offsetHeight is not 0 in Chromium)
     const visible = (e) => (typeof e.checkVisibility === 'function' ? e.checkVisibility() : e.offsetHeight > 0);
     const r = { var: !!d && !!p && !!d.closest('#guide-root'), summary: d ? d.querySelector('summary').textContent : '', closed: p ? !d.open && !visible(p) : null };
     if (d) d.querySelector('summary').click();
     return { ...r, isOpen: p ? d.open && visible(p) && p.offsetHeight > 0 : null, text: p ? p.textContent.trim() : '', lang: p ? p.lang : '', footnote: document.querySelector('#guide-root [data-i18n="learn.license"]').textContent }; });
   await page.evaluate(() => { const d = document.getElementById('guide-license'); if (d) d.open = false; });
-  check('learn', lis.var && lis.summary === PROMISE['learn.license_text'] && lis.closed && lis.isOpen && lis.text === LEARN_LICENSE && lis.lang === 'en' && lis.footnote === PROMISE['learn.license'],
-    `${label}: Öğren'de "${PROMISE['learn.license_text']}" paneli açılır, MIT tam metni js/learn/LICENSE ile birebir`, JSON.stringify({ ...lis, text: lis.text.slice(0, 40) }));
-  // ---- 10 aşama, 45 adım (4×)
+  check('learn', lis.var && lis.summary === DICT['learn.license_text'] && lis.closed && lis.isOpen && lis.text === LEARN_LICENSE && lis.lang === 'en' && lis.footnote === DICT['learn.license'],
+    `${label}: in Learn the "${DICT['learn.license_text']}" panel opens, the full MIT text exactly js/learn/LICENSE`, JSON.stringify({ ...lis, text: lis.text.slice(0, 40) }));
+  // ---- 10 stages, 45 steps (4×)
   await page.selectOption('#guide-speed', '4');
   const lesson = await page.evaluate(() => window.Mucellit.learn.probe.lessons.map((d) => d.steps.length));
   const rest = [];
@@ -2073,17 +2076,17 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   }
   const lastStep = await learnState(page);
   const card = await page.textContent('#guide-step-title');
-  check('learn', step === 45 && lesson.length === 10 && rest.length === 0 && lastStep.a === 9 && lastStep.i === 4 && card === PROMISE['learn.finished_title'],
-    `${label}: 10 aşamanın 45 adımı oynatıldı (4×), hepsi başladı ve bitti; son kart "${PROMISE['learn.finished_title']}"`, JSON.stringify({ step, rest, last: [lastStep.a, lastStep.i], card }));
-  // ---- Örnek Kitap (elle) ve elle değişikliğin Hesapla'ya geçmemesi
+  check('learn', step === 45 && lesson.length === 10 && rest.length === 0 && lastStep.a === 9 && lastStep.i === 4 && card === DICT['learn.finished_title'],
+    `${label}: the 45 steps of the 10 stages played (4×), all started and finished; last card "${DICT['learn.finished_title']}"`, JSON.stringify({ step, rest, last: [lastStep.a, lastStep.i], card }));
+  // ---- Sample Book (by hand) and a manual change not passing to the Calculator
   const ond = i18n === 'tr' ? '0,1' : '0.1';
   const accept = await page.evaluate((ond) => window.Mucellit.learn.probe.numbers({ signatureCount: '11', sheetsPerSignature: '4', bookWidth: '148', bookHeight: '210', paperThickness: ond }), ond);
   const tbElle = tbFarki(await learnTable(page, i18n));
   const manual = await learnState(page);
   const hValue = await page.evaluate(() => document.getElementById('h-pageCount').value);
   check('learn', accept === true && tbElle.length === 0 && manual.manual && hValue === '200',
-    `${label}: Örnek Kitap (11 forma × 4, 148 × 210, 0,1 mm) panelde birebir; elle değişiklik Hesapla'yı değiştirmez`, JSON.stringify({ tbElle, manual: manual.manual, hValue }));
-  // ---- Hesapla değişir: rehber elle değerlerde kalır; "Hesapla'dan al" bağlar; bağlıyken Hesapla'yı izler (TB Hesapla'dan)
+    `${label}: Sample Book (11 signatures × 4, 148 × 210, 0.1 mm) exactly in the panel; a manual change does not change the Calculator`, JSON.stringify({ tbElle, manual: manual.manual, hValue }));
+  // ---- the Calculator changes: the guide keeps the manual values; "Use values from the Calculator tab" binds; while bound it follows the Calculator (base from the Calculator)
   await writeCalculator(page, 'h-pageCount', 300);
   await page.click('#tab-button-learn');
   const manualStays = await learnState(page);
@@ -2092,12 +2095,12 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   await writeCalculator(page, 'h-pageCount', 162);
   await page.click('#tab-button-learn');
   const tracks = await learnState(page), tbCalculator = tbFarki(await learnTable(page, i18n));
-  const ayni2 = await page.evaluate(() => window.Mucellit.learn.probe.state().size.calc === window.Mucellit.calculator.state().result);
+  const same2 = await page.evaluate(() => window.Mucellit.learn.probe.state().size.calc === window.Mucellit.calculator.state().result);
   check('learn', manualStays.manual && manualStays.input.signatureCount === 11 && !taken.manual && taken.input.signatureCount === 19 && takeTable.page[0] === 304 &&
-    !tracks.manual && tracks.input.signatureCount === 11 && tbCalculator.length === 0 && ayni2,
-    `${label}: Hesapla değişince elle değerler kalır; "${PROMISE['learn.take_from_calculator']}" Hesapla'ya bağlar (300 sayfa → 19 forma); bağlıyken Hesapla'yı izler (162 sayfa → Örnek Kitap birebir)`,
-    JSON.stringify({ manualStays: [manualStays.manual, manualStays.input.signatureCount], taken: [taken.manual, taken.input.signatureCount, takeTable.page], tracks: [tracks.manual, tracks.input.signatureCount], tbCalculator, ayni2 }));
-  // ---- Hesapla'da tek yaprak: rehber formalı çizer, uyum notu görünür; Hesapla hatalıysa not, önceki sayılar kalır
+    !tracks.manual && tracks.input.signatureCount === 11 && tbCalculator.length === 0 && same2,
+    `${label}: when the Calculator changes the manual values stay; "${DICT['learn.take_from_calculator']}" binds to the Calculator (300 pages → 19 signatures); while bound it follows the Calculator (162 pages → Sample Book exactly)`,
+    JSON.stringify({ manualStays: [manualStays.manual, manualStays.input.signatureCount], taken: [taken.manual, taken.input.signatureCount, takeTable.page], tracks: [tracks.manual, tracks.input.signatureCount], tbCalculator, same2 }));
+  // ---- single leaf in the Calculator: the guide draws sewn, the match note shows; with a Calculator error a note, the previous numbers stay
   await writeCalculator(page, 'h-bindingType', 'single1');
   await page.click('#tab-button-learn');
   const match = await page.evaluate(() => ({ note: !document.getElementById('guide-match').hidden, d: window.Mucellit.learn.probe.state().match }));
@@ -2109,9 +2112,9 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   await writeCalculator(page, 'h-bookWidth', 148);
   await page.click('#tab-button-learn');
   const fixed = await page.evaluate(() => ({ note: document.getElementById('guide-number-note').hidden, match: document.getElementById('guide-match').hidden }));
-  check('learn', match.note && match.d === false && matchTb.length === 0 && failed.note === PROMISE['learn.calculator_error'] && failed.signature === 11 && fixed.note && fixed.match,
-    `${label}: Hesapla tek yaprakken rehber formalı + düz sırt çizer ve not gösterir; Hesapla hatalıyken önceki sayılar kalır, düzelince not kalkar`, JSON.stringify({ match, matchTb, failed, fixed }));
-  // ---- Öğren açıkken sekme yeniden basılınca rehber söküp yeniden kurulmaz; "baştan sona" adım atlamaz
+  check('learn', match.note && match.d === false && matchTb.length === 0 && failed.note === DICT['learn.calculator_error'] && failed.signature === 11 && fixed.note && fixed.match,
+    `${label}: with single leaf in the Calculator the guide draws sewn + flat spine and shows a note; with a Calculator error the previous numbers stay, the note goes away when fixed`, JSON.stringify({ match, matchTb, failed, fixed }));
+  // ---- with Learn open, pressing the tab again does not tear the guide down and set it up again; "start to end" skips no step
   await page.evaluate(() => window.Mucellit.learn.probe.setup(0, 0));
   await page.click('#guide-fromStart-toEnd');
   await page.waitForFunction(() => { const d = window.Mucellit.learn.probe.state(); return d.flow && d.playing && d.i >= 1; }, null, { timeout: 20000 });
@@ -2121,12 +2124,12 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
     return { sameSt: d.st === window.__kcSt, sameStage: document.getElementById('guide-stage').firstElementChild === window.__kcStage, playing: d.playing, flow: d.flow, a: d.a, i: d.i }; });
   await page.waitForFunction(([a, i]) => { const d = window.Mucellit.learn.probe.state(); return d.a !== a || d.i !== i || !d.flow; }, [yb0.a, yb0.i], { timeout: 20000 });
   const yb2 = await learnState(page);
-  await page.click('#guide-fromStart-toEnd');   // durdur
+  await page.click('#guide-fromStart-toEnd');   // stop
   await page.waitForFunction(() => !window.Mucellit.learn.probe.state().flow, null, { timeout: 10000 });
   check('learn', yb1.sameSt && yb1.sameStage && yb1.playing && yb1.flow && yb2.flow && yb2.a === yb0.a && yb2.i === yb0.i + 1,
-    `${label}: "baştan sona" sürerken Öğren sekmesi yeniden basılınca figür yeniden kurulmaz, oynayan adım sürer, sonraki adım sırayla (adım atlanmaz)`,
+    `${label}: pressing the Learn tab again while "start to end" runs does not set the figure up again, the playing step goes on, the next step in turn (no step skipped)`,
     JSON.stringify({ once: yb0, after: yb1, first: [yb2.a, yb2.i, yb2.flow] }));
-  // ---- sekme değişince "baştan sona" durur, figür sökülür, rAF çağrısı yok; geri dönünce aynı yerden kurulur
+  // ---- when the tab changes "start to end" stops, the figure is removed, no rAF call; back again it is set up at the same place
   await page.evaluate(() => window.Mucellit.learn.probe.setup(2, 0));
   await page.click('#guide-fromStart-toEnd');
   await page.waitForTimeout(1500);
@@ -2142,9 +2145,9 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   await page.click('#tab-button-learn');
   const restored = await learnState(page);
   check('learn', whilePlaying.flow && !immediately.flow && !immediately.figure && !immediately.visible && stage === 0 && rb - ra === 0 && hiddenPosition.a === whilePlaying.a && restored.figure && restored.a === hiddenPosition.a && !restored.flow,
-    `${label}: sekme değişince "baştan sona" durur, figür sökülür, gizli sekmede rAF çağrısı 0 (1,2 sn); geri dönünce aynı aşamada kurulur`,
+    `${label}: when the tab changes "start to end" stops, the figure is removed, rAF calls 0 in the hidden tab (1.2 s); back again set up at the same stage`,
     JSON.stringify({ whilePlaying: [whilePlaying.flow, whilePlaying.a], immediately: [immediately.flow, immediately.figure], stage, raf: rb - ra, restored: [restored.figure, restored.a] }));
-  // ---- baştan sona oynat (4×): sona kadar, sıra 1→10, son karede kapak kapalı
+  // ---- play from start to end (4×): to the end, order 1→10, the cover closed in the last frame
   await page.evaluate(() => window.Mucellit.learn.probe.setup(0, 0));
   const t0 = Date.now();
   await page.click('#guide-fromStart-toEnd');
@@ -2157,13 +2160,13 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
     await new Promise((r) => setTimeout(r, 250));
   }
   const button = await page.textContent('#guide-fromStart-toEnd');
-  check('learn', last && last.finished && last.a === 9 && last.i === 4 && last.isOpen === 0 && JSON.stringify(order) === '[1,2,3,4,5,6,7,8,9,10]' && button === PROMISE['learn.from_start_to_end'],
-    `${label}: baştan sona oynat (4×) bitti: aşama sırası 1→10, son aşamada 4/4, kapak kapalı (${Math.round((Date.now() - t0) / 1000)} sn)`, JSON.stringify({ order, last: last && [last.finished, last.a, last.i, last.isOpen], button }));
-  // ---- CSP ihlali 0 (Tauri CSP başlığı), eksik anahtar 0, uygulama bildiriminde hata yok
-  const sonIz = await page.evaluate(() => ({ csp: window.__kcCsp.slice(), missing: window.Mucellit.i18n.missingKeys().filter((a) => /^(ogren|sekme)\./.test(a)), notice: document.getElementById('notice').className }));
-  check('learn', sonIz.csp.length === 0 && sonIz.missing.length === 0 && !/hata/.test(sonIz.notice),
-    `${label}: Öğren boyunca CSP ihlali 0 (Tauri CSP başlığı), eksik ogren.* anahtarı 0, hata bildirimi yok`, JSON.stringify(sonIz));
-  // ---- dil değişimi: yeniden yüklemeden sonra Öğren sekmesi açık, rehber yeni dilde, aşama/adım korunur
+  check('learn', last && last.finished && last.a === 9 && last.i === 4 && last.isOpen === 0 && JSON.stringify(order) === '[1,2,3,4,5,6,7,8,9,10]' && button === DICT['learn.from_start_to_end'],
+    `${label}: play from start to end (4×) finished: stage order 1→10, 4/4 at the last stage, cover closed (${Math.round((Date.now() - t0) / 1000)} sn)`, JSON.stringify({ order, last: last && [last.finished, last.a, last.i, last.isOpen], button }));
+  // ---- CSP violations 0 (Tauri CSP header), missing keys 0, no error in the app notice
+  const lastTrace = await page.evaluate(() => ({ csp: window.__kcCsp.slice(), missing: window.Mucellit.i18n.missingKeys().filter((a) => /^(learn|tab)\./.test(a)), notice: document.getElementById('notice').className }));  // turkish-ok: expected Turkish UI text
+  check('learn', lastTrace.csp.length === 0 && lastTrace.missing.length === 0 && !/hata/.test(lastTrace.notice),  // turkish-ok: expected Turkish UI text
+    `${label}: during Learn CSP violations 0 (Tauri CSP header), missing learn.* keys 0, no error notice`, JSON.stringify(lastTrace));
+  // ---- language change: after the reload the Learn tab is open, the guide in the new language, stage/step kept
   const other = i18n === 'tr' ? 'en' : 'tr';
   const OTHER = D.extractJson(readFileSync(join(APP, 'i18n', other + '.js'), 'utf8'));
   await page.evaluate(() => window.Mucellit.learn.probe.setup(2, 2));
@@ -2179,15 +2182,15 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const visible = other === 'en' ? await visibleText(page) : '';
   check('learn', ym.lang === other && ym.tab === OTHER['tab.learn'] && ym.selected === 'true' && ym.title === OTHER['learn.title'] && ym.step === OTHER['learn.sewing.second.title'] &&
     ym.play === OTHER['learn.play'] && yd.a === 2 && yd.i === 2 && (other !== 'en' || !trLetter(visible)),
-    `${label}: dil ${i18n} → ${other}: yeniden yüklemeden sonra Öğren açık, rehber ${other} (başlık, adım, düğme), aşama 3 adım 3 korunur${other === 'en' ? ', görünen metinde Türkçe harf yok' : ''}`,
+    `${label}: language ${i18n} → ${other}: after the reload Learn is open, the guide ${other} (title, step, button), stage 3 step 3 kept${other === 'en' ? ', no Turkish letter in the visible text' : ''}`,
     JSON.stringify({ ym, position: [yd.a, yd.i], tr: other === 'en' ? (visible.match(new RegExp('.{0,20}' + TR_LETTER.source + '.{0,20}')) || [''])[0] : '' }));
   const afterProgress = await page.evaluate(() => document.getElementById('guide-progress-text').textContent.match(/\d+/g).join('/'));
   check('learn', onceDone.reduce((s, v) => s + v, 0) > 0 && JSON.stringify(yd.done) === JSON.stringify(onceDone) && afterProgress === onceProgress,
-    `${label}: dil ${i18n} → ${other}: aşamaların ilerlemesi (tamam) ve genel ilerleme (${onceProgress}) korunur`, JSON.stringify({ onceDone, after: yd.done, onceProgress, afterProgress }));
+    `${label}: language ${i18n} → ${other}: the progress of the stages (done) and the overall progress (${onceProgress}) kept`, JSON.stringify({ onceDone, after: yd.done, onceProgress, afterProgress }));
   await noMissingKey(page, label + ' (' + other + ')');
 }
 
-/** prefers-reduced-motion: 45 adımın her biri animasyonsuz biter (≤150 ms, ≤1 çizim, adım sonu durumu, geçiş 0 sn). */
+/** prefers-reduced-motion: each of the 45 steps finishes without animation (≤150 ms, ≤1 frame, the step end state, transition 0 s). */
 async function m7ReduceLearn(browser, address, label, local) {
   const ctx = await browser.newContext({ locale: local, reducedMotion: 'reduce', viewport: { width: 1280, height: 860 } });
   const page = await ctx.newPage();
@@ -2215,22 +2218,22 @@ async function m7ReduceLearn(browser, address, label, local) {
       }, [a, j]);
       step++;
       const problem = [];
-      if (r.ok !== true) problem.push('başlamadı'); if (r.sure > 150) problem.push(`süre ${r.sure} ms`); if (r.drawing > 1) problem.push(`${r.drawing} gap square`);
-      if (r.difference.length) problem.push('son durum farklı: ' + r.difference.join(',')); if (!/^0s(, 0s)*$/.test(r.transition)) problem.push('geçiş ' + r.transition);
+      if (r.ok !== true) problem.push('did not start'); if (r.sure > 150) problem.push(`duration ${r.sure} ms`); if (r.drawing > 1) problem.push(`${r.drawing} gap square`);
+      if (r.difference.length) problem.push('end state differs: ' + r.difference.join(',')); if (!/^0s(, 0s)*$/.test(r.transition)) problem.push('transition ' + r.transition);
       if (problem.length) fail.push(`${a + 1}.${j + 1}: ${problem.join(', ')}`);
     }
-    check('learn', step === 45 && fail.length === 0, `${label}: prefers-reduced-motion: 45 adımın her biri animasyonsuz biter (≤150 ms, ≤1 çizim, adım sonu durumu, geçiş 0 sn)`, JSON.stringify({ step, fail: fail.slice(0, 5) }));
+    check('learn', step === 45 && fail.length === 0, `${label}: prefers-reduced-motion: each of the 45 steps finishes without animation (≤150 ms, ≤1 frame, the step end state, transition 0 s)`, JSON.stringify({ step, fail: fail.slice(0, 5) }));
   } catch (e) {
-    check('learn', false, `${label}: hareketi azalt koşusu yarıda kaldı: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
+    check('learn', false, `${label}: the reduced motion run stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
   }
-  check('learn', iz.errors.length === 0, `${label}: hareketi azalt koşusunda konsol hatası yok`, iz.errors.slice(0, 3).join(' | ') || '0 hata');
+  check('learn', iz.errors.length === 0, `${label}: no console error in the reduced motion run`, iz.errors.slice(0, 3).join(' | ') || '0 errors');
   await ctx.close();
 }
 
 /**
- * file:// ve Tauri benzetimi için kısa Öğren denetimi, yalnız DOM'la (ürün kodu olduğu gibi; test enjeksiyonu yok):
- * sekme (ya da menü olayı) rehberi açar, bir adım oynar; ürün kodunda denetim arayüzü yok; yeniden basınca yeniden
- * kurulmaz.
+ * A short Learn check for file:// and the Tauri simulation, with the DOM only (the product code as it is; no test
+ * injection): the tab (or the menu event) opens the guide, a step plays; no probe interface in the product code; not
+ * set up again when pressed again.
  */
 async function m7LearnSmoke(page, address, label, menu) {
   await page.goto(address);
@@ -2244,27 +2247,27 @@ async function m7LearnSmoke(page, address, label, menu) {
   const d = await page.evaluate(() => ({ selected: document.getElementById('tab-button-learn').getAttribute('aria-selected'), visible: !document.getElementById('tab-learn').hidden,
     finished: document.querySelectorAll('#guide-steps li.finished').length, current: Array.from(document.querySelectorAll('#guide-steps li')).findIndex((l) => l.classList.contains('current')) }));
   check('learn', d.selected === 'true' && d.visible && d.finished === 1 && d.current === 1,
-    `${label}: ${menu ? 'menü olayı "tab-learn" (Görünüm > Öğren ⌘4)' : 'Öğren sekmesi'} rehberi açar, ilk adım oynar`, JSON.stringify(d));
+    `${label}: ${menu ? 'menu event "tab-learn" (View > Learn ⌘4)' : 'Learn tab'} opens the guide, the first step plays`, JSON.stringify(d));
   const product = await page.evaluate(() => Object.keys(window.Mucellit.learn).sort());
   check('learn', !product.includes('probe') && product.includes('tab'),
-    `${label}: ürün kodunda test arayüzü yok (Mucellit.learn.probe tanımsız; yalnız sekme/olcu/cf/…)`, JSON.stringify(product));
+    `${label}: no test interface in the product code (Mucellit.learn.probe undefined; only tab/size/cf/…)`, JSON.stringify(product));
   await page.evaluate(() => { window.__kcStage = document.getElementById('guide-stage').firstElementChild; });
   await open();
   const y = await page.evaluate(() => ({ same: document.getElementById('guide-stage').firstElementChild === window.__kcStage, finished: document.querySelectorAll('#guide-steps li.finished').length,
     current: Array.from(document.querySelectorAll('#guide-steps li')).findIndex((l) => l.classList.contains('current')) }));
   check('learn', y.same && y.finished === 1 && y.current === 1,
-    `${label}: Öğren açıkken ${menu ? 'menü olayı (⌘4)' : 'tab'} yeniden gelince rehber yeniden kurulmaz (aynı figür, aynı adım)`, JSON.stringify(y));
+    `${label}: with Learn open, ${menu ? 'menu event (⌘4)' : 'tab'} coming again does not set the guide up again (same figure, same step)`, JSON.stringify(y));
   if (menu) {
     await page.evaluate(() => window.__fake.listener.menu({ payload: 'tab-calculator' }));
     const g = await page.evaluate(() => ({ stage: document.getElementById('guide-stage').childElementCount, calculator: !document.getElementById('tab-calculator').hidden }));
-    check('learn', g.stage === 0 && g.calculator, `${label}: menüden başka sekmeye (⌘3) geçince rehber figürü sökülür`, JSON.stringify(g));
+    check('learn', g.stage === 0 && g.calculator, `${label}: moving to another tab from the menu (⌘3) removes the guide figure`, JSON.stringify(g));
   }
 }
 
 async function main() {
   const pw = await loadPlaywright();
   const engine = pw[ENGINE];
-  if (!engine || typeof engine.launch !== 'function') { console.error(`Bilinmeyen motor: ${ENGINE} (chromium | webkit)`); process.exit(2); }
+  if (!engine || typeof engine.launch !== 'function') { console.error(`Unknown engine: ${ENGINE} (chromium | webkit)`); process.exit(2); }
   console.log(`Motor: ${ENGINE}`);
   const server = await startServer();
   const port = server.address().port;
@@ -2272,7 +2275,7 @@ async function main() {
   const browser = await engine.launch();
   let code = 0;
   async function run(label, criterionFlow, address, localPrefix, body, local = 'tr-TR') {
-    // tarayıcı dili = sistem dili (navigator.languages); mevcut koşular Türkçe arayüzle
+    // browser language = system language (navigator.languages); the existing runs use the Turkish interface
     const ctx = await browser.newContext({ acceptDownloads: true, locale: local });
     const p = await ctx.newPage();
     p.setDefaultTimeout(60000);
@@ -2281,15 +2284,15 @@ async function main() {
       await body(p, address, iz);
     } catch (e) {
       const first = String(e && e.message ? e.message : e).split('\n')[0];
-      check(criterionFlow, false, `${label} koşusu yarıda kaldı: ${first}`, iz.errors.length ? 'konsol: ' + iz.errors.slice(0, 2).map((h) => h.slice(0, 200)).join(' | ') : undefined);
+      check(criterionFlow, false, `${label} run stopped halfway: ${first}`, iz.errors.length ? 'console: ' + iz.errors.slice(0, 2).map((h) => h.slice(0, 200)).join(' | ') : undefined);
     }
-    check(5, iz.errors.length === 0, `${label} koşusu: konsol hatası yok`, iz.errors.length ? `${iz.errors.length} hata, ilk: ` + iz.errors.slice(0, 3).map((h) => h.slice(0, 200)).join(' | ') : '0 hata');
+    check(5, iz.errors.length === 0, `${label} run: no console error`, iz.errors.length ? `${iz.errors.length} errors, first: ` + iz.errors.slice(0, 3).map((h) => h.slice(0, 200)).join(' | ') : '0 errors');
     agCheck(iz, localPrefix, label, 4);
     await ctx.close();
     return iz;
   }
   try {
-    // ---- Koşu 1: yerel sunucu (ölçüt 2, 3) ----
+    // ---- Run 1: local server (criteria 2, 3) ----
     await run('server', '2/3', localRoot + 'index.html', localRoot, async (p, address, iz) => {
       await pdfFlow(p, address, 'server', 2, true);
       await projectsFlow(p);
@@ -2308,7 +2311,7 @@ async function main() {
       await m2EpubZipFlow(p, address, 'server');
       await m6TrCheck(p, address, 'server');
     });
-    // ---- Koşu 1b: yerel sunucu, sahte __TAURI__ ile ----
+    // ---- Run 1b: local server, with a fake __TAURI__ ----
     await run('tauri-simulation', 'file', localRoot + 'index.html', localRoot, async (p, address, iz) => {
       await m2TauriSimulation(p, address, 'tauri-simulation');
       await m6TauriI18n(p, address, 'tauri-simulation');
@@ -2316,24 +2319,24 @@ async function main() {
       await m3NoTauriI18n(p, address, iz, 'tauri-simulation');
       await m7LearnSmoke(p, address, 'tauri-simulation', true);
     });
-    // ---- Koşu 1d: başlangıç hatası benzetimi, tr-TR ----
-    await run('açılış-hatası', 'i18n', localRoot + 'index.html', localRoot, async (p, address, iz) => {
-      await m6StartupError(p, address, iz, 'açılış-hatası');
+    // ---- Run 1d: start-up error simulation, tr-TR ----
+    await run('startup-error', 'i18n', localRoot + 'index.html', localRoot, async (p, address, iz) => {
+      await m6StartupError(p, address, iz, 'startup-error');
     });
-    // ---- Koşu 1e: Öğren rehberi, Tauri CSP başlığıyla; tr-TR ve en-US; hareketi azalt ----
-    await run('öğren', 'learn', localRoot + 'index.html', localRoot, async (p, address, iz) => {
-      await m7LearnFlow(p, address, iz, 'öğren', 'tr');
+    // ---- Run 1e: Learn guide, with the Tauri CSP header; tr-TR and en-US; reduced motion ----
+    await run('learn', 'learn', localRoot + 'index.html', localRoot, async (p, address, iz) => {
+      await m7LearnFlow(p, address, iz, 'learn', 'tr');
     });
-    await run('öğren en', 'learn', localRoot + 'index.html', localRoot, async (p, address, iz) => {
-      await m7LearnFlow(p, address, iz, 'öğren en', 'en');
+    await run('learn en', 'learn', localRoot + 'index.html', localRoot, async (p, address, iz) => {
+      await m7LearnFlow(p, address, iz, 'learn en', 'en');
     }, 'en-US');
-    await m7ReduceLearn(browser, localRoot + 'index.html', 'öğren azalt', 'tr-TR');
-    await m7ReduceLearn(browser, localRoot + 'index.html', 'öğren azalt en', 'en-US');
-    // ---- Koşu 1c: İngilizce arayüz, en-US tarayıcı ----
+    await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced', 'tr-TR');
+    await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced en', 'en-US');
+    // ---- Run 1c: English interface, en-US browser ----
     await run('en', 'i18n', localRoot + 'index.html', localRoot, async (p, address, iz) => {
       await m6MostFlow(p, address, iz, 'en', true);
     }, 'en-US');
-    // ---- Koşu 2: file:// (ölçüt 6) ----
+    // ---- Run 2: file:// (criterion 6) ----
     const iz2 = await run('file://', 6, pathToFileURL(join(APP, 'index.html')).href, 'file://', async (p, address, iz) => {
       await pdfFlow(p, address, 'file://', 6, false);
       await confirmFlow(p, address, iz, 'file://');
@@ -2345,19 +2348,19 @@ async function main() {
       await m6TrCheck(p, address, 'file://');
       await m7LearnSmoke(p, address, 'file://', false);
     });
-    // ---- Koşu 2b: file://, İngilizce duman ----
+    // ---- Run 2b: file://, English smoke ----
     await run('en file://', 'i18n', pathToFileURL(join(APP, 'index.html')).href, 'file://', async (p, address, iz) => {
       await m6MostFlow(p, address, iz, 'en file://', false);
     }, 'en-US');
-    check(6, iz2.errors.length === 0, 'file:// koşusu: konsol hatası yok (ölçüt 6)');
+    check(6, iz2.errors.length === 0, 'file:// run: no console error (criterion 6)');
   } catch (e) {
-    check('-', false, 'beklenmeyen hata', e && e.stack ? e.stack : String(e));
+    check('-', false, 'unexpected error', e && e.stack ? e.stack : String(e));
   } finally {
     await browser.close();
     server.close();
   }
   const rest = results.filter((s) => !s.pass);
-  console.log(`\nÖZET: ${results.length} kontrol, ${results.length - rest.length} geçti, ${rest.length} kaldı`);
+  console.log(`\nSUMMARY: ${results.length} checks, ${results.length - rest.length} passed, ${rest.length} failed`);
   if (rest.length) code = 1;
   process.exit(code);
 }

@@ -1,8 +1,8 @@
 'use strict';
-// tools/prepare-dist.mjs: gerçek app/ ile çıktı, kusurlu girdilerle (boş, iskelet, eksik/boş lisans, lisanssız
-// vendor, çakışan hedef, repo dışı hedef, işaretsiz dolu hedef, olmayan kaynak) çıkış kodu 1.
-// Her test betiğin bir kopyasını geçici bir "sahte repo"nun tools/ klasörüne koyar: betik repo kökünü kendi
-// konumundan bulduğu için hedefin "repo içinde" kuralı gerçek repoya dokunmadan sınanır.
+// tools/prepare-dist.mjs: output with the real app/; exit code 1 with faulty inputs (empty, skeleton, missing/empty licence,
+// vendor without a licence, clashing target, target outside the repository, non-empty target without a marker, missing source).
+// Every test puts a copy of the script into the tools/ folder of a temporary "fake repository": the script finds the
+// repository root from its own location, so the "inside the repository" rule of the target is tested without touching the real one.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -19,7 +19,7 @@ const TEMPS = [];
 function temp() { const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mc-dist-'))); TEMPS.push(d); return d; }
 test.after(() => { for (const d of TEMPS) fs.rmSync(d, { recursive: true, force: true }); });
 
-/** Betiğin kopyasını taşıyan geçici repo kökü. */
+/** A temporary repository root that holds a copy of the script. */
 function fakeRepo() {
   const r = temp();
   fs.mkdirSync(path.join(r, 'tools'));
@@ -45,11 +45,11 @@ function list(root) {
   })(root);
   return l.sort();
 }
-const LICENSE = 'MIT License\n\nCopyright (c) 2026 Deneme Yazari\n\nPermission is hereby granted, free of charge, to any person obtaining a copy '
+const LICENSE = 'MIT License\n\nCopyright (c) 2026 Sample Author\n\nPermission is hereby granted, free of charge, to any person obtaining a copy '
   + 'of this software and associated documentation files (the "Software"), to deal in the Software without restriction.\n';
-// js/learn/LICENSE (Öğren rehberinin Colorfigures motoru, MIT) da zorunlu lisans
+// js/learn/LICENSE (the Colorfigures engine of the Learn guide, MIT) is a required licence too
 const LICENSES = ['vendor/pdf-lib/LICENSE.md', 'vendor/pdfjs/LICENSE', 'vendor/fontkit/LICENSE', 'vendor/literata/OFL.txt', 'js/learn/LICENSE'];
-/** Geçerli en küçük kaynak ağacı (repo içinde app-xxx/). */
+/** The smallest valid source tree (app-xxx/ inside the repository). */
 function skeleton(repo) {
   const k = fs.mkdtempSync(path.join(repo, 'app-'));
   for (const g of ['index.html', 'vendor/SOURCES.md', 'vendor/pdf-lib/pdf-lib.min.js', 'vendor/literata/literata-regular.js', 'js/a.js']) write(k, g);
@@ -58,7 +58,7 @@ function skeleton(repo) {
 }
 const markPath = (target) => path.join(path.dirname(target), MARK_PREFIX + path.basename(target) + MARK_SUFFIX);
 
-test('gerçek app/: çıkış 0; test/, .ttf ve gizli dosya yok; lisanslar ve index.html var; JS sayısı kaynakla aynı', () => {
+test('real app/: exit 0; no test/, .ttf or hidden file; the licences and index.html are there; the JS count is the same as the source', () => {
   const repo = fakeRepo();
   const h = path.join(repo, 'dist');
   const r = run(repo, '--source', APP, '--target', h, '--quiet');
@@ -70,7 +70,7 @@ test('gerçek app/: çıkış 0; test/, .ttf ve gizli dosya yok; lisanslar ve in
   assert.deepEqual(l.filter((g) => g.endsWith('.js')), sourceJs);
 });
 
-test('iskelet: çıkış 0; iç içe .ttf, kökteki test/ ve .DS_Store atlanır; js/test/ (kök dışı) kopyalanır', () => {
+test('skeleton: exit 0; a nested .ttf, test/ at the root and .DS_Store are skipped; js/test/ (not at the root) is copied', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   write(k, 'test/e2e.mjs'); write(k, 'test/fixtures/a.pdf'); write(k, 'vendor/literata/Literata-Regular.ttf'); write(k, 'css/B.TTF');
@@ -81,36 +81,36 @@ test('iskelet: çıkış 0; iç içe .ttf, kökteki test/ ve .DS_Store atlanır;
   const l = list(h);
   assert.ok(!l.some((g) => g.startsWith('test/') || /\.ttf$/i.test(g) || g.includes('.DS_Store')), l.join(','));
   assert.ok(l.includes('js/test/inner.js'));
-  assert.match(r.output, /- test\/ \(hariç\)/);
+  assert.match(r.output, /- test\/ \(excluded\)/);
 });
 
-test('D5: gizli dosya ve klasörler (.env, .git/, js/.gizli.js, vendor/*/.npmignore) pakete girmez', () => {
+test('D5: hidden files and folders (.env, .git/, js/.hidden.js, vendor/*/.npmignore) do not go into the package', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
-  write(k, '.env', 'KEY=hidden'); write(k, '.git/config'); write(k, 'js/.hidden.js'); write(k, 'vendor/pdfjs/.npmignore'); write(k, 'css/.eski/style.css');
+  write(k, '.env', 'KEY=hidden'); write(k, '.git/config'); write(k, 'js/.hidden.js'); write(k, 'vendor/pdfjs/.npmignore'); write(k, 'css/.old/style.css');
   const h = path.join(repo, 'dist');
   const r = run(repo, '--source', k, '--target', h);
   assert.equal(r.code, 0, r.output);
   const l = list(h);
   assert.deepEqual(l.filter((g) => g.split('/').some((p) => p.startsWith('.'))), [], l.join(','));
   assert.ok(l.includes('js/a.js') && l.includes('index.html'));
-  for (const g of ['.env', '.git/', 'js/.hidden.js', 'vendor/pdfjs/.npmignore', 'css/.eski/']) assert.ok(r.output.includes(`- ${g} (hariç)`), g);
+  for (const g of ['.env', '.git/', 'js/.hidden.js', 'vendor/pdfjs/.npmignore', 'css/.old/']) assert.ok(r.output.includes(`- ${g} (excluded)`), g);
 });
 
-test('O3: işaret dosyası hedefin YANINA yazılır (paketin içine değil); yeniden hazırlamada eski kalıntı kalmaz', () => {
+test('O3: the marker file is written NEXT TO the target (not inside the package); no old leftover stays when preparing again', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   const h = path.join(repo, 'dist');
   assert.equal(run(repo, '--source', k, '--target', h, '--quiet').code, 0);
-  assert.ok(fs.existsSync(markPath(h)), 'işaret dosyası yok');
-  assert.ok(!list(h).some((g) => g.includes('dist-prepare')), 'işaret paketin içinde');
-  write(h, 'eski-kalinti.txt');
+  assert.ok(fs.existsSync(markPath(h)), 'no marker file');
+  assert.ok(!list(h).some((g) => g.includes('dist-prepare')), 'marker inside the package');
+  write(h, 'old-leftover.txt');
   const r = run(repo, '--source', k, '--target', h, '--quiet');
   assert.equal(r.code, 0, r.output);
-  assert.ok(!fs.existsSync(path.join(h, 'eski-kalinti.txt')));
+  assert.ok(!fs.existsSync(path.join(h, 'old-leftover.txt')));
 });
 
-test('O3: var olan BOŞ hedef klasör (işaretsiz) kabul edilir', () => {
+test('O3: an existing EMPTY target folder (without a marker) is accepted', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   const h = path.join(repo, 'blank-dist');
@@ -119,51 +119,51 @@ test('O3: var olan BOŞ hedef klasör (işaretsiz) kabul edilir', () => {
   assert.ok(fs.existsSync(path.join(h, 'index.html')));
 });
 
-test('O3 kusurlu: dolu ve işaretsiz hedef (ör. --target src-tauri) → çıkış 1, içerik silinmez', () => {
+test('O3 faulty: a non-empty target without a marker (e.g. --target src-tauri) → exit 1, the content is not removed', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   const h = path.join(repo, 'src-tauri');
   write(h, 'Cargo.toml', '[package]'); write(h, 'src/lib.rs', 'fn main() {}');
   const r = run(repo, '--source', k, '--target', h);
   assert.equal(r.code, 1, r.output);
-  assert.match(r.output, /işaret/);
+  assert.match(r.output, /marker/);
   assert.deepEqual(list(h), ['Cargo.toml', 'src/lib.rs']);
 });
 
-test('O3 kusurlu: başka hedefin işaret dosyası kopyalanmış ya da işareti boş/bozuk dolu hedef → çıkış 1', () => {
+test('O3 faulty: a marker file copied from another target, or a non-empty target with an empty/broken marker → exit 1', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   const dist = path.join(repo, 'dist');
   assert.equal(run(repo, '--source', k, '--target', dist, '--quiet').code, 0);
   const h = path.join(repo, 'documents');
-  write(h, 'onemli.md', 'mustNotDelete');
+  write(h, 'important.md', 'mustNotDelete');
   fs.copyFileSync(markPath(dist), markPath(h));
-  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'kopya işaret');
+  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'copied marker');
   fs.writeFileSync(markPath(h), '');
-  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'boş işaret');
+  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'empty marker');
   fs.writeFileSync(markPath(h), '{corrupt');
-  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'bozuk işaret');
+  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'broken marker');
   fs.writeFileSync(markPath(h), JSON.stringify({ tool: 'dist-prepare' }));
-  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'hedefsiz işaret');
-  assert.ok(fs.existsSync(path.join(h, 'onemli.md')));
+  assert.equal(run(repo, '--source', k, '--target', h).code, 1, 'marker without a target');
+  assert.ok(fs.existsSync(path.join(h, 'important.md')));
 });
 
-test('O3 kusurlu: repo dışındaki hedef (mutlak yol, ../ ile çıkış, repo dışını gösteren bağ) → çıkış 1, dokunulmaz', () => {
+test('O3 faulty: a target outside the repository (absolute path, leaving with ../, a link pointing outside) → exit 1, untouched', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   const outer = temp();
-  write(outer, 'kisisel.txt', 'touch');
-  assert.equal(run(repo, '--source', k, '--target', outer).code, 1, 'mutlak dış yol');
-  assert.equal(run(repo, '--source', k, '--target', path.join(outer, 'fresh-dist')).code, 1, 'dışarıda yeni klasör');
+  write(outer, 'personal.txt', 'touch');
+  assert.equal(run(repo, '--source', k, '--target', outer).code, 1, 'absolute outside path');
+  assert.equal(run(repo, '--source', k, '--target', path.join(outer, 'fresh-dist')).code, 1, 'new folder outside');
   assert.ok(!fs.existsSync(path.join(outer, 'fresh-dist')));
-  assert.equal(run(repo, '--source', k, '--target', path.join(repo, 'dist', '..', '..', path.basename(outer))).code, 1, '../ ile çıkış');
+  assert.equal(run(repo, '--source', k, '--target', path.join(repo, 'dist', '..', '..', path.basename(outer))).code, 1, 'leaving with ../');
   fs.symlinkSync(outer, path.join(repo, 'bag'));
-  assert.equal(run(repo, '--source', k, '--target', path.join(repo, 'bag')).code, 1, 'dışarıyı gösteren bağ');
-  assert.equal(run(repo, '--source', k, '--target', path.join(repo, 'bag', 'dist')).code, 1, 'bağın altındaki yeni klasör');
-  assert.deepEqual(list(outer), ['kisisel.txt']);
+  assert.equal(run(repo, '--source', k, '--target', path.join(repo, 'bag')).code, 1, 'a link pointing outside');
+  assert.equal(run(repo, '--source', k, '--target', path.join(repo, 'bag', 'dist')).code, 1, 'a new folder under the link');
+  assert.deepEqual(list(outer), ['personal.txt']);
 });
 
-test('O3 kusurlu: hedef bir dosya ya da repo kökü → çıkış 1', () => {
+test('O3 faulty: the target is a file or the repository root → exit 1', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   write(repo, 'README.md', 'okubeni');
@@ -173,7 +173,7 @@ test('O3 kusurlu: hedef bir dosya ya da repo kökü → çıkış 1', () => {
   assert.ok(fs.existsSync(path.join(repo, 'tools', 'prepare-dist.mjs')));
 });
 
-test('kusurlu: boş kaynak klasör → çıkış 1, eksikler adlandırılır', () => {
+test('faulty: an empty source folder → exit 1, the missing files are named', () => {
   const repo = fakeRepo();
   const r = run(repo, '--source', fs.mkdtempSync(path.join(repo, 'blank-')), '--target', path.join(repo, 'dist'));
   assert.equal(r.code, 1);
@@ -181,7 +181,7 @@ test('kusurlu: boş kaynak klasör → çıkış 1, eksikler adlandırılır', (
   assert.match(r.output, /OFL\.txt/);
 });
 
-test('kusurlu: tek bir lisans eksik (pdfjs/LICENSE) → çıkış 1 ve hedef oluşmaz', () => {
+test('faulty: a single licence missing (pdfjs/LICENSE) → exit 1 and no target', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   fs.rmSync(path.join(k, 'vendor/pdfjs/LICENSE'));
@@ -192,8 +192,8 @@ test('kusurlu: tek bir lisans eksik (pdfjs/LICENSE) → çıkış 1 ve hedef olu
   assert.ok(!fs.existsSync(h));
 });
 
-test('kusurlu: Öğren lisansı (js/learn/LICENSE) eksik ya da boş → çıkış 1, dosya adlandırılır, hedef oluşmaz', () => {
-  for (const [name, corrupt] of [['missing', (y) => fs.rmSync(y)], ['boş', (y) => fs.writeFileSync(y, '')], ['skeleton', (y) => fs.writeFileSync(y, 'MIT License\n')]]) {
+test('faulty: the Learn licence (js/learn/LICENSE) missing or empty → exit 1, the file is named, no target', () => {
+  for (const [name, corrupt] of [['missing', (y) => fs.rmSync(y)], ['empty', (y) => fs.writeFileSync(y, '')], ['skeleton', (y) => fs.writeFileSync(y, 'MIT License\n')]]) {
     const repo = fakeRepo();
     const k = skeleton(repo);
     corrupt(path.join(k, 'js/learn/LICENSE'));
@@ -205,14 +205,14 @@ test('kusurlu: Öğren lisansı (js/learn/LICENSE) eksik ya da boş → çıkı�
   }
 });
 
-test('D5 kusurlu: boş ya da iskelet lisans dosyası → çıkış 1, dosya adlandırılır, hedef oluşmaz', () => {
+test('D5 faulty: an empty or skeleton licence file → exit 1, the file is named, no target', () => {
   const examples = {
-    'boş': '',
-    'yalnız boşluk': '  \n\t\n',
-    'yalnız başlık': 'LICENSE\n',
-    'yer tutucu': 'TODO: lisans metni eklenecek',
-    'kısa telif satırı': 'Copyright (c) 2026',
-    'anahtar sözcüksüz uzun metin': 'x'.repeat(400),
+    'empty': '',
+    'only spaces': '  \n\t\n',
+    'only a heading': 'LICENSE\n',
+    'yer tutucu': 'TODO: add the licence text',
+    'short copyright line': 'Copyright (c) 2026',
+    'long text without a key word': 'x'.repeat(400),
   };
   for (const [name, content] of Object.entries(examples)) {
     const repo = fakeRepo();
@@ -226,7 +226,7 @@ test('D5 kusurlu: boş ya da iskelet lisans dosyası → çıkış 1, dosya adla
   }
 });
 
-test('kusurlu: lisanssız yeni vendor kütüphanesi → çıkış 1; lisans dosyası boşsa da 1; gerçek lisansla 0', () => {
+test('faulty: a new vendor library without a licence → exit 1; also 1 when the licence file is empty; 0 with a real licence', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   write(k, 'vendor/fresh-library/fresh.min.js');
@@ -242,7 +242,7 @@ test('kusurlu: lisanssız yeni vendor kütüphanesi → çıkış 1; lisans dosy
   assert.equal(r.code, 0, r.output);
 });
 
-test('kusurlu: index.html yok (yalnız lisanslar) → çıkış 1', () => {
+test('faulty: no index.html (only licences) → exit 1', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   fs.rmSync(path.join(k, 'index.html'));
@@ -251,7 +251,7 @@ test('kusurlu: index.html yok (yalnız lisanslar) → çıkış 1', () => {
   assert.match(r.output, /index\.html/);
 });
 
-test('kusurlu: hedef kaynağın içinde ya da kaynağı kapsıyor → çıkış 1, kaynak silinmez', () => {
+test('faulty: the target inside the source or containing the source → exit 1, the source is not removed', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
   assert.equal(run(repo, '--source', k, '--target', path.join(k, 'dist')).code, 1);
@@ -260,20 +260,20 @@ test('kusurlu: hedef kaynağın içinde ya da kaynağı kapsıyor → çıkış 
   assert.ok(fs.existsSync(path.join(k, 'index.html')));
 });
 
-test('kusurlu: olmayan kaynak → çıkış 1', () => {
+test('faulty: a missing source → exit 1', () => {
   const repo = fakeRepo();
   const r = run(repo, '--source', path.join(repo, 'none'), '--target', path.join(repo, 'dist'));
   assert.equal(r.code, 1);
-  assert.match(r.output, /kaynak klasör yok/);
+  assert.match(r.output, /no source folder/);
 });
 
-// ---------------------------------------------------------------- --web (statik site / GitHub Pages)
+// ---------------------------------------------------------------- --web (static site / GitHub Pages)
 const EMBEDDED_NAME = ['pako', '@pdf-lib/upng', '@pdf-lib/standard-fonts', 'tslib', '@pdf-lib/brotli', '@pdf-lib/restructure', '@pdf-lib/unicode-properties', 'unicode-trie', 'dfa', 'clone',
   'deep-equal', 'iconv-lite', 'base64-js', 'base64-arraybuffer', 'buffer', 'ieee754', 'isarray', 'inherits', 'readable-stream',
   'process-es6', 'regenerator-runtime'];
 const NOTICE = '# Third-party notices\n\n' + ['pdf-lib', 'pdfjs', 'fontkit', 'literata', 'Colorfigures', ...EMBEDDED_NAME].map((a) => `- ${a}: MIT license, copyright holders`).join('\n')
   + '\n\nEach component keeps its own license and copyright notice; full texts ship next to the files.\n' + 'x'.repeat(120) + '\n';
-/** Kökünde LICENSE ve THIRD_PARTY_NOTICES.md olan sahte repo + iskelet kaynak (vendor alt klasörleri bildirimde anılır). */
+/** A fake repository with LICENSE and THIRD_PARTY_NOTICES.md at its root + a skeleton source (the vendor subfolders are named in the notices). */
 function webRepo() {
   const repo = fakeRepo();
   const k = skeleton(repo);
@@ -283,7 +283,7 @@ function webRepo() {
   return { repo, k, h: path.join(repo, 'dist') };
 }
 
-test('--web: kökteki LICENSE ve THIRD_PARTY_NOTICES.md hedefin köküne birebir kopyalanır; --web yokken kopyalanmaz', () => {
+test('--web: LICENSE and THIRD_PARTY_NOTICES.md at the root are copied byte for byte to the root of the target; not copied without --web', () => {
   const { repo, k, h } = webRepo();
   let r = run(repo, '--source', k, '--target', h, '--web');
   assert.equal(r.code, 0, r.output);
@@ -294,7 +294,7 @@ test('--web: kökteki LICENSE ve THIRD_PARTY_NOTICES.md hedefin köküne birebir
   assert.ok(!fs.existsSync(path.join(h, 'LICENSE')) && !fs.existsSync(path.join(h, 'THIRD_PARTY_NOTICES.md')));
 });
 
-test('gerçek repo --web: app/ + kökteki LICENSE/THIRD_PARTY_NOTICES.md ile çıkış 0', () => {
+test('real repository --web: exit 0 with app/ + LICENSE/THIRD_PARTY_NOTICES.md at the root', () => {
   const repo = fakeRepo();
   for (const a of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) fs.copyFileSync(path.join(APP, '..', a), path.join(repo, a));
   const h = path.join(repo, 'dist');
@@ -303,14 +303,14 @@ test('gerçek repo --web: app/ + kökteki LICENSE/THIRD_PARTY_NOTICES.md ile ç�
   for (const a of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'index.html', ...LICENSES]) assert.ok(fs.existsSync(path.join(h, a)), a);
 });
 
-test('kusurlu --web: kök LICENSE yok / boş / iskelet, bildirim yok / boş → çıkış 1, dosya adlandırılır, hedef oluşmaz', () => {
+test('faulty --web: root LICENSE missing / empty / skeleton, notices missing / empty → exit 1, the file is named, no target', () => {
   const states = {
-    'LICENSE yok': (repo) => fs.rmSync(path.join(repo, 'LICENSE')),
-    'LICENSE boş': (repo) => fs.writeFileSync(path.join(repo, 'LICENSE'), ''),
-    'LICENSE iskelet': (repo) => fs.writeFileSync(path.join(repo, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026\n'),
-    'LICENSE klasör': (repo) => { fs.rmSync(path.join(repo, 'LICENSE')); fs.mkdirSync(path.join(repo, 'LICENSE')); },
-    'bildirim yok': (repo) => fs.rmSync(path.join(repo, 'THIRD_PARTY_NOTICES.md')),
-    'bildirim boş': (repo) => fs.writeFileSync(path.join(repo, 'THIRD_PARTY_NOTICES.md'), '\n\n'),
+    'LICENSE missing': (repo) => fs.rmSync(path.join(repo, 'LICENSE')),
+    'LICENSE empty': (repo) => fs.writeFileSync(path.join(repo, 'LICENSE'), ''),
+    'LICENSE skeleton': (repo) => fs.writeFileSync(path.join(repo, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026\n'),
+    'LICENSE is a folder': (repo) => { fs.rmSync(path.join(repo, 'LICENSE')); fs.mkdirSync(path.join(repo, 'LICENSE')); },
+    'notices missing': (repo) => fs.rmSync(path.join(repo, 'THIRD_PARTY_NOTICES.md')),
+    'notices empty': (repo) => fs.writeFileSync(path.join(repo, 'THIRD_PARTY_NOTICES.md'), '\n\n'),
   };
   for (const [name, corrupt] of Object.entries(states)) {
     const { repo, k, h } = webRepo();
@@ -318,41 +318,41 @@ test('kusurlu --web: kök LICENSE yok / boş / iskelet, bildirim yok / boş → 
     const r = run(repo, '--source', k, '--target', h, '--web');
     assert.equal(r.code, 1, name);
     assert.match(r.output, name.startsWith('LICENSE') ? /LICENSE/ : /THIRD_PARTY_NOTICES\.md/, name);
-    assert.ok(!fs.existsSync(h), name + ': hedef oluştu');
+    assert.ok(!fs.existsSync(h), name + ': target created');
   }
 });
 
-test('kusurlu --web: bildirim bir vendor kütüphanesini ya da Colorfigures\'ı anmıyor → çıkış 1, eksik ad yazılır', () => {
+test('faulty --web: the notices do not name a vendor library or Colorfigures → exit 1, the missing name is written', () => {
   for (const missingName of ['pdfjs', 'fontkit', 'Colorfigures']) {
     const { repo, k, h } = webRepo();
     fs.writeFileSync(path.join(repo, 'THIRD_PARTY_NOTICES.md'), NOTICE.split('\n').filter((s) => !s.includes(missingName)).join('\n'));
     const r = run(repo, '--source', k, '--target', h, '--web');
     assert.equal(r.code, 1, missingName);
-    assert.match(r.output, new RegExp(missingName + ' anılmıyor'), missingName);
+    assert.match(r.output, new RegExp(missingName + ' not named'), missingName);
   }
-  // derlenmiş pakete gömülü bir kod anılmıyorsa
+  // when code embedded in a built package is not named
   for (const missingName of ['pako', 'iconv-lite', 'ieee754']) {
     const w = webRepo();
     fs.writeFileSync(path.join(w.repo, 'THIRD_PARTY_NOTICES.md'), NOTICE.split('\n').filter((s) => !s.includes(missingName)).join('\n'));
     const rr = run(w.repo, '--source', w.k, '--target', w.h, '--web');
     assert.equal(rr.code, 1, missingName);
-    assert.match(rr.output, new RegExp(missingName + ' anılmıyor'), missingName);
+    assert.match(rr.output, new RegExp(missingName + ' not named'), missingName);
   }
-  // yeni vendor kütüphanesi eklenip bildirime yazılmazsa
+  // when a new vendor library is added and not written into the notices
   const { repo, k, h } = webRepo();
   write(k, 'vendor/fresh-library/LICENSE', LICENSE);
   const r = run(repo, '--source', k, '--target', h, '--web');
   assert.equal(r.code, 1);
-  assert.match(r.output, /fresh-library anılmıyor/);
+  assert.match(r.output, /fresh-library not named/);
 });
 
-test('kusurlu --web: kaynakta da LICENSE varsa (kökteki dosyayla çakışma) → çıkış 1', () => {
+test('faulty --web: a LICENSE in the source too (clash with the root file) → exit 1', () => {
   const { repo, k, h } = webRepo();
   write(k, 'LICENSE', LICENSE);
   const r = run(repo, '--source', k, '--target', h, '--web');
   assert.equal(r.code, 1);
-  assert.match(r.output, /çakışır/);
-  assert.ok(!fs.existsSync(h), 'hedef oluştu');
+  assert.match(r.output, /clashes/);
+  assert.ok(!fs.existsSync(h), 'target created');
 });
 
 test('legacy marker: a target prepared by the script under its earlier name is accepted once and the marker replaced; faulty legacy markers are rejected', () => {

@@ -100,10 +100,10 @@ test('migrate: project settings, template keys and unknown fields are converted 
   assert.equal(d.extra, 'x');
   const k = d.projects[0];
   assert.equal(k.bindingType, 'single');
-  assert.equal(k.yeniAlan, 7, 'unknown project field kept'); // turkish-ok
+  assert.equal(k.yeniAlan, 7, 'unknown project field kept'); // turkish-ok: legacy format names (migration test)
   assert.deepEqual(k.settings, NEW_IMPOSE);
-  assert.deepEqual(k.steps[0], { id: 'a1', name: 'Dikiş', done: true, date: '2026-01-02', note: 'n', optional: false, template: 'sewing' });
-  assert.equal(k.steps[1].template, 'kendi_sablonum', 'unknown template kept'); // turkish-ok
+  assert.deepEqual(k.steps[0], { id: 'a1', name: 'Dikiş', done: true, date: '2026-01-02', note: 'n', optional: false, template: 'sewing' });  // turkish-ok: legacy format names (migration test)
+  assert.equal(k.steps[1].template, 'kendi_sablonum', 'unknown template kept'); // turkish-ok: legacy format names (migration test)
   assert.equal(Model.validate(d), true);
 });
 
@@ -115,7 +115,7 @@ test('migrate faulty input: non-objects, other versions and broken lists are lef
   assert.throws(() => Model.validate(Migrate.projects({ surum: 1, kitaplar: 'x' })));
   assert.throws(() => Model.validate(Migrate.projects({ surum: 1, kitaplar: [null] })));
   assert.throws(() => Model.validate(Migrate.projects({ surum: 1 })));
-  assert.deepEqual(Migrate.imposeSettings({ ciltTuru: 'baska' }), { bindingType: 'baska' }, 'unknown value kept'); // turkish-ok
+  assert.deepEqual(Migrate.imposeSettings({ ciltTuru: 'baska' }), { bindingType: 'baska' }, 'unknown value kept'); // turkish-ok: legacy format names (migration test)
   // legacy-names: end
   for (const x of [null, 3, 'a', []]) assert.deepEqual(Migrate.imposeSettings(x), x);
   assert.deepEqual(Migrate.imposeSettings(OLD_IMPOSE), NEW_IMPOSE);
@@ -138,10 +138,10 @@ test('lostValues check itself: reports a dropped or changed value (faulty migrat
 
 test('storage(): every legacy key moves to its new key once, converted; legacy keys are removed; second run does nothing', () => {
   const ls = fakeStorage({
-    [OLD.projects]: legacyLocal, [OLD.corrupt]: '{corrupt', [OLD.tab]: 'surec', [OLD.imposeSettings]: JSON.stringify(OLD_IMPOSE),
+    [OLD.projects]: legacyLocal, [OLD.corrupt]: '{corrupt', [OLD.tab]: 'surec', [OLD.imposeSettings]: JSON.stringify(OLD_IMPOSE),  // turkish-ok: legacy format names (migration test)
     [OLD.selectedProject]: 'k-mzeski-1', [OLD.epubSettings]: JSON.stringify(OLD_EPUB), other: 'kept'
   });
-  const ss = fakeStorage({ [OLD.learnPosition]: JSON.stringify({ a: 2, i: 1, tamam: [5, 3, 0, 0, 0, 0, 0, 0, 0, 0] }) }); // turkish-ok
+  const ss = fakeStorage({ [OLD.learnPosition]: JSON.stringify({ a: 2, i: 1, tamam: [5, 3, 0, 0, 0, 0, 0, 0, 0, 0] }) }); // turkish-ok: legacy format names (migration test)
   const r = Migrate.storage(ls, ss);
   assert.deepEqual(Object.keys(r).sort(), ['corrupt', 'epubSettings', 'imposeSettings', 'learnPosition', 'projects', 'selectedProject', 'tab']);
   assert.ok(Object.values(r).every((v) => v === 'moved'));
@@ -170,9 +170,9 @@ test('storage() faulty cases: current key wins (legacy kept), failed write keeps
   const full = fakeStorage({ [OLD.projects]: legacyLocal }, { failOn: 'mucellit.projects' });
   assert.deepEqual(Migrate.storage(full, null), {});
   assert.equal(full.getItem(OLD.projects), legacyLocal, 'legacy data kept when the write fails');
-  const broken = fakeStorage({ [OLD.projects]: '{"surum":1,"kitaplar":[' }); // turkish-ok
+  const broken = fakeStorage({ [OLD.projects]: '{"surum":1,"kitaplar":[' }); // turkish-ok: legacy format names (migration test)
   Migrate.storage(broken, null);
-  assert.equal(broken.getItem('mucellit.projects'), '{"surum":1,"kitaplar":[', 'broken JSON copied raw (storage.js backs it up)'); // turkish-ok
+  assert.equal(broken.getItem('mucellit.projects'), '{"surum":1,"kitaplar":[', 'broken JSON copied raw (storage.js backs it up)'); // turkish-ok: legacy format names (migration test)
   assert.deepEqual(Migrate.storage(fakeStorage({}), fakeStorage({})), {}, 'empty storage');
   assert.deepEqual(Migrate.storage(null, null), {}, 'no storage');
   const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() {} };

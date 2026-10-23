@@ -232,7 +232,7 @@ test('tools/i18n-html.mjs: reports problems on faulty input, writes the escapes 
     ['unknown in an attribute', '<i data-i18n-attr="title:none.x"></i>'], ['not closed', '<p data-i18n="a.b">x']]) {
     assert.ok(update(h, en).problem.length > 0, `${name}: no problem reported`);
   }
-  // the real file is up to date (the same as the script with --check)
+  // the real file is up to date (the same as the script with --verify)
   const g = update(HTML, EN);
   assert.deepEqual(g.problem, []);
   assert.equal(g.html, HTML, 'index.html up to date: node tools/i18n-html.mjs');

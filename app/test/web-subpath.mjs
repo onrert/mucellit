@@ -1,24 +1,25 @@
 /*
- * web-subpath.mjs — yayınlanacak statik siteyi (dist/) GitHub Pages'teki gibi bir ALT YOL altında sınar.
- * Çalıştırma (repo kökünden):  node app/test/web-subpath.mjs [--motor=chromium|webkit] [--dist <klasör>] [--kusurlu]
+ * web-subpath.mjs — tests the static site to be published (dist/) under a SUB PATH, as on GitHub Pages.
+ * Run (from the repository root):  node app/test/web-subpath.mjs [--engine=chromium|webkit] [--dist <folder>] [--faulty]
  *
- * Öntanımlı: önce `node tools/prepare-dist.mjs --web --sessiz` ile dist/ kurulur; --dist verilirse o klasör olduğu
- * gibi sınanır. Yerel statik sunucu yalnız /kitap-cilt-test/ altını sunar (başka her yol 404 ve KALDI: mutlak yol
- * kullanan bir dosya yakalanır); CSP başlığı göndermez (GitHub Pages gibi).
+ * Default: dist/ is set up first with `node tools/prepare-dist.mjs --web --quiet`; with --dist that folder is tested as
+ * it is. The local static server serves only under /mucellit-test/ (every other path is a 404 and a FAIL: a file that
+ * uses an absolute path is caught); it sends no CSP header (like GitHub Pages).
  *
- * Her dil için ayrı bağlam (tr-TR ve en-US):
- *   açılış (data-hazir, sekme adları seçili dilde, platform = tarayıcı), masaüstüne özgü metin/düğme görünmüyor (dört
- *   sekmede görünen metin ve görünür öğelerin title/aria-label/placeholder'ında Mac/macOS/⌘/Tauri/Finder/Dock/Önizleme'de
- *   Aç yok; Yazdır alanı gizli), PDF dizme (37 sayfa → formalı, 297 × 210, 4 yaprak → 24 sayfa, 1. sayfa 16 | 1),
- *   Öğren (rehber kurulur, bir adım oynar, lisans paneli js/learn/LICENSE ile birebir), dil seçiciyle öteki dile geçiş
- *   ve geri dönüş (yeniden yükleme alt yolda kalır), lisans dosyaları sitede erişilebilir ve repodakiyle birebir;
- *   konsol hatası 0, alt yol dışı ya da dış ağ isteği 0.
+ * A separate context for each language (tr-TR and en-US):
+ *   start-up (data-ready, tab names in the chosen language, platform = browser), no desktop-only text/button shows (in
+ *   the visible text of the four tabs and the title/aria-label/placeholder of visible elements no Mac/macOS/⌘/Tauri/
+ *   Finder/Dock/Open in Preview; the Print area hidden), PDF imposition (37 pages → sewn, 297 × 210, 4 sheets → 24
+ *   pages, page 1 16 | 1), Learn (the guide is set up, a step plays, the licence panel exactly js/learn/LICENSE),
+ *   switching to the other language with the language picker and back (the reload stays on the sub path), the licence
+ *   files reachable on the site and identical to the repository; console errors 0, requests outside the sub path or
+ *   outside network requests 0.
  *
- * --kusurlu: denetimin kendisini sınar. dist/'in bozuk kopyaları (boş klasör, index.html yok, mutlak yollu betik,
- *   dış adrese istek, görünür Mac düğmesi, LICENSE yok, bozuk Öğren lisans paneli, konsol hatası) için denetim
- *   en az bir KALDI vermelidir; vermezse bu koşu KALDI olur.
- * Ortam: KC_PLAYWRIGHT (Playwright modül klasörü, ör. /yol/playwright/node_modules/playwright), PLAYWRIGHT_BROWSERS_PATH.
- * Çıkış kodu: 0 = bütün kontroller geçti; 1 = en az bir KALDI; 2 = kullanım hatası.
+ * --faulty: tests the check itself. For broken copies of dist/ (empty folder, no index.html, a script with an absolute
+ *   path, a request to an outside address, a visible Mac button, no LICENSE, a broken Learn licence panel, a console
+ *   error) the check must give at least one FAIL; when it does not, this run FAILs.
+ * Environment: MC_PLAYWRIGHT (Playwright module folder, e.g. /path/playwright/node_modules/playwright), PLAYWRIGHT_BROWSERS_PATH.
+ * Exit code: 0 = all checks passed; 1 = at least one FAIL; 2 = usage error.
  */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -32,15 +33,15 @@ if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync('/opt/pw-browsers')) pro
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
-const ALT_PATH = '/kitap-cilt-test/';
+const SUB_PATH = '/mucellit-test/';
 const ENGINE = (process.argv.find((a) => a.startsWith('--engine=')) || '--engine=chromium').slice('--engine='.length);
 const FAULTY = process.argv.includes('--faulty');
 const distArg = (() => { const i = process.argv.indexOf('--dist'); return i > 0 ? process.argv[i + 1] : null; })();
 const LICENSES = ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'vendor/SOURCES.md', 'vendor/pdf-lib/LICENSE.md', 'vendor/pdfjs/LICENSE',
   'vendor/fontkit/LICENSE', 'vendor/literata/OFL.txt', 'js/learn/LICENSE'];
-/** Tarayıcı sürümünde görünmemesi gereken masaüstü (Mac/Tauri) izleri. */
-const DESKTOP = /\bMac\b|macOS|⌘|Tauri|Finder|\bDock\b|Önizleme'de|Open in Preview/;
-const PROMISE = { tr: { tab: ['Düzenle', 'Süreç', 'Hesapla', 'Öğren'], ek: '-dizilmis.pdf' }, en: { tab: ['Imposition', 'Projects', 'Calculator', 'Learn'], ek: '-imposed.pdf' } };
+/** Desktop (Mac/Tauri) traces that must not show in the browser version. */
+const DESKTOP = /\bMac\b|macOS|⌘|Tauri|Finder|\bDock\b|Önizleme'de|Open in Preview/;  // turkish-ok: expected Turkish UI text
+const EXPECTED = { tr: { tab: ['Düzenle', 'Süreç', 'Hesapla', 'Öğren'], suffix: '-dizilmis.pdf' }, en: { tab: ['Imposition', 'Projects', 'Calculator', 'Learn'], suffix: '-imposed.pdf' } };  // turkish-ok: expected Turkish UI text
 
 async function loadPlaywright() {
   if (process.env.MC_PLAYWRIGHT) return await import(pathToFileURL(join(resolve(process.env.MC_PLAYWRIGHT), 'index.mjs')).href);
@@ -53,15 +54,15 @@ async function loadPlaywright() {
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8' };
 
-/** Yalnız ALT_YOL altını sunan statik sunucu; alt yol dışı istekleri kaydeder. */
+/** A static server that serves only under SUB_PATH; records requests outside the sub path. */
 function startServer(root) {
   const out = [];
   const server = createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://x').pathname);
-    if (path === ALT_PATH.slice(0, -1)) { response.writeHead(301, { location: ALT_PATH }); return response.end(); }
-    if (!path.startsWith(ALT_PATH)) { out.push(path); response.writeHead(404); return response.end(); }
+    if (path === SUB_PATH.slice(0, -1)) { response.writeHead(301, { location: SUB_PATH }); return response.end(); }
+    if (!path.startsWith(SUB_PATH)) { out.push(path); response.writeHead(404); return response.end(); }
     try {
-      let file = resolve(root, '.' + '/' + path.slice(ALT_PATH.length));
+      let file = resolve(root, '.' + '/' + path.slice(SUB_PATH.length));
       if (file !== root && !file.startsWith(root + sep)) { response.writeHead(403); return response.end(); }
       if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
       const content = await readFile(file);
@@ -98,7 +99,7 @@ async function inspectPdf(page, bytes) {
   }, Array.from(bytes));
 }
 
-/** Görünen metin + görünür öğelerin title/aria-label/placeholder'ı (dil seçici hariç). */
+/** The visible text + the title/aria-label/placeholder of visible elements (except the language picker). */
 async function visibleText(page) {
   return page.evaluate(() => {
     const copy = document.body.cloneNode(true);
@@ -110,17 +111,17 @@ async function visibleText(page) {
   });
 }
 
-/** Bir dist klasörünü iki dilde sınar; sonuç listesi döner. */
+/** Tests a dist folder in two languages; returns the result list. */
 async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
   const result = [];
   const check = (condition, message, detail) => {
     result.push({ pass: !!condition, message });
-    if (!quiet) console.log(`${condition ? 'GEÇTİ' : 'FAIL'} ${message}${detail !== undefined ? ' — ' + detail : ''}`);
+    if (!quiet) console.log(`${condition ? 'PASS' : 'FAIL'} ${message}${detail !== undefined ? ' — ' + detail : ''}`);
   };
   const root = resolve(distRoot);
   const { server, out } = await startServer(root);
   const serverRoot = `http://127.0.0.1:${server.address().port}`;
-  const site = serverRoot + ALT_PATH;
+  const site = serverRoot + SUB_PATH;
   const browser = await pw[ENGINE].launch();
   try {
     for (const [i18n, local] of [['tr', 'tr-TR'], ['en', 'en-US']]) {
@@ -134,15 +135,15 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
       page.on('request', (r) => requests.push(r.url()));
       page.on('dialog', (d) => d.accept());
       try {
-        // ---- açılış (alt yol, sondaki / olmadan da)
+        // ---- start-up (sub path, without the trailing / too)
         await page.goto(site.slice(0, -1));
         await page.waitForSelector('html[data-ready="yes"]', { timeout: Math.min(time, 20000) });
         const a = await page.evaluate(() => ({ url: location.href, lang: document.documentElement.lang, platform: window.Mucellit.platform.name,
           tabs: ['impose', 'projects', 'calculator', 'learn'].map((s) => document.getElementById('tab-button-' + s).textContent.trim()) }));
-        check(a.url === site && a.lang === i18n && a.platform === 'browser' && JSON.stringify(a.tabs) === JSON.stringify(PROMISE[i18n].tab),
-          `${et} açılış: ${ALT_PATH} altında hazır, dil ${i18n}, platform tarayıcı, sekme adları seçili dilde`, JSON.stringify(a));
+        check(a.url === site && a.lang === i18n && a.platform === 'browser' && JSON.stringify(a.tabs) === JSON.stringify(EXPECTED[i18n].tab),
+          `${et} start-up: ${SUB_PATH} ready, language ${i18n}, platform browser, tab names in the chosen language`, JSON.stringify(a));
 
-        // ---- masaüstüne özgü metin/düğme yok (dört sekme)
+        // ---- no desktop-only text/button (four tabs)
         const tracks = [];
         for (const s of ['impose', 'projects', 'calculator', 'learn']) {
           await page.click('#tab-button-' + s);
@@ -153,9 +154,9 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
         const y = await page.evaluate(() => ({ print: window.Mucellit.platform.print, field: document.getElementById('print-field').hidden,
           visible: !!document.getElementById('print').offsetParent || !!(document.getElementById('inPreview-open') || {}).offsetParent }));
         check(tracks.length === 0 && y.print === null && y.field && !y.visible,
-          `${et} masaüstüne özgü metin/düğme görünmüyor (4 sekme; Yazdır/Önizleme'de Aç gizli)`, tracks.length ? tracks.join(' | ') : JSON.stringify(y));
+          `${et} no desktop-only text/button shows (4 tabs; Print/Open in Preview hidden)`, tracks.length ? tracks.join(' | ') : JSON.stringify(y));
 
-        // ---- dil seçiciyle öteki dile geçiş ve geri dönüş (yeniden yükleme alt yolda kalır)
+        // ---- switching to the other language with the language picker and back (the reload stays on the sub path)
         const other = i18n === 'tr' ? 'en' : 'tr';
         await Promise.all([page.waitForEvent('load'), page.selectOption('#i18n-select', other)]);
         await page.waitForSelector('html[data-ready="yes"]');
@@ -163,8 +164,8 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
         await Promise.all([page.waitForEvent('load'), page.selectOption('#i18n-select', 'system')]);
         await page.waitForSelector('html[data-ready="yes"]');
         const g2 = await page.evaluate(() => ({ url: location.href, lang: document.documentElement.lang, tab: document.getElementById('tab-button-impose').textContent.trim() }));
-        check(g1.url === site && g1.lang === other && g1.tab === PROMISE[other].tab[0] && g2.url === site && g2.lang === i18n && g2.tab === PROMISE[i18n].tab[0],
-          `${et} dil seçici: ${other} → sistem (${i18n}); sayfa alt yolda yeniden yüklenir`, JSON.stringify({ g1, g2 }));
+        check(g1.url === site && g1.lang === other && g1.tab === EXPECTED[other].tab[0] && g2.url === site && g2.lang === i18n && g2.tab === EXPECTED[i18n].tab[0],
+          `${et} language picker: ${other} → system (${i18n}); the page reloads on the sub path`, JSON.stringify({ g1, g2 }));
 
         // ---- PDF dizme
         await page.click('#tab-button-impose');
@@ -182,11 +183,11 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
         const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-transfer')]);
         const output = await readFile(await download.path());
         const r = await inspectPdf(page, output);
-        check(download.suggestedFilename().endsWith(PROMISE[i18n].ek) && r.page === 24 && Math.abs(r.mm[0] - 297) < 0.5 && Math.abs(r.mm[1] - 210) < 0.5
+        check(download.suggestedFilename().endsWith(EXPECTED[i18n].suffix) && r.page === 24 && Math.abs(r.mm[0] - 297) < 0.5 && Math.abs(r.mm[1] - 210) < 0.5
           && JSON.stringify(r.first) === '["16:left","1:right"]',
-          `${et} PDF dizme: 37 sayfa → formalı 4 yaprak, 24 sayfa 297 × 210 mm, 1. sayfa 16 | 1`, JSON.stringify({ name: download.suggestedFilename(), ...r }));
+          `${et} PDF imposition: 37 pages → sewn 4 sheets, 24 pages 297 × 210 mm, page 1 16 | 1`, JSON.stringify({ name: download.suggestedFilename(), ...r }));
 
-        // ---- Öğren
+        // ---- Learn
         await page.click('#tab-button-learn');
         await page.waitForFunction(() => document.getElementById('guide-stage').childElementCount > 0 && document.getElementById('guide-root').dataset.state === 'ready', null, { timeout: Math.min(time, 15000) });
         await page.selectOption('#guide-speed', '4');
@@ -195,21 +196,21 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
         const o = await page.evaluate(() => ({ stage: document.querySelectorAll('#guide-stages li').length, tab: document.getElementById('tab-button-learn').textContent.trim(),
           license: document.getElementById('guide-license-text').textContent.trim() }));
         const learnLicense = existsSync(join(root, 'js/learn/LICENSE')) ? readFileSync(join(root, 'js/learn/LICENSE'), 'utf8').trim() : null;
-        check(o.stage === 10 && o.tab === PROMISE[i18n].tab[3] && learnLicense !== null && o.license === learnLicense,
-          `${et} Öğren: rehber kurulur (10 aşama), bir adım oynar, lisans paneli js/learn/LICENSE ile birebir`, JSON.stringify({ ...o, license: o.license.slice(0, 30) }));
+        check(o.stage === 10 && o.tab === EXPECTED[i18n].tab[3] && learnLicense !== null && o.license === learnLicense,
+          `${et} Learn: the guide is set up (10 stages), a step plays, the licence panel exactly js/learn/LICENSE`, JSON.stringify({ ...o, license: o.license.slice(0, 30) }));
 
-        // ---- lisans dosyaları sitede (göreli yolla) erişilebilir ve repodakiyle birebir
+        // ---- the licence files are reachable on the site (with a relative path) and identical to the repository
         const lis = await page.evaluate(async (l) => Promise.all(l.map(async (g) => { const y = await fetch(g); return [g, y.status, y.ok ? await y.text() : ''] })), LICENSES);
         const repoCounterpart = (g) => (g === 'LICENSE' || g === 'THIRD_PARTY_NOTICES.md' ? join(REPO, g) : join(REPO, 'app', g));
         const faulty = lis.filter(([g, state, text]) => state !== 200 || text !== readFileSync(repoCounterpart(g), 'utf8')).map(([g, d]) => g + ':' + d);
-        check(faulty.length === 0, `${et} lisans dosyaları sitede erişilebilir ve repodakiyle birebir (${LICENSES.length} file)`, faulty.length ? faulty.join(', ') : undefined);
+        check(faulty.length === 0, `${et} licence files reachable on the site and identical to the repository (${LICENSES.length} file)`, faulty.length ? faulty.join(', ') : undefined);
       } catch (e) {
-        check(false, `${et} koşu yarıda kaldı: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
+        check(false, `${et} run stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
       }
-      check(errors.length === 0, `${et} konsol hatası yok`, errors.length ? errors.slice(0, 3).map((h) => h.slice(0, 200)).join(' | ') : '0 hata');
+      check(errors.length === 0, `${et} no console error`, errors.length ? errors.slice(0, 3).map((h) => h.slice(0, 200)).join(' | ') : '0 errors');
       const outer = requests.filter((u) => !(u.startsWith(site) || u.startsWith('data:') || u.startsWith('blob:') || u === site.slice(0, -1)));
-      check(outer.length === 0 && out.length === 0, `${et} dış ağ isteği ve alt yol dışı istek yok`,
-        outer.length || out.length ? JSON.stringify({ outer: [...new Set(outer)].slice(0, 5), altPathOutside: [...new Set(out)].slice(0, 5) }) : `${requests.length} istek, hepsi ${ALT_PATH} altında`);
+      check(outer.length === 0 && out.length === 0, `${et} no outside network request and no request outside the sub path`,
+        outer.length || out.length ? JSON.stringify({ outer: [...new Set(outer)].slice(0, 5), altPathOutside: [...new Set(out)].slice(0, 5) }) : `${requests.length} requests, all under ${SUB_PATH}`);
       out.length = 0;
       await ctx.close();
     }
@@ -220,48 +221,48 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
   return result;
 }
 
-/** Bozuk dist kopyaları: [ad, bozma işlevi(klasör)]. */
+/** Broken dist copies: [name, corrupting function(folder)]. */
 const CORRUPT = [
-  ['boş klasör', (d) => { rmSync(d, { recursive: true, force: true }); mkdirSync(d); }],
-  ['index.html yok', (d) => rmSync(join(d, 'index.html'))],
-  ['mutlak yollu betik', (d) => change(d, 'index.html', '<script src="js/calc.js"></script>', '<script src="/js/calc.js"></script>')],
-  ['dış adrese istek', (d) => change(d, 'index.html', '</body>', '<img src="https://example.com/x.png" alt=""></body>')],
-  // index.html'deki hidden özniteliğini silmek kusur değildir (impose.js görünürlüğü platform.yazdir'a göre çalışma anında
-  // kurar); gerçek kusur tarayıcı platformunun yazdırma sunmasıdır → Yazdır düğmesi tarayıcıda görünür.
-  ['görünür Mac düğmesi', (d) => change(d, 'js/platform.js', 'yazdir: null,', 'print: function () { return Promise.resolve(true); },')],
-  ['Mac metni görünür', (d) => change(d, 'index.html', '</header>', '<p>Open in Preview (⌘P)</p></header>')],
-  ['LICENSE yok', (d) => rmSync(join(d, 'LICENSE'))],
-  ['THIRD_PARTY_NOTICES.md kısmen bozuk', (d) => writeFileSync(join(d, 'THIRD_PARTY_NOTICES.md'), readFileSync(join(d, 'THIRD_PARTY_NOTICES.md'), 'utf8').slice(0, 200))],
-  ['Öğren lisans paneli bozuk', (d) => change(d, 'index.html', 'Copyright (c) 2026 Tolga Cohce', 'Copyright (c) 2026 X')],
-  ['konsol hatası', (d) => change(d, 'index.html', '</body>', '<script>console.error("kusur")</script></body>')],
+  ['empty folder', (d) => { rmSync(d, { recursive: true, force: true }); mkdirSync(d); }],
+  ['no index.html', (d) => rmSync(join(d, 'index.html'))],
+  ['script with an absolute path', (d) => change(d, 'index.html', '<script src="js/calc.js"></script>', '<script src="/js/calc.js"></script>')],
+  ['request to an outside address', (d) => change(d, 'index.html', '</body>', '<img src="https://example.com/x.png" alt=""></body>')],
+  // removing the hidden attribute in index.html is not a fault (impose.js sets the visibility at run time from
+  // platform.print); the real fault is the browser platform offering printing → the Print button shows in the browser.
+  ['visible Mac button', (d) => change(d, 'js/platform.js', 'print: null,', 'print: function () { return Promise.resolve(true); },')],
+  ['Mac text visible', (d) => change(d, 'index.html', '</header>', '<p>Open in Preview (⌘P)</p></header>')],
+  ['no LICENSE', (d) => rmSync(join(d, 'LICENSE'))],
+  ['THIRD_PARTY_NOTICES.md partly broken', (d) => writeFileSync(join(d, 'THIRD_PARTY_NOTICES.md'), readFileSync(join(d, 'THIRD_PARTY_NOTICES.md'), 'utf8').slice(0, 200))],
+  ['Learn licence panel broken', (d) => change(d, 'index.html', 'Copyright (c) 2026 Tolga Cohce', 'Copyright (c) 2026 X')],
+  ['console error', (d) => change(d, 'index.html', '</body>', '<script>console.error("fault")</script></body>')],
 ];
 function change(d, relative, old, fresh) {
   const y = join(d, relative);
   const m = readFileSync(y, 'utf8');
-  if (!m.includes(old)) throw new Error(`bozma kalıbı bulunamadı (${relative}): ${old}`);
+  if (!m.includes(old)) throw new Error(`corruption pattern not found (${relative}): ${old}`);
   writeFileSync(y, m.replace(old, fresh));
 }
 
 async function main() {
   const pw = await loadPlaywright();
-  if (!pw[ENGINE] || typeof pw[ENGINE].launch !== 'function') { console.error(`Bilinmeyen motor: ${ENGINE} (chromium | webkit)`); process.exit(2); }
+  if (!pw[ENGINE] || typeof pw[ENGINE].launch !== 'function') { console.error(`Unknown engine: ${ENGINE} (chromium | webkit)`); process.exit(2); }
   let dist = distArg ? resolve(distArg) : join(REPO, 'dist');
   if (!distArg) {
     const h = spawnSync(process.execPath, [join(REPO, 'tools', 'prepare-dist.mjs'), '--web', '--quiet'], { encoding: 'utf8' });
     process.stdout.write(h.stdout + h.stderr);
-    if (h.status !== 0) { console.log('FAIL dist-prepare --web başarısız'); process.exit(1); }
+    if (h.status !== 0) { console.log('FAIL dist-prepare --web failed'); process.exit(1); }
   }
-  if (!existsSync(dist)) { console.error('dist klasörü yok: ' + dist); process.exit(2); }
-  console.log(`Motor: ${ENGINE}; site: ${dist} → ${ALT_PATH}`);
+  if (!existsSync(dist)) { console.error('no dist folder: ' + dist); process.exit(2); }
+  console.log(`Motor: ${ENGINE}; site: ${dist} → ${SUB_PATH}`);
 
   if (!FAULTY) {
     const s = await verify(pw, dist);
     const rest = s.filter((x) => !x.pass);
-    console.log(`\nÖZET: ${s.length} kontrol, ${s.length - rest.length} geçti, ${rest.length} kaldı`);
+    console.log(`\nSUMMARY: ${s.length} checks, ${s.length - rest.length} passed, ${rest.length} failed`);
     process.exit(rest.length ? 1 : 0);
   }
 
-  // --kusurlu: her bozuk kopyada denetim en az bir KALDI vermeli
+  // --faulty: on every broken copy the check must give at least one FAIL
   const tmp = mkdtempSync(join(tmpdir(), 'mc-alt-path-'));
   let escaping = 0;
   try {
@@ -273,12 +274,12 @@ async function main() {
       const rest = s.filter((x) => !x.pass);
       const caught = rest.length > 0;
       if (!caught) escaping += 1;
-      console.log(`${caught ? 'GEÇTİ' : 'FAIL'} [faulty] ${name}: denetim ${caught ? 'FAIL dedi' : 'KAÇIRDI'} (${rest.length}/${s.length} kontrol kaldı${rest.length ? '; ilk: ' + rest[0].message.slice(0, 110) : ''})`);
+      console.log(`${caught ? 'PASS' : 'FAIL'} [faulty] ${name}: check ${caught ? 'said FAIL' : 'MISSED'} (${rest.length}/${s.length} checks failed${rest.length ? '; first: ' + rest[0].message.slice(0, 110) : ''})`);
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
-  console.log(`\nÖZET (kusurlu): ${CORRUPT.length} bozuk kopya, ${CORRUPT.length - escaping} yakalandı, ${escaping} kaçtı`);
+  console.log(`\nSUMMARY (faulty): ${CORRUPT.length} broken copies, ${CORRUPT.length - escaping} caught, ${escaping} missed`);
   process.exit(escaping ? 1 : 0);
 }
 

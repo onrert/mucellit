@@ -742,8 +742,8 @@
   }
 
   // ---------------- start ----------------
-  function fillPresetSizes(secId, genId, heightId, landscape) {
-    var select = $(secId);
+  function fillPresetSizes(selectId, widthId, heightId, landscape) {
+    var select = $(selectId);
     O.PRESET_SIZES.forEach(function (o) {
       select.appendChild(el('option', { value: o.width + 'x' + o.height, text: t('impose.ready.portrait', { name: o.name, width: o.width, height: o.height }) }));
       if (landscape) select.appendChild(el('option', { value: o.height + 'x' + o.width, text: t('impose.ready.landscape', { name: o.name, width: o.height, height: o.width }) }));
@@ -751,14 +751,14 @@
     select.addEventListener('change', function () {
       if (!select.value) return;
       var p = select.value.split('x');
-      O.writeNumber(genId, Number(p[0])); O.writeNumber(heightId, Number(p[1]));
+      O.writeNumber(widthId, Number(p[0])); O.writeNumber(heightId, Number(p[1]));
       select.value = '';
       update();
     });
   }
 
-  function swap(genId, heightId) {
-    var g = $(genId).value; $(genId).value = $(heightId).value; $(heightId).value = g; update();
+  function swap(widthId, heightId) {
+    var g = $(widthId).value; $(widthId).value = $(heightId).value; $(heightId).value = g; update();
   }
 
   function start() {

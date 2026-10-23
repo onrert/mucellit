@@ -7,7 +7,7 @@
 <title>Mücellit</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="css/style.css">
-<!-- Öğren rehberinin stilleri (kapsamı .ogren-kok; Colorfigures motor stilleri .cf-kok altında, MIT: js/learn/LICENSE) -->
+<!-- Styles of the Learn guide (scope .learn-root; the Colorfigures engine styles under .cf-root, MIT: js/learn/LICENSE) -->
 <link rel="stylesheet" href="css/learn.css">
 </head>
 <body>
@@ -24,7 +24,7 @@
 </header>
 
 <main>
-<!-- ============ DÜZENLE ============ -->
+<!-- ============ IMPOSITION ============ -->
 <section id="tab-impose" role="tabpanel" aria-labelledby="tab-button-impose">
   <div class="layout-grid">
     <aside class="panel" id="settings">
@@ -104,7 +104,7 @@
       </label>
       <label class="choice" id="back-reversed-field"><input type="checkbox" id="back-reversed"> <span data-i18n="impose.back_reversed">Backs in reverse order</span></label>
       <p><button type="button" class="main" id="export-transfer" disabled data-i18n="impose.download">Download imposed PDF</button></p>
-      <!-- Mac uygulamasında yazdırma (platform.yazdir yoksa, ör. tarayıcıda, gizli kalır; impose.js açar) -->
+      <!-- Printing in the Mac app (without platform.print, e.g. in the browser, it stays hidden; impose.js shows it) -->
       <div class="line" id="print-field" hidden>
         <button type="button" id="print" disabled data-i18n="impose.print">Print…</button>
         <button type="button" id="inPreview-open" disabled data-i18n="impose.open_in_preview">Open in Preview</button>
@@ -154,7 +154,7 @@
   </div>
 </section>
 
-<!-- ============ SÜREÇ ============ -->
+<!-- ============ PROJECTS ============ -->
 <section id="tab-projects" role="tabpanel" aria-labelledby="tab-button-projects" hidden>
   <div id="storage-warning"></div>
   <div class="projects-grid">
@@ -195,7 +195,7 @@
   </div>
 </section>
 
-<!-- ============ HESAPLA ============ -->
+<!-- ============ CALCULATOR ============ -->
 <section id="tab-calculator" role="tabpanel" aria-labelledby="tab-button-calculator" hidden>
   <div class="calc-grid">
     <form class="panel" id="calc-form">
@@ -257,9 +257,9 @@
   </div>
 </section>
 
-<!-- ============ ÖĞREN ============
-     Formalı dikiş + sert kapak rehberi (js/learn/). Sekme ilk açıldığında kurulur; sekmeden çıkınca figür sökülür.
-     Çizimler Colorfigures motoru ve yöntemiyle (MIT; April Zhu, Tolga Cohce; tam metin js/learn/LICENSE). -->
+<!-- ============ LEARN ============
+     A sewn signatures + hard cover guide (js/learn/). Set up when the tab is first opened; the figure is removed when the tab is left.
+     The drawings are made with the Colorfigures engine and method (MIT; April Zhu, Tolga Cohce; full text js/learn/LICENSE). -->
 <section id="tab-learn" role="tabpanel" aria-labelledby="tab-button-learn" hidden>
 <div class="learn-root" id="guide-root">
   <div class="top">
@@ -330,8 +330,8 @@
   </div>
 
   <p class="bottom" data-i18n="learn.license">Drawings made with the Colorfigures method (MIT; April Zhu, Tolga Cohce). Full license text below.</p>
-  <!-- MIT koşulu uygulama içinde görünür (Mac'te kullanıcı js/learn/LICENSE dosyasına erişemez). Metin
-       js/learn/LICENSE ile birebir (app/test/learn-fixes.test.js D7); hukuk metni çevrilmez (lang="en"). -->
+  <!-- The MIT condition is visible inside the app (on the Mac the user cannot reach the js/learn/LICENSE file). The text
+       is exactly js/learn/LICENSE (app/test/learn-fixes.test.js D7); the legal text is not translated (lang="en"). -->
   <details class="guide-license" id="guide-license">
     <summary data-i18n="learn.license_text">Colorfigures license (MIT)</summary>
     <pre id="guide-license-text" lang="en" translate="no">MIT License
@@ -364,22 +364,22 @@ SOFTWARE.</pre>
 
 <div id="notice" role="status" aria-live="polite"></div>
 
-<!-- Arayüz dili: sözlükler önce, i18n.js onları okur. Yeni dil: app/i18n/<kod>.js + buraya bir satır.
-     dil betikleri ~1,9 MB vendor'dan ÖNCE (ilk kare seçili dilde); Object.prototype'a dokunmazlar
-     (app/test/tauri-security.test.js dondurulmuş bağlamda sınar). -->
+<!-- Interface language: the dictionaries first, i18n.js reads them. A new language: app/i18n/<code>.js + one line here.
+     The language scripts come BEFORE the ~1.9 MB of vendor (the first frame is in the chosen language); they do not
+     touch Object.prototype (app/test/tauri-security.test.js tests this in a frozen context). -->
 <script src="i18n/en.js"></script>
 <script src="i18n/tr.js"></script>
 <script src="js/i18n.js"></script>
-<!-- Kütüphaneler yerel kopya (app/vendor/, kaynak ve özetler SOURCES.md'de): internet gerekmez. -->
+<!-- The libraries are local copies (app/vendor/, sources and checksums in SOURCES.md): no internet needed. -->
 <script src="vendor/pdf-lib/pdf-lib.min.js"></script>
 <script src="vendor/pdfjs/pdf.min.js"></script>
 <script src="vendor/pdfjs/pdf.worker.min.js"></script>
-<!-- Object.prototype vendor kütüphanelerinden sonra dondurulur (bkz. js/freeze.js) -->
+<!-- Object.prototype is frozen after the vendor libraries (see js/freeze.js) -->
 <script src="js/freeze.js"></script>
 <!-- One-time migration of data saved by earlier versions (old storage keys and field names); before the app scripts -->
 <script src="js/migrate.js"></script>
-<!-- Uygulama: klasik script (file:// ile çift tıklayınca da çalışır) -->
-<!-- Platform katmanı: tarayıcı uygulaması; Tauri penceresinde platform-tauri.js farklı olanları ezer -->
+<!-- App: classic scripts (works with file:// on a double click too) -->
+<!-- Platform layer: the browser app; in the Tauri window platform-tauri.js overrides what differs -->
 <script src="js/platform.js"></script>
 <script src="js/platform-tauri.js"></script>
 <script src="js/plugins/plugins.js"></script>
@@ -390,7 +390,7 @@ SOFTWARE.</pre>
 <script src="js/storage.js"></script>
 <script src="js/output.js"></script>
 <script src="js/common.js"></script>
-<!-- EPUB → PDF eklentisi (fontkit ve Literata yazı tipi ilk EPUB'da tembel yüklenir) -->
+<!-- EPUB → PDF plug-in (fontkit and the Literata font load lazily on the first EPUB) -->
 <script src="js/plugins/epub/zip.js"></script>
 <script src="js/plugins/epub/hyphenation.js"></script>
 <script src="js/plugins/epub/typeset.js"></script>
@@ -402,9 +402,9 @@ SOFTWARE.</pre>
 <script src="js/impose.js"></script>
 <script src="js/projects.js"></script>
 <script src="js/calculator.js"></script>
-<!-- Öğren rehberi (js/learn/; Colorfigures parçaları MIT, js/learn/LICENSE). Sıra: ölçü (calc.js'i çağırır) →
-     motor → sayfa → figürler (ortak önce) → dersler → denetleyici; hepsi freeze.js'ten sonra, app.js'ten önce
-     (app/test/tauri-security.test.js denetler). Tek ad alanı: KitapCilt.ogren. -->
+<!-- Learn guide (js/learn/; the Colorfigures parts are MIT, js/learn/LICENSE). Order: measure (calls calc.js) →
+     engine → page → figures (common first) → lessons → controller; all after freeze.js, before app.js
+     (app/test/tauri-security.test.js checks this). One namespace: Mucellit.learn. -->
 <script src="js/learn/learn-measure.js"></script>
 <script src="js/learn/cf-engine.js"></script>
 <script src="js/learn/cf-page.js"></script>

@@ -1,12 +1,12 @@
 /*
- * learn.css — Mücellit "Öğren" sekmesi: sayfa düzeni + Colorfigures motor stilleri.
- * LİSANS NOTU (MIT): "motor" bölümü Colorfigures assets/core.js (CORE_CSS) ve scripts/build.py stillerinden uyarlandı
- * (body yerine .cf-kok kökü). MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) ve Tolga Cohce
- * (iso-figure). Tam metin: js/learn/LICENSE.
- * Öğren prototipinden uyarlandı. Uygulamaya eklerken: bütün sayfa kuralları .ogren-kok
- * altına alındı (uygulamanın button/select/h2/.kart/.ilerleme/table.sonuc kurallarıyla çakışmasın); :root
- * değişkenleri ve body zemini .ogren-kok'a taşındı; rehber kendi kâğıt renginde kalır (koyu temada da; çizimler
- * açık zemine göre). Motor bölümü (.cf-kok, #fig, #figF …) değişmedi.
+ * learn.css — the Mucellit "Learn" tab: page layout + the Colorfigures engine styles.
+ * LICENSE NOTE (MIT): the "engine" section is adapted from the Colorfigures assets/core.js (CORE_CSS) and scripts/build.py
+ * styles (the .cf-root root instead of body). MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) and
+ * Tolga Cohce (iso-figure). Full text: js/learn/LICENSE.
+ * Adapted from the Learn prototype. When added to the app: every page rule was put under .learn-root (so that it does
+ * not clash with the app's button/select/h2/.card/.progress/table.result rules); the :root variables and the body
+ * background moved to .learn-root; the guide keeps its own paper colour (in the dark theme too; the drawings are made
+ * for a light background). The engine section (.cf-root, #fig, #figF …) is unchanged.
  */
 .learn-root{--paper:#f2efe7;--ink:#231e16;--muted:#6f6758;--rule:#ddd6c8;--card:#fbf8f0;--accent:#f4b829;--warn:#fff1bf;
   color-scheme:light;background-color:var(--paper);
@@ -18,7 +18,7 @@
 .learn-root .small{font-size:12px;color:var(--muted)}
 .learn-root h2,.learn-root h3{color:var(--ink);text-transform:none;letter-spacing:normal}
 
-/* ---------- sayfa düzeni ---------- */
+/* ---------- page layout ---------- */
 .learn-root .top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px 24px;flex-wrap:wrap;padding:18px 24px 10px;border-bottom:1px solid var(--rule)}
 .learn-root .top h2{font-size:18px;margin:0;letter-spacing:.01em}
 .learn-root .top p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
@@ -90,19 +90,19 @@
   .learn-root .bottom{padding:8px 16px 20px}
 }
 
-/* ---------- motor (Colorfigures CORE_CSS, kök .cf-kok) ---------- */
+/* ---------- engine (Colorfigures CORE_CSS, root .cf-root) ---------- */
 .cf-root{display:flex;flex-direction:column;align-items:center;width:100%}
 .cf-root #fig{width:100%;max-width:760px;height:auto;display:block;margin:4px 0 8px;user-select:none;overflow:visible}
 .cf-root #fig{cursor:grab;touch-action:pan-y} .cf-root #fig.drag{cursor:grabbing} .cf-root #fig [data-act]{cursor:pointer}
 .cf-root .stage{position:relative;width:100%;max-width:760px}
 .cf-root .actions{position:absolute;top:4px;left:0;display:flex;flex-direction:column;align-items:flex-start;gap:8px;z-index:2;max-width:220px}
 .cf-root.nolabels svg .tag{display:none}
-/* (WebKit akıcılığı, cf-engine.js fark 8): #fig canlı ve filtresiz, #figF filtreli durgun kopya; geçiş yumuşak */
+/* (WebKit smoothness, cf-engine.js difference 8): #fig live and without the filter, #figF the filtered still copy; a soft transition */
 .cf-root #figF{position:absolute;left:0;top:0;margin:0;display:block;pointer-events:none;overflow:visible;transform-origin:0 0;opacity:1;visibility:visible;transition:opacity .22s ease,visibility 0s;will-change:opacity}
-/* canlı katman, filtreli katman tamamen belirdikten SONRA gizlenir (çapraz geçişte arka plan görünmez, açılma olmaz) */
+/* the live layer is hidden AFTER the filtered layer has fully appeared (no background shows through the cross-fade, no flash) */
 .cf-root #art{opacity:0;transition:opacity 0s linear .24s}
 .cf-root.cf-motion #art{opacity:1;transition:none}
-/* sönme bitince gizli: opaklığı 0 olan filtreli katman bile WebKit'te her karede boyama yükü getiriyordu (gerçek Safari zincir 30 → 48 fps) */
+/* hidden once faded out: even a filtered layer with opacity 0 cost a paint every frame in WebKit (real Safari chain 30 → 48 fps) */
 .cf-root.cf-motion #figF{opacity:0;visibility:hidden;transition:opacity .14s ease,visibility 0s linear .14s}
 .cf-root.cf-instant #art,.cf-root.cf-instant #figF{transition:none!important}
 @media (prefers-reduced-motion:reduce){.cf-root #art,.cf-root #figF,.cf-root .toast,#guide-progress-bar{transition:none!important}.cf-root .stat .v.bump{animation:none}}
@@ -139,25 +139,25 @@
 }
 @media (min-width:561px){.cf-root .vset{top:4px!important}.cf-root #stats{top:var(--vset-h,44px)!important}}
 @media (pointer:coarse){#artF{filter:none!important}}
-/* build.py: yakınlaştırma çipi */
+/* build.py: zoom chip */
 .zwrap{position:relative;width:100%}.zwrap.on{overflow:hidden}.zwrap #fig{transform-origin:0 0}
 .zchip{position:absolute;right:2px;bottom:6px;display:flex;align-items:center;gap:2px;font:600 11px ui-monospace,Menlo,monospace;
  background:rgba(242,239,231,.88);border:1px solid rgba(35,30,22,.25);border-radius:999px;padding:2px;z-index:3;user-select:none}
 .cf-root .zchip button{all:unset;cursor:pointer;min-width:22px;height:22px;line-height:22px;text-align:center;border-radius:999px;color:#231e16}
 .cf-root .zchip button:hover{background:rgba(35,30,22,.08)}.cf-root .zchip .zp{min-width:44px}
-/* build.py: figür üstü uyarı balonu */
+/* build.py: notice bubble above the figure */
 .cf-root .toast{position:absolute;left:50%;top:6%;z-index:4;transform:translate(-50%,8px);opacity:0;pointer-events:none;display:flex;align-items:center;gap:8px;
   width:max-content;max-width:min(86%,440px);white-space:normal;font:600 12.5px/1.35 ui-monospace,Menlo,monospace;letter-spacing:.01em;color:#231e16;background:#fff1bf;
   border:1px solid rgba(35,30,22,.28);border-radius:8px;box-shadow:0 8px 22px rgba(35,30,22,.16);padding:7px 13px 7px 9px;transition:opacity .18s ease,transform .18s ease}
 .cf-root .toast::before{content:"!";flex:none;width:17px;height:17px;border-radius:50%;background:#231e16;color:#fff1bf;font:800 11px/17px ui-monospace,Menlo,monospace;text-align:center}
 .cf-root .toast.show{opacity:1;transform:translate(-50%,0)}
-/* build.py: telefonda etiket listesi */
+/* build.py: label list on phones */
 .lgd{display:none}@media (max-width:560px){.cf-root:not(.nolabels) .lgd.has{display:grid}}
 .lgd{grid-template-columns:1fr 1fr;gap:2px 8px;margin:4px 0 12px;font:700 10.5px/1.25 ui-monospace,Menlo,monospace;letter-spacing:.03em;color:#231e16;width:100%}
 .cf-root .lgd button{all:unset;display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px;border-radius:7px;-webkit-tap-highlight-color:transparent}
 .lgd b{flex:none;min-width:17px;height:17px;padding:0 3px;box-sizing:border-box;border-radius:999px;border:1.2px solid #231e16;background:#fff4d6;text-align:center;font:800 10px/15px ui-monospace,Menlo,monospace}
 .lgd .on b{background:var(--accent,#f4b829)}.lgd .sel{background:rgba(35,30,22,.09)}.lgd .sel b{background:#231e16;color:#fff4d6}
-/* Colorfigures MIT lisansı paneli (rehberin dipnotunun altında, kapalı başlar) */
+/* Colorfigures MIT licence panel (under the guide's footnote, starts closed) */
 .learn-root .guide-license{margin:0;padding:0 24px 24px;color:var(--muted);font-size:11.5px}
 .learn-root .guide-license summary{cursor:pointer}
 .learn-root .guide-license pre{margin:8px 0 0;white-space:pre-wrap;font:11px/1.45 ui-monospace,Menlo,monospace;max-width:80ch}

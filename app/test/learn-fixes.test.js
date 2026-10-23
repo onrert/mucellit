@@ -4,7 +4,7 @@
  *  O2. The probe interface (Mucellit.learn.probe) is not in the product; it only comes with the test injection (app/test/learn-probe.cjs).
  *  D3. cf-page.js teardown: rAF ids are cancelled only with cancelAnimationFrame, setTimeout ids only with clearTimeout.
  *  D4. The app name exemption of i18n-scan.js is word bounded ("Mücellitler" is caught).
- *  D5. One term: en "joint gap" (Calculator and guide), no "hinge"; tr "mafsal".
+ *  D5. One term: en "joint gap" (Calculator and guide), no "hinge"; tr "mafsal".  // turkish-ok: expected Turkish UI text
  *  D7. The full text of the MIT licence in the guide (index.html, #guide-license-text) = js/learn/LICENSE.
  * (O1 ⌘4 setup again, D6 progress on a language change: need a browser, the e2e.mjs "fix" checks.)
  * Every checker says "fail" on faulty input.
@@ -171,7 +171,7 @@ function checkTerm(en, tr) {
   }
   return s;
 }
-test('D5: the joint (f) measurement has one term in en-US, "joint gap" (Calculator and guide), no "hinge"; tr "mafsal"', () => {
+test('D5: the joint (f) measurement has one term in en-US, "joint gap" (Calculator and guide), no "hinge"; tr "mafsal"', () => {  // turkish-ok: expected Turkish UI text
   assert.deepEqual(checkTerm(EN, TR), []);
 });
 test('D5 faulty input: caught when a single "hinge gap" comes back, the term is removed or tr changes', () => {

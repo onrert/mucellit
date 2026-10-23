@@ -1,18 +1,18 @@
-//! Yazdırma: seçenek A — PDFKit baskı işlemi, %100 ölçek; seçenek B — Önizleme'de Aç.
+//! Printing: option A — a PDFKit print operation, 100% scale; option B — Open in Preview.
 //!
-//! A. `yazdir`: gövde ham PDF baytı (JS'in ürettiği dizilmiş PDF; dosya yolu yok). Ana iş parçacığında
-//! `PDFDocument` → `NSPrintInfo` (kâğıt = ilk sayfanın MediaBox'ı, yön sayfaya göre, ölçek 1, ortalı, dört kenar eşit ve
-//! yazıcının donanım kenarlarından büyük — bkz. [`simetrik_kenar`]) →
-//! `printOperationForPrintInfo:scalingMode:autoRotate:` (`PageScaleNone`, döndürme yok) → pencereye bağlı baskı
-//! sayfası (sheet). Komut kullanıcı Yazdır'a (ya da "PDF olarak kaydet"e) basınca `true`, vazgeçince `false` döner;
-//! sayfa açıkken uygulama kilitlenmez (kip yalnız o pencere için). Pencere bulunamazsa uygulama kipli pencere.
-//! Yazıcı sürücüsünün kendi "Sığdır" ayarı ölçeği yine bozabilir: JS baskı penceresinden önce not gösterir.
+//! A. `print`: the body is the raw PDF bytes (the imposed PDF made by JS; no file path). On the main thread
+//! `PDFDocument` → `NSPrintInfo` (paper = the MediaBox of the first page, orientation by the page, scale 1, centred, four
+//! equal margins larger than the printer's hardware margins — see [`symmetric_margin`]) →
+//! `printOperationForPrintInfo:scalingMode:autoRotate:` (`PageScaleNone`, no rotation) → a print sheet attached to the
+//! window. The command returns `true` when the user presses Print (or "Save as PDF"), `false` on cancel; the app does
+//! not lock while the sheet is open (modal only for that window). When the window is not found, an app-modal dialog.
+//! The printer driver's own "Scale to fit" setting can still spoil the scale: JS shows a note before the print dialog.
 //!
-//! B. `onizlemede_ac`: PDF `app_cache_dir/cikti/<ad>.pdf`'ye yazılır, `NSWorkspace` ile Önizleme'de
-//! (`com.apple.Preview`) açılır. Sandbox'ta Önizleme'nin kap içi dosyayı açıp açamadığı elle sınanır; açılamazsa
-//! hata JS'e gider, JS seçenek E'ye düşer (Kaydet + "Önizleme'de basın" notu).
+//! B. `open_in_preview`: the PDF is written to `app_cache_dir/output/<name>.pdf` and opened in Preview
+//! (`com.apple.Preview`) with `NSWorkspace`. Whether Preview can open a file inside the container in the sandbox is
+//! tested by hand; when it cannot, the error goes to JS and JS falls back to option E (Save + a "print from Preview" note).
 //!
-//! Apple dışı platform: iki komut da anlaşılır "henüz yok" hatası döner (sözlükten).
+//! Non-Apple platform: both commands return a clear "not available yet" error (from the dictionary).
 
 use crate::i18n::text;
 use std::fs;
@@ -21,24 +21,24 @@ use std::time::{Duration, SystemTime};
 use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
 
-/// Baskı ayarı (platformdan bağımsız; `NSPrintInfo` buna göre kurulur). Ölçüler PostScript noktası (1/72 inç).
+/// Print settings (platform independent; `NSPrintInfo` is set up from them). Sizes in PostScript points (1/72 inch).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PrintSettings {
-    /// Kâğıt genişliği ve yüksekliği = ilk sayfanın MediaBox'ı (sayfa döndürmesi uygulanmış).
+    /// Paper width and height = the MediaBox of the first page (with the page rotation applied).
     pub paper_width: f64,
     pub paper_height: f64,
-    /// Yatay (genişlik > yükseklik).
+    /// Landscape (width > height).
     pub landscape: bool,
-    /// Simetrik kenarın alt sınırı (pt). Gerçek kenar = en büyük donanım kenarı ile bunun büyüğü ([`simetrik_kenar`]);
-    /// sayfa kenar dikdörtgeninden büyük olduğu için kırpılmaz, kenar yalnız ortalamayı simetrik yapar.
+    /// The lower limit of the symmetric margin (pt). The real margin = the larger of the largest hardware margin and this
+    /// ([`symmetric_margin`]); as the page is larger than the margin rectangle it is not cropped, the margin only makes the centring symmetric.
     pub margin_floor: f64,
-    /// Ölçek çarpanı (1 = %100).
+    /// Scale factor (1 = 100%).
     pub scaling: f64,
-    /// PDFKit'in otomatik döndürmesi (kapalı: kâğıt zaten sayfa yönünde).
+    /// PDFKit's automatic rotation (off: the paper already has the page orientation).
     pub rotate_auto: bool,
 }
 
-/// İlk sayfanın ölçüsünden baskı ayarı. Ölçü sonlu ve pozitif değilse hata.
+/// Print settings from the size of the first page. An error when the size is not finite and positive.
 pub fn print_settings(width: f64, height: f64) -> Result<PrintSettings, String> {
     if !(width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0) {
         return Err(text("rust.pdf_unreadable", &[]));
@@ -53,18 +53,18 @@ pub fn print_settings(width: f64, height: f64) -> Result<PrintSettings, String> 
     })
 }
 
-/// Simetrik kenarın öntanımlı alt sınırı: 1 inç (72 pt). Baskı penceresinde başka yazıcı seçilirse kenar o yazıcının
-/// donanım kenarına göre yeniden hesaplanmaz; donanım kenarı ≤ 72 pt olan her yazıcıda ortalama yine simetrik kalır.
+/// The default lower limit of the symmetric margin: 1 inch (72 pt). When another printer is chosen in the print dialog the
+/// margin is not calculated again for that printer's hardware margin; on every printer with a hardware margin ≤ 72 pt the centring stays symmetric.
 pub const MARGIN_FLOOR: f64 = 72.0;
 
-/// S9 kök nedeni: AppKit sayfayı `kâğıt − etkin kenar` dikdörtgenine yerleştirir; etkin kenar =
-/// max(NSPrintInfo kenarı, yazıcının donanım kenarı = `imageablePageBounds` dışı). Kenarlar 0 ve ortalı iken sayfa
-/// yazdırılabilir alana ortalanır: donanım kenarları asimetrikse (yazıcısız A4 yatay: sol 18, sağ 41 pt) içerik
-/// (sol − sağ) / 2 = −11,5 pt (−4,06 mm) kayar. Dört kenar eşit ve her donanım kenarından büyükse etkin kenarlar eşit
-/// olur, ortalama kâğıda göre yapılır (kayma 0); sayfa kenar dikdörtgeninden büyük olduğundan içerik kırpılmaz.
+/// S9 root cause: AppKit places the page into the `paper − effective margin` rectangle; effective margin =
+/// max(NSPrintInfo margin, the printer's hardware margin = outside `imageablePageBounds`). With margins 0 and centred the
+/// page is centred in the printable area: when the hardware margins are asymmetric (A4 landscape without a printer: left
+/// 18, right 41 pt) the content shifts by (left − right) / 2 = −11.5 pt (−4.06 mm). With four equal margins each larger
+/// than every hardware margin the effective margins are equal and the centring is by the paper (shift 0); as the page is larger than the margin rectangle the content is not cropped.
 ///
-/// `alan` = (x, y, genişlik, yükseklik) yazdırılabilir alan (pt), kâğıt `gen × yuk`. Alan geçersizse (sonlu değil,
-/// boş) yalnız taban kullanılır. Dönen değer dört kenara da yazılır.
+/// `field` = (x, y, width, height) printable area (pt), paper `width × height`. When the area is invalid (not finite,
+/// empty) only the floor is used. The returned value is written to all four margins.
 pub fn symmetric_margin(width: f64, height: f64, field: (f64, f64, f64, f64), base: f64) -> f64 {
     let (x, y, g, h) = field;
     let valid = [x, y, g, h].iter().all(|v| v.is_finite()) && g > 0.0 && h > 0.0;
@@ -78,7 +78,7 @@ pub fn symmetric_margin(width: f64, height: f64, field: (f64, f64, f64, f64), ba
     hardware.max(if base.is_finite() { base } else { 0.0 })
 }
 
-/// Sayfa döndürmesi (derece) 90/270 ise genişlik ve yükseklik yer değiştirir.
+/// With a page rotation (degrees) of 90/270 width and height swap.
 pub fn frozen_size(width: f64, height: f64, rotation: i64) -> (f64, f64) {
     if rotation.rem_euclid(180) == 90 {
         (height, width)
@@ -87,7 +87,7 @@ pub fn frozen_size(width: f64, height: f64, rotation: i64) -> (f64, f64) {
     }
 }
 
-/// Gövde boyutu sınırı (düşük 5): dosya açmayla aynı (`files::EN_COK_DOSYA`, 1 GiB).
+/// Body size limit (low 5): the same as opening a file (`files::MAX_FILE`, 1 GiB).
 pub fn check_body_size(length: usize) -> Result<(), String> {
     if length as u64 > crate::files::MAX_FILE {
         return Err(text(
@@ -98,7 +98,7 @@ pub fn check_body_size(length: usize) -> Result<(), String> {
     Ok(())
 }
 
-/// Ham PDF gövdesi (kopyasız ödünç; boş ya da sınırdan büyükse hata).
+/// Raw PDF body (borrowed without a copy; an error when empty or over the limit).
 fn raw_body<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String> {
     match request.body() {
         InvokeBody::Raw(b) if !b.is_empty() => {
@@ -118,16 +118,16 @@ fn title(request: &Request<'_>, name: &str) -> String {
         .to_string()
 }
 
-/// Önizleme için yazılan çıktıların klasörü (uygulamanın önbelleği; sandbox'ta kabın içi).
+/// The folder of the outputs written for Preview (the app cache; inside the container in the sandbox).
 pub const OUTPUT_FOLDER: &str = "output";
-/// Bu yaştan eski önizleme çıktıları yeni çıktı yazılırken silinir (Önizleme açık tutuyor olabilir: hemen silinmez).
+/// Preview outputs older than this are removed when a new output is written (Preview may be holding it: not removed at once).
 pub const OUTPUT_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// Çökme artığı `.gecici` dosyalarının silinmesi için en az yaş (taze olan şu an yazılıyor olabilir).
+/// The minimum age for removing crash leftover `.temp` files (a fresh one may be being written now).
 pub const TEMP_LEFTOVER_AGE: Duration = Duration::from_secs(10 * 60);
 
-/// Önizleme klasörü temizliği (düşük 6): `omur`'den eski `.pdf` çıktılar ve çökme artığı `.gecici`
-/// dosyaları (`atomik_yaz` kalıbı, `GECICI_ARTIK_YASI`'ndan eski). Dönüş: (silinen pdf, silinen geçici).
+/// Preview folder clean-up (low 6): `.pdf` outputs older than `lifetime` and crash leftover `.temp`
+/// files (the `write_atomic` pattern, older than `TEMP_LEFTOVER_AGE`). Returns: (pdfs removed, temps removed).
 pub fn clear_cache(folder: &Path, now: SystemTime) -> (usize, usize) {
     (
         clear_old_outputs(folder, OUTPUT_LIFETIME, now),
@@ -135,7 +135,7 @@ pub fn clear_cache(folder: &Path, now: SystemTime) -> (usize, usize) {
     )
 }
 
-/// Açılışta Önizleme önbelleğini arka planda temizler (eskiden yalnız yeni çıktı yazılırken; `.gecici` hiç).
+/// Cleans the Preview cache in the background at start-up (in the past only when writing a new output; `.temp` never).
 pub fn clean_on_startup<R: Runtime>(app: &AppHandle<R>) {
     let Ok(d) = app.path().app_cache_dir() else {
         return;
@@ -146,11 +146,11 @@ pub fn clean_on_startup<R: Runtime>(app: &AppHandle<R>) {
     });
 }
 
-/// Baskı penceresi sonucunun en uzun bekleme süresi (düşük 4): `didRun` gelmezse komut sonsuza dek beklemez.
+/// The longest wait for the print dialog result (low 4): when `didRun` does not come the command does not wait forever.
 pub const PRINTING_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
-/// Kanaldan sonucu `sure` boyunca bekler (engelleyici bekleme ayrı iş parçacığında). Dönüş: (sonuç, zaman aşımı mı).
-/// Zaman aşımında "yanıt yok", kanal kapandıysa "kurulamadı" hatası.
+/// Waits for the result from the channel for `duration` (the blocking wait on a separate thread). Returns: (result, timed out).
+/// On timeout a "no answer" error, when the channel closed a "could not be set up" error.
 pub async fn wait_result<T: Send + 'static>(
     al: std::sync::mpsc::Receiver<Result<T, String>>,
     sure: Duration,
@@ -172,7 +172,7 @@ pub async fn wait_result<T: Send + 'static>(
     }
 }
 
-/// Klasördeki `omur`'den eski `.pdf` dosyalarını siler; silinen sayısı.
+/// Removes the `.pdf` files in the folder older than `lifetime`; the number removed.
 pub fn clear_old_outputs(folder: &Path, lifetime: Duration, now: SystemTime) -> usize {
     let Ok(l) = fs::read_dir(folder) else {
         return 0;
@@ -193,7 +193,7 @@ pub fn clear_old_outputs(folder: &Path, lifetime: Duration, now: SystemTime) -> 
         .count()
 }
 
-/// Önizleme çıktısını yazar: `<klasor>/<güvenli ad>.pdf` (aynı ad varsa üzerine). Yazılan yol.
+/// Writes the Preview output: `<folder>/<safe name>.pdf` (overwritten when the same name exists). The written path.
 pub fn write_output(folder: &Path, encoded_name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
     fs::create_dir_all(folder)
         .map_err(|e| text("rust.writeFailed", &[("error", &e.to_string())]))?;
@@ -204,15 +204,15 @@ pub fn write_output(folder: &Path, encoded_name: &str, bytes: &[u8]) -> Result<P
     Ok(path)
 }
 
-/// Dizilmiş PDF'i yazdırır (baskı penceresi). Gövde ham PDF baytı, `x-ad` başlığı iş adı (encodeURIComponent).
-/// `true`: kullanıcı yazdırdı (ya da PDF olarak kaydetti); `false`: vazgeçti.
+/// Prints the imposed PDF (print dialog). The body is the raw PDF bytes, the `x-name` header the job name (encodeURIComponent).
+/// `true`: the user printed (or saved as PDF); `false`: cancelled.
 #[tauri::command]
 pub async fn print<R: Runtime>(
     app: AppHandle<R>,
     window: WebviewWindow<R>,
     request: Request<'_>,
 ) -> Result<bool, String> {
-    // Tek kopya: bayt ana iş parçacığına taşınır; PDFKit'e kopyasız verilir (NSData::from_vec).
+    // One copy: the bytes move to the main thread; given to PDFKit without a copy (NSData::from_vec).
     let bytes = raw_body(&request)?.to_vec();
     let name = crate::files::safe_name(&title(&request, "x-name"), "pdf");
     #[cfg(target_os = "macos")]
@@ -226,7 +226,7 @@ pub async fn print<R: Runtime>(
     }
 }
 
-/// Dizilmiş PDF'i önbelleğe yazar ve Önizleme'de açar. Gövde ham PDF baytı, `x-ad` önerilen ad. Açılan dosyanın adı.
+/// Writes the imposed PDF to the cache and opens it in Preview. The body is the raw PDF bytes, `x-name` the suggested name. The name of the opened file.
 #[tauri::command]
 pub async fn open_in_preview<R: Runtime>(
     app: AppHandle<R>,
@@ -239,7 +239,7 @@ pub async fn open_in_preview<R: Runtime>(
             .app_cache_dir()
             .map_err(|e| text("rust.writeFailed", &[("error", &e.to_string())]))?
             .join(OUTPUT_FOLDER);
-        // Gövde kopyalanmadan yazılır (düşük 5).
+        // The body is written without a copy (low 5).
         let path = write_output(&folder, &title(&request, "x-name"), raw_body(&request)?)?;
         mac::open_in_preview(&path).await?;
         Ok(path
@@ -256,8 +256,8 @@ pub async fn open_in_preview<R: Runtime>(
 
 #[cfg(target_os = "macos")]
 pub mod mac {
-    //! macOS: PDFKit / AppKit çağrıları. `NSPrintInfo` ve `PDFDocument` her iş parçacığında kurulabilir (birim
-    //! testleri baskı penceresi açmadan sınar); baskı işlemi ve sayfa ana iş parçacığında.
+    //! macOS: PDFKit / AppKit calls. `NSPrintInfo` and `PDFDocument` can be set up on any thread (the unit tests test
+    //! them without opening a print dialog); the print operation and the sheet on the main thread.
     use super::{frozen_size, print_settings, wait_result, PrintSettings, PRINTING_TIMEOUT};
     use crate::i18n::text;
     use objc2::rc::Retained;
@@ -278,14 +278,14 @@ pub mod mac {
     use std::time::Duration;
     use tauri::{AppHandle, Runtime, WebviewWindow};
 
-    /// Ölçek modu: sayfaya hiçbir ölçek uygulanmaz ("Do not apply scaling to the page when printing").
+    /// Scale mode: no scale is applied to the page ("Do not apply scaling to the page when printing").
     pub const SCALE_MODE: PDFPrintScalingMode = PDFPrintScalingMode::PageScaleNone;
-    /// Önizleme'nin paket kimliği.
+    /// The bundle id of Preview.
     pub const PREVIEW: &str = "com.apple.Preview";
 
-    /// Ham bayttan PDF belgesi ve ilk sayfanın (döndürmesi uygulanmış) MediaBox ölçüsü (pt).
+    /// A PDF document from raw bytes and the MediaBox size (pt) of the first page (rotation applied).
     pub fn pdf_ac(bytes: Vec<u8>) -> Result<(Retained<PDFDocument>, f64, f64), String> {
-        let data = NSData::from_vec(bytes); // kopyasız (düşük 5)
+        let data = NSData::from_vec(bytes); // without a copy (low 5)
         let document = unsafe { PDFDocument::initWithData(PDFDocument::alloc(), &data) }
             .ok_or_else(|| text("rust.pdf_unreadable", &[]))?;
         if unsafe { document.pageCount() } == 0 {
@@ -302,10 +302,10 @@ pub mod mac {
         Ok((document, g, y))
     }
 
-    /// `NSPrintInfo` kurulumu: kâğıt = sayfa, yön, ölçek 1, ortalı, sayfalama kırpar (ölçeklemez); dört kenar eşit ve
-    /// donanım kenarlarından büyük ([`simetrik_kenar`]: kenar 0 iken asimetrik donanım kenarı içeriği kaydırıyordu, S9).
-    /// Önce yön, sonra kâğıt boyu (AppKit yön değişince kâğıdı çevirebilir; sonuç testte okunur); kenar, kâğıt
-    /// kurulduktan sonra o kâğıdın yazdırılabilir alanından.
+    /// `NSPrintInfo` setup: paper = page, orientation, scale 1, centred, pagination clips (does not scale); four equal
+    /// margins larger than the hardware margins ([`symmetric_margin`]: with margin 0 an asymmetric hardware margin shifted the content, S9).
+    /// First the orientation, then the paper size (AppKit may turn the paper when the orientation changes; the result is
+    /// read in the test); the margin from the printable area of that paper once the paper is set up.
     pub fn setup_print_info(a: &PrintSettings) -> Retained<NSPrintInfo> {
         let info = NSPrintInfo::new();
         info.setOrientation(if a.landscape {
@@ -334,7 +334,7 @@ pub mod mac {
         info
     }
 
-    /// Belge + ayar → PDFKit baskı işlemi (ana iş parçacığı). `None`: PDFKit işlem kuramadı.
+    /// Document + settings → PDFKit print operation (main thread). `None`: PDFKit could not set up an operation.
     pub fn print_operation(
         document: &PDFDocument,
         info: &NSPrintInfo,
@@ -353,8 +353,8 @@ pub mod mac {
 
     type PrintOutcome = Result<bool, String>;
 
-    /// Baskı sayfası bitince (`printOperationDidRun:success:contextInfo:`) sonucu gönderir. Belge ve işlem,
-    /// sayfa açıkken düşmesin diye burada tutulur.
+    /// Sends the result when the print sheet ends (`printOperationDidRun:success:contextInfo:`). The document and the
+    /// operation are held here so that they do not drop while the sheet is open.
     pub struct Ivarlar {
         send: RefCell<Option<mpsc::Sender<PrintOutcome>>>,
         _document: RefCell<Option<Retained<PDFDocument>>>,
@@ -362,7 +362,7 @@ pub mod mac {
     }
 
     define_class!(
-        // SAFETY: NSObject'in alt sınıf koşulu yok; Drop uygulanmıyor.
+        // SAFETY: no subclass requirement for NSObject; Drop is not implemented.
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
         #[name = "MucellitPrintDelegate"]
@@ -387,7 +387,7 @@ pub mod mac {
     );
 
     impl PrintDelegate {
-        /// Sonucu `gonder`e iletecek temsilci (belge ve işlem sayfa kapanana dek tutulur).
+        /// The delegate that passes the result to `send` (the document and the operation are held until the sheet closes).
         pub fn new_entry(
             mtm: MainThreadMarker,
             send: mpsc::Sender<PrintOutcome>,
@@ -402,17 +402,17 @@ pub mod mac {
             unsafe { msg_send![super(t), init] }
         }
 
-        /// Baskı sayfası açık mı (sonuç henüz gönderilmedi)?
+        /// Is the print sheet open (the result not sent yet)?
         pub fn pending(&self) -> bool {
             self.ivars().send.borrow().is_some()
         }
     }
 
     thread_local! {
-        /// Açık (ya da son) baskı sayfasının temsilcisi: AppKit temsilciyi tutmaz; sonuç gelince bırakılır.
+        /// The delegate of the open (or last) print sheet: AppKit does not hold the delegate; released when the result comes.
         static ENABLED: RefCell<Option<Retained<PrintDelegate>>> = const { RefCell::new(None) };
-        /// Zaman aşımına uğramış temsilciler (düşük 4): sayfa hâlâ açık olabilir ve AppKit temsilciyi tutmadığından
-        /// bırakılmaz (geç gelen didRun sarkan işaretçiye gitmesin); süreç boyunca yaşar (yalnız olağan dışı durumda).
+        /// Timed out delegates (low 4): the sheet may still be open and since AppKit does not hold the delegate it is not
+        /// released (a late didRun must not reach a dangling pointer); lives for the whole process (only in an unusual case).
         static ORPHANS: RefCell<Vec<Retained<PrintDelegate>>> = const { RefCell::new(Vec::new()) };
     }
 
@@ -420,7 +420,7 @@ pub mod mac {
         ENABLED.with(|e| e.borrow().as_ref().is_some_and(|t| t.pending()))
     }
 
-    /// Test için: açık sayfa temsilcisini ayarlar (gerçekte `baslat` ayarlar).
+    /// For the test: sets the open sheet delegate (`start` sets it in real use).
     #[cfg(test)]
     pub(crate) fn set_active(t: Retained<PrintDelegate>) {
         ENABLED.with(|e| *e.borrow_mut() = Some(t));
@@ -431,8 +431,8 @@ pub mod mac {
         ORPHANS.with(|y| y.borrow().len())
     }
 
-    /// Zaman aşımı (ana iş parçacığı): temsilcinin sonuç kanalı kapatılır (sayfa "açık" sayılmaz, yeni ⌘P açılabilir;
-    /// geç gelen sonuç yok sayılır), temsilci yetim listesine taşınır (bırakılmaz).
+    /// Timeout (main thread): the result channel of the delegate is closed (the sheet does not count as "open", a new ⌘P
+    /// can open; a late result is ignored), the delegate moves to the orphan list (not released).
     pub(crate) fn release_timeout() {
         ENABLED.with(|e| {
             if let Some(t) = e.borrow_mut().take() {
@@ -442,7 +442,7 @@ pub mod mac {
         });
     }
 
-    /// Ana iş parçacığında: belgeyi aç, ayarı kur, baskı sayfasını pencereye bağla (pencere yoksa kipli).
+    /// On the main thread: open the document, set up the settings, attach the print sheet to the window (modal when there is no window).
     fn start(
         mtm: MainThreadMarker,
         window: Option<Retained<NSWindow>>,
@@ -489,14 +489,14 @@ pub mod mac {
                 }
             }
             None => {
-                // Pencere yok (beklenmez): uygulama kipli baskı penceresi; dönünce sonuç hazır.
+                // No window (not expected): an app-modal print dialog; the result is ready on return.
                 let _ = send.send(Ok(operation.runOperation()));
                 drop(document);
             }
         }
     }
 
-    /// Sonuç gelince temsilciyi (belge + işlem) bırakır; sonraki baskı için yer açılır.
+    /// Releases the delegate (document + operation) when the result comes; makes room for the next print.
     fn release() {
         ENABLED.with(|e| {
             let done = e.borrow().as_ref().is_some_and(|t| !t.pending());
@@ -520,8 +520,8 @@ pub mod mac {
                 let _ = error.send(Err(text("rust.printing_setup_failed", &[])));
                 return;
             };
-            // Düşük 3: NSWindow işaretçisi ana iş parçacığında alınır ve hemen tutulur (retain);
-            // eskiden çağıran iş parçacığında alınıp sayı olarak taşınıyordu (arada pencere kapanırsa sarkan işaretçi).
+            // Low 3: the NSWindow pointer is taken on the main thread and retained at once;
+            // in the past it was taken on the calling thread and carried as a number (a dangling pointer if the window closed meanwhile).
             let p = window
                 .ns_window()
                 .ok()
@@ -529,7 +529,7 @@ pub mod mac {
             start(mtm, p, bytes, name, send);
         })
         .map_err(|e| e.to_string())?;
-        // Düşük 4: süreli bekleme; zaman aşımında açık sayfa kaydı temizlenir (ETKIN takılı kalmaz).
+        // Low 4: a timed wait; on timeout the open sheet record is cleared (ENABLED does not get stuck).
         let (result, timeout) = wait_result(al, PRINTING_TIMEOUT).await;
         let _ = if timeout {
             app.run_on_main_thread(release_timeout)
@@ -539,7 +539,7 @@ pub mod mac {
         result
     }
 
-    /// Önizleme'de açmayı başlatır (eşzamanlı; AppKit nesneleri burada kalır); sonuç kanaldan gelir.
+    /// Starts opening in Preview (synchronous; the AppKit objects stay here); the result comes from the channel.
     fn start_preview(path: &Path) -> Result<mpsc::Receiver<Result<(), String>>, String> {
         let work = NSWorkspace::sharedWorkspace();
         let app_menu = work
@@ -572,7 +572,7 @@ pub mod mac {
         Ok(al)
     }
 
-    /// Dosyayı Önizleme'de açar; Önizleme yoksa ya da açamazsa hata (NSError metni). 30 sn içinde yanıt yoksa hata.
+    /// Opens the file in Preview; an error when there is no Preview or it cannot open (the NSError text). An error when there is no answer in 30 s.
     pub async fn open_in_preview(path: &Path) -> Result<(), String> {
         let al = start_preview(path)?;
         tauri::async_runtime::spawn_blocking(move || al.recv_timeout(Duration::from_secs(30)))
@@ -586,7 +586,7 @@ pub mod mac {
 mod tests {
     use super::*;
 
-    /// Test PDF'i: verilen MediaBox ve /Rotate ile tek sayfa (doğru xref).
+    /// Test PDF: one page with the given MediaBox and /Rotate (a correct xref).
     pub(crate) fn single_page_pdf(width: f64, height: f64, rotate: i64) -> Vec<u8> {
         let objects = [
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
@@ -633,9 +633,9 @@ mod tests {
         );
         assert!(
             !print_settings(419.53, 595.28).unwrap().landscape,
-            "A5 dikey"
+            "A5 portrait"
         );
-        // küçük kâğıtta taban kısa kenarın dörtte biri (kenar dikdörtgeni boş kalmasın)
+        // on small paper the floor is a quarter of the short edge (so that the margin rectangle is not empty)
         assert_eq!(print_settings(200.0, 100.0).unwrap().margin_floor, 25.0);
         for (g, y) in [
             (0.0, 10.0),
@@ -655,22 +655,22 @@ mod tests {
     fn old_outputs_removed_new_ones_and_non_pdfs_stay() {
         let d = std::env::temp_dir().join(format!("mc-output-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&d).unwrap();
-        for a in ["eski.pdf", "yeni.pdf", "not.txt"] {
+        for a in ["old.pdf", "new.pdf", "not.txt"] {
             fs::write(d.join(a), b"x").unwrap();
         }
-        fs::create_dir(d.join("klasor.pdf")).unwrap();
-        // "şimdi" 2 gün sonrası: üç dosya da eski; yalnız .pdf dosyası silinir (klasör ve .txt kalır)
+        fs::create_dir(d.join("folder.pdf")).unwrap();
+        // "now" is 2 days later: all three files are old; only the .pdf file is removed (the folder and the .txt stay)
         let after = SystemTime::now() + Duration::from_secs(2 * 24 * 3600);
         assert_eq!(clear_old_outputs(&d, OUTPUT_LIFETIME, after), 2);
-        assert!(d.join("not.txt").exists() && d.join("klasor.pdf").is_dir());
-        // yeni yazılan kalır; aynı ad üzerine yazılır; ad güvenli (yol ayracı yok)
-        let y = write_output(&d, "..%2Fkotu%2Fad-onler", b"%PDF-1").unwrap();
+        assert!(d.join("not.txt").exists() && d.join("folder.pdf").is_dir());
+        // the newly written one stays; the same name is overwritten; the name is safe (no path separator)
+        let y = write_output(&d, "..%2Fbad%2Fname-fronts", b"%PDF-1").unwrap();
         assert_eq!(y.parent().unwrap(), d);
         assert_eq!(
             y.file_name().unwrap().to_string_lossy(),
-            "-kotu-ad-onler.pdf"
+            "-bad-name-fronts.pdf"
         );
-        write_output(&d, "..%2Fkotu%2Fad-onler", b"%PDF-2").unwrap();
+        write_output(&d, "..%2Fbad%2Fname-fronts", b"%PDF-2").unwrap();
         assert_eq!(fs::read(&y).unwrap(), b"%PDF-2");
         assert_eq!(clear_old_outputs(&d, OUTPUT_LIFETIME, SystemTime::now()), 0);
         assert_eq!(
@@ -680,12 +680,12 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
     }
 
-    /// S9 kök nedeni: AppKit sayfayı yazdırılabilir alana ortalar; kenar = en büyük donanım kenarı (ya da taban), dört
-    /// kenara aynı. Asimetrik donanım kenarında (yazıcısız A4 yatay: sol 18, sağ 41) eski kenar 0 −11,5 pt kaydırıyordu.
+    /// S9 root cause: AppKit centres the page in the printable area; margin = the largest hardware margin (or the floor),
+    /// the same on all four. With an asymmetric hardware margin (A4 landscape without a printer: left 18, right 41) the old margin 0 shifted by −11.5 pt.
     #[test]
     fn symmetric_margin_is_largest_hardware_margin_or_floor() {
         let (g, y) = (842.0, 595.0);
-        // yazıcısız A4 yatay (gözlem): x 18, y 18, 783 × 559 → sol 18, alt 18, sağ 41, üst 18
+        // A4 landscape without a printer (observed): x 18, y 18, 783 × 559 → left 18, bottom 18, right 41, top 18
         assert_eq!(
             symmetric_margin(g, y, (18.0, 18.0, 783.0, 559.0), 0.0),
             41.0
@@ -694,17 +694,17 @@ mod tests {
             symmetric_margin(g, y, (18.0, 18.0, 783.0, 559.0), 72.0),
             72.0
         );
-        // donanım kenarı tabandan büyükse donanım (üst 100)
+        // when a hardware margin is larger than the floor, the hardware one (top 100)
         assert_eq!(
             symmetric_margin(g, y, (10.0, 10.0, 822.0, 485.0), 72.0),
             100.0
         );
-        // kenarsız kâğıt (320 × 220 gözlemi): taban
+        // paper without margins (the 320 × 220 observation): the floor
         assert_eq!(
             symmetric_margin(907.09, 623.62, (0.0, 0.0, 907.09, 623.62), 72.0),
             72.0
         );
-        // kusurlu alan: NaN, sonsuz, boş, negatif boy → yalnız taban; taban NaN → 0 (donanım yine sayılır)
+        // faulty area: NaN, infinite, empty, negative size → only the floor; floor NaN → 0 (the hardware still counts)
         for field in [
             (f64::NAN, 18.0, 783.0, 559.0),
             (18.0, 18.0, f64::INFINITY, 559.0),
@@ -717,44 +717,44 @@ mod tests {
             symmetric_margin(g, y, (18.0, 18.0, 783.0, 559.0), f64::NAN),
             41.0
         );
-        // eski davranış (kenar 0) bu testi geçemez: asimetrik alanda 0 dönmez
+        // the old behaviour (margin 0) cannot pass this test: it does not return 0 on an asymmetric area
         assert_ne!(symmetric_margin(g, y, (18.0, 18.0, 783.0, 559.0), 0.0), 0.0);
     }
 
-    /// O2: uzun Türkçe adla Önizleme çıktısı yazılır (geçici ad dahil hiçbir ad 255 baytı aşmaz; eskiden
-    /// `.<ad>.<uuid>.gecici` +45 bayt ENAMETOOLONG → Önizleme her zaman seçenek E'ye düşüyordu).
+    /// O2: the Preview output is written with a long Turkish name (no name, the temp name included, passes 255 bytes; in
+    /// the past `.<name>.<uuid>.temp` +45 bytes gave ENAMETOOLONG → Preview always fell back to option E).
     #[test]
     fn preview_written_with_long_turkish_name_temp_name_within_255_bytes() {
         let d = std::env::temp_dir().join(format!("mc-output-long-{}", uuid::Uuid::new_v4()));
-        // "Uzun Türkçe kitap adı " ×20 = 440 karakter / 500 bayt; JS encodeURIComponent biçiminde (her bayt %XX).
-        // Gözlem: APFS sınırı karakter sayar (yalnız çok baytlı karakterli ad 255 baytta ~150 karakter kalıp geçerdi);
-        // bu ad güvenli_ad'dan sonra 255 bayt ≈ 240 karakter, geçici ad +45 → sınır aşılıyordu.
-        let name: String = "Uzun Türkçe kitap adı ".repeat(20) + "-dizilmis.pdf";
+        // "Uzun Türkçe kitap adı " ×20 = 440 characters / 500 bytes; in JS encodeURIComponent form (every byte %XX).  // turkish-ok: Turkish test text (a long Turkish name)
+        // Observation: the APFS limit counts characters (only a name with multi-byte characters stayed at ~150 characters in 255 bytes and passed);
+        // this name is 255 bytes ≈ 240 characters after safe_name, the temp name +45 → the limit was passed.
+        let name: String = "Uzun Türkçe kitap adı ".repeat(20) + "-dizilmis.pdf";  // turkish-ok: Turkish test text (a long Turkish name)
         let encoded: String = name.bytes().map(|b| format!("%{b:02X}")).collect();
         for (n, b) in [(1, &b"%PDF-1"[..]), (2, &b"%PDF-2"[..])] {
-            let y = write_output(&d, &encoded, b).unwrap_or_else(|e| panic!("{n}. yazım: {e}"));
+            let y = write_output(&d, &encoded, b).unwrap_or_else(|e| panic!("write {n}: {e}"));
             let a = y.file_name().unwrap().to_string_lossy().into_owned();
             assert!(a.len() <= crate::files::NAME_MAX_BYTES, "{} bytes", a.len());
-            assert!(a.ends_with(".pdf") && a.starts_with("Uzun Türkçe"), "{a}");
+            assert!(a.ends_with(".pdf") && a.starts_with("Uzun Türkçe"), "{a}");  // turkish-ok: Turkish test text (a long Turkish name)
             assert_eq!(fs::read(&y).unwrap(), b);
         }
         let rest: Vec<_> = fs::read_dir(&d)
             .unwrap()
             .map(|g| g.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
-        assert_eq!(rest.len(), 1, "geçici dosya kaldı: {rest:?}");
+        assert_eq!(rest.len(), 1, "a temp file was left: {rest:?}");
         let _ = fs::remove_dir_all(&d);
     }
 
-    /// NSPrintInfo kurulumu (baskı penceresi açmadan): kâğıt = ilk sayfanın MediaBox'ı, kenar simetrik, yön, ölçek 1;
-    /// ölçek modu PageScaleNone, otomatik döndürme kapalı.
+    /// NSPrintInfo setup (without opening a print dialog): paper = the MediaBox of the first page, symmetric margin,
+    /// orientation, scale 1; scale mode PageScaleNone, automatic rotation off.
     #[cfg(target_os = "macos")]
     #[test]
     fn nsprintinfo_setup_paper_margins_orientation_scale() {
         use objc2_app_kit::{NSPaperOrientation, NSPrintingPaginationMode};
         use objc2_pdf_kit::PDFPrintScalingMode;
-        // Kabul toleransı ±0,5 mm. Gözlem (macOS 26.6.2): AppKit standart kâğıda yakın ölçüyü yazıcının kâğıdına oturtur
-        // (A4 841,89 × 595,28 → 842 × 595; A5 419,53 × 595,28 → 420 × 595; fark ≤ 0,17 mm), standart dışını aynen tutar.
+        // Acceptance tolerance ±0.5 mm. Observation (macOS 26.6.2): AppKit fits a size close to a standard paper to the printer's paper
+        // (A4 841.89 × 595.28 → 842 × 595; A5 419.53 × 595.28 → 420 × 595; difference ≤ 0.17 mm), keeps a non-standard one as it is.
         let near = |a: f64, b: f64| (a - b).abs() <= 0.5 * 72.0 / 25.4;
         for (g, y, rotate, expected_g, expected_y, landscape) in [
             (
@@ -765,7 +765,7 @@ mod tests {
                 A4_LANDSCAPE.1,
                 true,
             ),
-            (419.527_559, 595.275_591, 0, 419.527_559, 595.275_591, false), // A5 dikey
+            (419.527_559, 595.275_591, 0, 419.527_559, 595.275_591, false), // A5 portrait
             (
                 595.275_591,
                 419.527_559,
@@ -773,18 +773,18 @@ mod tests {
                 419.527_559,
                 595.275_591,
                 false,
-            ), // döndürülmüş sayfa
-            (907.09, 623.62, 0, 907.09, 623.62, true), // 320 × 220 mm, standart dışı
+            ), // rotated page
+            (907.09, 623.62, 0, 907.09, 623.62, true), // 320 × 220 mm, non-standard
         ] {
             let (_document, pg, py) = mac::pdf_ac(single_page_pdf(g, y, rotate)).unwrap();
             assert!(near(pg, expected_g) && near(py, expected_y), "{pg} × {py}");
             let a = print_settings(pg, py).unwrap();
             let info = mac::setup_print_info(&a);
             let k = info.paperSize();
-            eprintln!("gözlem: requested {pg:.2} × {py:.2} pt → NSPrintInfo {} × {} pt, yön {:?}, ölçek {}", k.width, k.height, info.orientation(), info.scalingFactor());
+            eprintln!("observation: requested {pg:.2} × {py:.2} pt → NSPrintInfo {} × {} pt, orientation {:?}, scale {}", k.width, k.height, info.orientation(), info.scalingFactor());
             assert!(
                 near(k.width, expected_g) && near(k.height, expected_y),
-                "kâğıt {} × {} (expected {expected_g} × {expected_y})",
+                "paper {} × {} (expected {expected_g} × {expected_y})",
                 k.width,
                 k.height
             );
@@ -796,7 +796,7 @@ mod tests {
                     NSPaperOrientation::Portrait
                 }
             );
-            // dört kenar eşit, ≥ taban ve ≥ her donanım kenarı (S9: ortalama kâğıda göre, kayma yok)
+            // four equal margins, ≥ the floor and ≥ every hardware margin (S9: centred by the paper, no shift)
             let margins = [
                 info.topMargin(),
                 info.bottomMargin(),
@@ -810,7 +810,7 @@ mod tests {
                 k.width - ib.origin.x - ib.size.width,
                 k.height - ib.origin.y - ib.size.height,
             ];
-            eprintln!("gözlem: yazdırılabilir field {ib:?}, donanım kenarı {hardware:?}, margin {margins:?}");
+            eprintln!("observation: printable field {ib:?}, hardware margin {hardware:?}, margin {margins:?}");
             assert!(margins.iter().all(|&m| m == margins[0]), "{margins:?}");
             assert!(margins[0] >= a.margin_floor);
             assert!(
@@ -824,21 +824,21 @@ mod tests {
         }
         assert_eq!(mac::SCALE_MODE, PDFPrintScalingMode::PageScaleNone);
         assert_eq!(mac::SCALE_MODE.0, 0, "kPDFPrintPageScaleNone");
-        // bozuk / boş / sayfasız girdi
-        for b in [&b""[..], b"bu bir pdf degil", b"%PDF-1.4\n%%EOF\n"] {
+        // broken / empty / pageless input
+        for b in [&b""[..], b"this is not a pdf", b"%PDF-1.4\n%%EOF\n"] {
             assert!(mac::pdf_ac(b.to_vec()).is_err());
         }
     }
 
-    /// Baskı sayfası temsilcisi: AppKit'in çağıracağı seçici (`printOperationDidRun:success:contextInfo:`) sınıfta
-    /// var; çağrılınca sonuç (yazdırıldı/vazgeçildi) bir kez gönderilir, sonra temsilci "bitti" sayılır.
+    /// Print sheet delegate: the selector AppKit will call (`printOperationDidRun:success:contextInfo:`) is in the class;
+    /// when called the result (printed/cancelled) is sent once, then the delegate counts as "done".
     #[cfg(target_os = "macos")]
     #[test]
     fn print_delegate_sends_selector_result_once() {
         use objc2::runtime::{AnyObject, Bool};
         use objc2::{msg_send, sel, MainThreadMarker};
-        // SAFETY: yalnız kendi NSObject alt sınıfımız kurulur ve çağrılır (AppKit nesnesi yok); ana iş parçacığı
-        // koşulu AppKit nesneleri içindir. Gerçek kullanımda temsilci ana iş parçacığında kurulur.
+        // SAFETY: only our own NSObject subclass is set up and called (no AppKit object); the main thread
+        // requirement is for the AppKit objects. In real use the delegate is set up on the main thread.
         let mtm = unsafe { MainThreadMarker::new_unchecked() };
         for (success, expected) in [(Bool::YES, true), (Bool::NO, false)] {
             let (send, al) = std::sync::mpsc::channel();
@@ -856,7 +856,7 @@ mod tests {
             };
             assert_eq!(al.try_recv().unwrap(), Ok(expected));
             assert!(!t.pending());
-            // ikinci çağrı yeni sonuç göndermez
+            // a second call sends no new result
             let _: () = unsafe {
                 msg_send![object, printOperationDidRun: operation, success: Bool::YES, contextInfo: blank]
             };
@@ -864,50 +864,50 @@ mod tests {
         }
     }
 
-    /// `mac::yazdir` gövdesi (kaynak denetimi: ana iş parçacığı gerektiren yol testte çalıştırılamaz).
+    /// The body of `mac::print` (source check: the path that needs the main thread cannot be run in the test).
     fn mac_print_body() -> &'static str {
         let k = include_str!("print.rs");
         let head = k.find("    pub async fn print<R: Runtime>(").unwrap();
         &k[head..head + k[head..].find("\n    }\n").unwrap()]
     }
 
-    /// Düşük 3: NSWindow işaretçisi ana iş parçacığında alınır (eskiden çağıran iş parçacığında alınıp
-    /// usize olarak taşınıyordu; arada pencere kapanırsa sarkan işaretçi).
+    /// Low 3: the NSWindow pointer is taken on the main thread (in the past it was taken on the calling thread and
+    /// carried as a usize; a dangling pointer if the window closed meanwhile).
     #[test]
     fn window_pointer_taken_on_main_thread() {
         let g = mac_print_body();
         let main = g
             .find("run_on_main_thread(move ||")
-            .expect("run_on_main_thread yok");
-        let ns = g.find("ns_window()").expect("ns_window yok");
+            .expect("no run_on_main_thread");
+        let ns = g.find("ns_window()").expect("no ns_window");
         assert!(
             ns > main,
-            "ns_window() ana iş parçacığı kapanışından önce çağrılıyor"
+            "ns_window() is called before the main thread closure"
         );
-        assert!(!g.contains("as usize"), "işaretçi usize olarak taşınıyor");
+        assert!(!g.contains("as usize"), "the pointer is carried as a usize");
     }
 
-    /// Düşük 4: `didRun` gelmezse sonsuz beklenmez (zaman aşımı) ve açık sayfa kaydı (ETKIN) temizlenir.
+    /// Low 4: no endless wait when `didRun` does not come (timeout) and the open sheet record (ENABLED) is cleared.
     #[test]
     fn print_result_awaited_with_timeout_in_source() {
         let g = mac_print_body();
-        assert!(!g.contains("al.recv()"), "sonuç süresiz bekleniyor");
+        assert!(!g.contains("al.recv()"), "the result is awaited without a limit");
         assert!(
             g.contains("wait_result(") && g.contains("release_timeout"),
             "{g}"
         );
     }
 
-    /// Düşük 5: gövde boyutu sınırlı (dosya açmayla aynı sınır); Önizleme gövdeyi kopyalamaz; PDFKit'e bayt
-    /// kopyalanmadan verilir (NSData::from_vec).
+    /// Low 5: the body size is limited (the same limit as opening a file); Preview does not copy the body; the bytes go
+    /// to PDFKit without a copy (NSData::from_vec).
     #[test]
     fn body_size_limited_and_no_needless_copy_in_source() {
         let k = include_str!("print.rs");
         let definition = &k[..k.find("#[cfg(test)]").unwrap()];
-        assert!(definition.contains("MAX_FILE"), "boyut sınırı yok");
+        assert!(definition.contains("MAX_FILE"), "no size limit");
         assert!(
             definition.contains("NSData::from_vec(") && !definition.contains("NSData::with_bytes("),
-            "PDFKit'e kopya"
+            "a copy to PDFKit"
         );
         let on = &definition[definition.find("pub async fn open_in_preview").unwrap()..];
         let on = &on[..on.find("\n}\n").unwrap()];
@@ -915,16 +915,16 @@ mod tests {
             definition
                 .contains("fn raw_body<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String>")
                 && !definition.contains("b.clone()"),
-            "gövde kopyalanarak alınıyor"
+            "the body is taken with a copy"
         );
         assert!(
             !on.contains(".to_vec()") && !on.contains(".clone()"),
-            "Önizleme gövdeyi kopyalıyor"
+            "Preview copies the body"
         );
     }
 
-    /// Düşük 4 (davranış): sonuç süresi içinde gelirse aynen; gelmezse "yanıt yok" + zaman aşımı; kanal kapandıysa
-    /// "kurulamadı". Zaman aşımında temsilci yetime taşınır, sayfa açık sayılmaz, geç sonuç yok sayılır.
+    /// Low 4 (behaviour): a result within the time comes as it is; otherwise "no answer" + timeout; when the channel
+    /// closed "could not be set up". On timeout the delegate moves to the orphans, the sheet does not count as open, a late result is ignored.
     #[cfg(target_os = "macos")]
     #[test]
     fn wait_result_timeout_and_orphan_delegate() {
@@ -947,7 +947,7 @@ mod tests {
             tauri::async_runtime::block_on(wait_result(al, short)),
             (Err(text("rust.printing_setup_failed", &[])), false)
         );
-        // SAFETY: yalnız kendi NSObject alt sınıfımız (bkz. baski_temsilcisi testi).
+        // SAFETY: only our own NSObject subclass (see the print_delegate test).
         let mtm = unsafe { MainThreadMarker::new_unchecked() };
         let (send, al) = std::sync::mpsc::channel();
         let t = mac::PrintDelegate::new_entry(mtm, send, None, None);
@@ -957,14 +957,14 @@ mod tests {
         mac::release_timeout();
         assert!(
             !mac::page_open(),
-            "zaman aşımından sonra sayfa açık sayılmamalı"
+            "the sheet must not count as open after the timeout"
         );
         assert_eq!(
             mac::orphan_count(),
             once + 1,
-            "temsilci bırakılmamalı (yetim)"
+            "the delegate must not be released (orphan)"
         );
-        // geç gelen didRun: çökmez, sonuç gönderilmez
+        // a late didRun: no crash, no result sent
         let object: &AnyObject = &t;
         let blank: *mut std::ffi::c_void = std::ptr::null_mut();
         let operation: Option<&objc2_app_kit::NSPrintOperation> = None;
@@ -974,7 +974,7 @@ mod tests {
         assert!(al.try_recv().is_err());
     }
 
-    /// Düşük 5 (davranış): sınır = dosya açma sınırı; aşan gövde anlaşılır hatayla reddedilir.
+    /// Low 5 (behaviour): limit = the file open limit; a bigger body is rejected with a clear error.
     #[test]
     fn body_size_limit() {
         let limit = crate::files::MAX_FILE as usize;
@@ -985,7 +985,7 @@ mod tests {
         );
     }
 
-    /// Düşük 6 (davranış): eski .pdf ve eski çökme artığı .gecici silinir; taze .gecici, yeni .pdf ve başka dosya kalır.
+    /// Low 6 (behaviour): an old .pdf and an old crash leftover .temp are removed; a fresh .temp, a new .pdf and other files stay.
     #[test]
     fn cache_cleanup_old_pdf_and_leftover_temp() {
         let d = std::env::temp_dir().join(format!("mc-cache-{}", uuid::Uuid::new_v4()));
@@ -1003,10 +1003,10 @@ mod tests {
             }
         };
         let u = uuid::Uuid::new_v4();
-        write("eski.pdf", Some(old));
-        write("yeni.pdf", None);
-        write(&format!(".eski.pdf.{u}.temp"), Some(old));
-        write(&format!(".taze.pdf.{}.temp", uuid::Uuid::new_v4()), None);
+        write("old.pdf", Some(old));
+        write("new.pdf", None);
+        write(&format!(".old.pdf.{u}.temp"), Some(old));
+        write(&format!(".fresh.pdf.{}.temp", uuid::Uuid::new_v4()), None);
         write("not.txt", Some(old));
         assert_eq!(clear_cache(&d, SystemTime::now()), (1, 1));
         let mut rest: Vec<_> = fs::read_dir(&d)
@@ -1016,15 +1016,15 @@ mod tests {
         rest.sort();
         assert_eq!(rest.len(), 3, "{rest:?}");
         assert!(
-            rest.iter().any(|a| a.starts_with(".taze.pdf."))
-                && rest.contains(&"yeni.pdf".into())
+            rest.iter().any(|a| a.starts_with(".fresh.pdf."))
+                && rest.contains(&"new.pdf".into())
                 && rest.contains(&"not.txt".into())
         );
         assert_eq!(clear_cache(&d.join("none"), SystemTime::now()), (0, 0));
         let _ = fs::remove_dir_all(&d);
     }
 
-    /// Düşük 6: açılışta Önizleme önbelleği (eski .pdf ve çökme artığı .gecici) temizlenir.
+    /// Low 6: at start-up the Preview cache (old .pdf and crash leftover .temp) is cleaned.
     #[test]
     fn cache_cleanup_on_startup_is_wired_in_source() {
         let lib = include_str!("lib.rs");
@@ -1032,12 +1032,12 @@ mod tests {
         let setup = &setup[..setup.find("Ok(())").unwrap()];
         assert!(
             setup.contains("print::clean_on_startup(app.handle())"),
-            "kurulumda temizlik yok"
+            "no clean-up at setup"
         );
     }
 
-    /// Baskı işlemi PDFKit'e PageScaleNone ve otomatik döndürme kapalı olarak kurulur (kaynak denetimi: ana iş
-    /// parçacığı gerektiren çağrı testte çalıştırılamaz).
+    /// The print operation is set up in PDFKit with PageScaleNone and automatic rotation off (source check: the call that
+    /// needs the main thread cannot be run in the test).
     #[test]
     fn print_operation_scaling_mode_and_rotation_fixed_in_source() {
         let k = include_str!("print.rs");

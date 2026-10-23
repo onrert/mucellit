@@ -1,22 +1,22 @@
-//! Son açılanlar: en çok 10 kayıt, en yeni başta, `app_data_dir/son-acilanlar.json`.
+//! Recent files: at most 10 entries, the newest first, `app_data_dir/recent-files.json`.
 //!
-//! macOS sandbox'ında uygulama yeniden açılınca kullanıcının daha önce seçtiği dosyaya erişimi yoktur;
-//! erişim yalnız **güvenlik kapsamlı yer imiyle** geri gelir. Yer imi seçim anında (Aç penceresi, Dock'a
-//! bırakma, Finder "Birlikte Aç": erişim o an canlıyken) oluşturulur. Okuma "çöz → erişimi başlat → oku →
-//! erişimi bırak" sırasıyla ve **kısa ömürlü** yapılır (`apple_scoped_bookmarks::ScopedAccess` düşünce
-//! `stopAccessingSecurityScopedResource`); açılışta hiçbir kayıt çözülmez. Yer imi bayatsa (dosya taşındı)
-//! erişim canlıyken yeniden oluşturulur ve kaydedilir.
+//! In the macOS sandbox the app has no access to a file the user chose earlier once it is reopened;
+//! access comes back only with a **security-scoped bookmark**. The bookmark is made at the moment of the choice (Open
+//! dialog, a drop on the Dock, Finder "Open With": while the access is alive). Reading goes "resolve → start access → read →
+//! release access" and is **short lived** (`apple_scoped_bookmarks::ScopedAccess` dropping calls
+//! `stopAccessingSecurityScopedResource`); no entry is resolved at start-up. When the bookmark is stale (the file moved)
+//! it is made again while the access is alive and saved.
 //!
-//! Okunamayan kayıt: yalnız dosya gerçekten **yoksa** (`BULUNAMADI`) ya da kayıt geçersizse
-//! (`GECERSIZ`: tür uymuyor, yer imi bozuk) listeden kalıcı çıkar. Erişim reddi (`ERISIM`), takılı olmayan
-//! disk (`DISKYOK`: kayıtlı yol `/Volumes/<ad>/…` ve disk yok) ve geçici hata (`GECICI`) kaydı tutar.
-//! Yer imi çözülemediğinde (macOS her durumda NSCocoaErrorDomain 4 "The file doesn't exist" veriyor; kilitli
-//! klasörde de) ayrım kayıtlı yolun `lstat` sonucuyla yapılır; sandbox'ta `lstat` izinsiz yolda da çalışır
-//! (var: VAR, yok: ENOENT; yalnız okuma EPERM).
+//! An entry that cannot be read leaves the list for good only when the file really **does not exist** (`NOTFOUND`) or
+//! the entry is invalid (`INVALID`: kind mismatch, broken bookmark). Access denied (`ACCESS`), a disk that is not
+//! mounted (`NODISK`: the saved path is `/Volumes/<name>/…` and there is no disk) and a transient error (`TRANSIENT`) keep the entry.
+//! When a bookmark cannot be resolved (macOS gives NSCocoaErrorDomain 4 "The file doesn't exist" in every case; in a
+//! locked folder too) the cases are told apart with `lstat` of the saved path; in the sandbox `lstat` works on a path
+//! without permission too (exists: OK, missing: ENOENT; only reading gives EPERM).
 //!
-//! Apple dışı platformda (`Error::Unsupported`) yer imi yoktur, kayıt düz yolla okunur (Windows için hazır).
-//! Yer imi işlemleri `YerImi` özelliğinin arkasında: testler sahte uygulamayla koşar (gerçek yer imi
-//! imzalı + sandbox'lı süreç ister; bkz. elle sınama S11/S12).
+//! On a non-Apple platform (`Error::Unsupported`) there is no bookmark and the entry is read with the plain path (ready for Windows).
+//! The bookmark operations are behind the `Bookmarks` trait: the tests run with a fake implementation (a real bookmark
+//! needs a signed + sandboxed process; see the manual tests S11/S12).
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
@@ -24,12 +24,12 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Listede tutulan en çok kayıt.
+/// The most entries kept in the list.
 pub const MAX_ENTRIES: usize = 10;
-/// Kayıt dosyasının adı (`app_data_dir` içinde).
+/// Name of the entry file (inside `app_data_dir`).
 pub const FILE_NAME: &str = "recent-files.json";
 
-/// Bir son açılan kaydı. `yol` yalnız Rust tarafında kalır (JS'e `Ozet` gider).
+/// One recent file entry. `path` stays on the Rust side only (JS gets a `Summary`).
 // legacy-names: begin (serde aliases: field names of the recent files list written by earlier versions)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
@@ -84,8 +84,8 @@ pub struct RecentList {
 // legacy-names: end
 
 impl RecentList {
-    /// Kaydı başa koyar. Aynı yol varsa eskisi çıkar (kimliği korunur: menü öğesi aynı kalır).
-    /// En çok `EN_COK` kayıt kalır. Dönüş: başa konan kaydın kimliği.
+    /// Puts the entry first. An entry with the same path is removed (its id is kept: the menu item stays the same).
+    /// At most `MAX_ENTRIES` entries stay. Returns the id of the entry put first.
     pub fn add(&mut self, mut new_entry: Entry) -> String {
         if let Some(i) = self.entries.iter().position(|k| k.path == new_entry.path) {
             let old = self.entries.remove(i);
@@ -101,14 +101,14 @@ impl RecentList {
         self.entries.iter().find(|k| k.id == id)
     }
 
-    /// Kaydı çıkarır; vardıysa true.
+    /// Removes the entry; true when it was there.
     pub fn forget(&mut self, id: &str) -> bool {
         let once = self.entries.len();
         self.entries.retain(|k| k.id != id);
         once != self.entries.len()
     }
 
-    /// Kaydı başa alır (yeniden açıldı), tarihini ve isteğe bağlı yeni yer imini/yolunu yazar.
+    /// Moves the entry to the front (opened again), writes its date and the optional new bookmark/path.
     pub fn move_to_front(
         &mut self,
         id: &str,
@@ -133,8 +133,8 @@ impl RecentList {
         self.entries.iter().map(Summary::from).collect()
     }
 
-    /// Dosyadan okur. Yoksa, okunamıyorsa ya da bozuksa boş liste (uygulama açılışı hiçbir zaman bozulmaz).
-    /// Geçersiz kayıtlar (kimliği uuid değil, türü bilinmiyor) atılır; fazlası kırpılır.
+    /// Reads from the file. When it is missing, unreadable or broken: an empty list (the app start-up never breaks).
+    /// Invalid entries (id not a uuid, unknown kind) are dropped; the extra ones are cut off.
     pub fn load(path: &Path) -> RecentList {
         let mut l: RecentList = fs::read(path)
             .ok()
@@ -147,19 +147,19 @@ impl RecentList {
         l
     }
 
-    /// Geçici dosyaya yazıp yeniden adlandırır (yarım yazılmış dosya kalmaz).
+    /// Writes to a temp file and renames it (no half-written file is left).
     pub fn save(&self, path: &Path) -> io::Result<()> {
         let json = serde_json::to_vec_pretty(self).map_err(io::Error::other)?;
         write_atomic(path, &json)
     }
 }
 
-/// Geçici adın asıl ada eklediği bayt: "." + "." + uuid (36) + ".gecici" (7).
+/// Bytes the temp name adds to the real name: "." + "." + uuid (36) + ".temp" (5).
 pub const TEMP_SUFFIX_BYTES: usize = 1 + 1 + 36 + 5;
 
-/// `yol`'a geçici dosya + rename ile yazar; üst klasörü gerekirse oluşturur. Geçici dosyanın adı her yazımda
-/// benzersizdir (eşzamanlı yazımlar birbirini ezmez) ve içerik rename'den önce diske eşitlenir.
-/// Geçici ad `.<ad>.<uuid>.gecici`; `<ad>` 255 − 45 bayta kırpılır (O2, uzun adda ENAMETOOLONG).
+/// Writes to `path` with a temp file + rename; creates the parent folder when needed. The temp file name is unique on
+/// every write (concurrent writes do not overwrite each other) and the content is synced to disk before the rename.
+/// The temp name is `.<name>.<uuid>.temp`; `<name>` is cut to 255 − 43 bytes (O2, ENAMETOOLONG on a long name).
 pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     use std::io::Write as _;
     let top = path.parent().filter(|u| !u.as_os_str().is_empty());
@@ -182,40 +182,40 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     if result.is_err() {
         let _ = fs::remove_file(&temp);
     } else if let Some(top) = top {
-        // rename'in kendisi de kalıcı olsun (klasör girdisi); başarısızlık yazımı bozmaz.
+        // make the rename itself durable too (the folder entry); a failure does not break the write.
         let _ = fs::File::open(top).and_then(|k| k.sync_all());
     }
     result
 }
 
-/// Yer imi okumasının sonucu.
+/// The result of a bookmark read.
 pub struct ReadResult {
     pub bytes: Vec<u8>,
-    /// Çözülen (güncel) yol: dosya taşındıysa değişir.
+    /// The resolved (current) path: changes when the file moved.
     pub path: PathBuf,
-    /// Yer imi bayattı ve yeniden oluşturuldu: kaydedilecek yeni bayt.
+    /// The bookmark was stale and was made again: the new bytes to save.
     pub new_bookmark: Option<Vec<u8>>,
 }
 
-/// Okuma hatası; JS'e `KOD: mesaj` biçiminde gider (app/js/platform-tauri.js `sonAcilaniAc`).
+/// A read error; goes to JS as `CODE: message` (app/js/platform-tauri.js `openRecent`).
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadError {
-    /// Kimlik listede yok (ya da geçersiz kimlik). Keyfi yol da burada biter.
+    /// The id is not in the list (or an invalid id). An arbitrary path ends here too.
     Unknown,
-    /// Dosya yok (silinmiş; taşınmışsa yer imi bulamadı). Kayıt kalıcı çıkar.
+    /// The file does not exist (deleted; when moved, the bookmark could not find it). The entry leaves for good.
     NotFound(String),
-    /// Kayıt geçersiz (yolun türü kayıttakiyle uyuşmuyor, yer imi bozuk: L3). Kayıt kalıcı çıkar.
+    /// The entry is invalid (the kind of the path does not match the entry, broken bookmark: L3). The entry leaves for good.
     Invalid(String),
-    /// Sistem erişim vermedi (entitlement eksik, farklı imzalı derleme, izinsiz klasör). Kayıt durur.
+    /// The system gave no access (missing entitlement, a differently signed build, a folder without permission). The entry stays.
     Access(String),
-    /// Dosyanın bulunduğu disk takılı değil (mesaj: diskin adı). Kayıt durur.
+    /// The disk of the file is not mounted (message: the disk name). The entry stays.
     NoDisk(String),
-    /// Başka/geçici okuma hatası (dosya yerinde). Kayıt durur.
+    /// Another/transient read error (the file is in place). The entry stays.
     Transient(String),
 }
 
 impl ReadError {
-    /// Kayıt listeden kalıcı çıkarılır mı? Yalnız dosya yoksa ya da kayıt geçersizse.
+    /// Does the entry leave the list for good? Only when the file does not exist or the entry is invalid.
     pub fn is_permanent(&self) -> bool {
         matches!(self, ReadError::NotFound(_) | ReadError::Invalid(_))
     }
@@ -238,23 +238,23 @@ impl std::fmt::Display for ReadError {
     }
 }
 
-/// Yer imi katmanının ham hatası; sınıflandırma (`siniflandir`) kayıtlı yolla yapılır.
+/// The raw error of the bookmark layer; it is classified (`classify`) with the saved path.
 #[derive(Debug)]
 pub enum RawError {
-    /// Yer imi çözülemedi (Cocoa hata açıklaması).
+    /// The bookmark could not be resolved (Cocoa error description).
     Unresolved(String),
-    /// Yer imi çözüldü, sistem güvenlik kapsamlı erişimi vermedi.
+    /// The bookmark was resolved, the system did not give security-scoped access.
     AccessDenied(String),
-    /// Erişim alındı, okuma başarısız.
+    /// Access taken, the read failed.
     Read(io::Error),
 }
 
-/// Yer imi işlemleri (gerçek: `AppleYerImi`; testte sahte).
+/// Bookmark operations (real: `AppleBookmarks`; fake in the tests).
 pub trait Bookmarks {
-    /// Seçim anında (erişim canlıyken) yer imi oluşturur. `Ok(None)`: platform desteklemiyor.
+    /// Makes a bookmark at the moment of the choice (while the access is alive). `Ok(None)`: the platform does not support it.
     fn create(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
-    /// Yer imini çözer, erişimi başlatır, `oku` ile içeriği okur, bayatsa yeni yer imi oluşturur ve erişimi
-    /// **bırakır** (dönmeden önce).
+    /// Resolves the bookmark, starts the access, reads the content with `read`, makes a new bookmark when stale and
+    /// **releases** the access (before returning).
     fn access_and_read(
         &self,
         bookmark: &[u8],
@@ -262,7 +262,7 @@ pub trait Bookmarks {
     ) -> Result<ReadResult, RawError>;
 }
 
-/// `apple-scoped-bookmarks` ile gerçek uygulama.
+/// The real implementation with `apple-scoped-bookmarks`.
 pub struct AppleBookmarks;
 
 impl Bookmarks for AppleBookmarks {
@@ -290,7 +290,7 @@ impl Bookmarks for AppleBookmarks {
             }
             Err(e) => return Err(RawError::Unresolved(e.to_string())),
         };
-        // `erisim` bu blok bitince düşer: stopAccessingSecurityScopedResource (kısa ömürlü erişim).
+        // `access` is dropped at the end of this block: stopAccessingSecurityScopedResource (short-lived access).
         let bytes = read(access.path()).map_err(RawError::Read)?;
         let new_bookmark = if access.is_stale() {
             Bookmark::create(access.path()).ok().map(|b| b.into_bytes())
@@ -305,13 +305,13 @@ impl Bookmarks for AppleBookmarks {
     }
 }
 
-/// Yeni kayıt kurar (yer imini seçim anında oluşturur). Yer imi oluşturulamazsa kayıt yine eklenir
-/// (yalnız bu oturumda / Apple dışı platformda düz yolla açılabilir); hata stderr'e yazılır.
+/// Builds a new entry (makes the bookmark at the moment of the choice). When the bookmark cannot be made the entry is
+/// still added (it can be opened with the plain path only in this session / on a non-Apple platform); the error goes to stderr.
 pub fn make_entry(yi: &dyn Bookmarks, path: &Path, name: &str, kind: &str, date: u64) -> Entry {
     let bookmark = match yi.create(path) {
         Ok(v) => v.map(|b| base64::engine::general_purpose::STANDARD.encode(b)),
         Err(e) => {
-            eprintln!("yer imi oluşturulamadı ({}): {e}", path.display());
+            eprintln!("bookmark could not be made ({}): {e}", path.display());
             None
         }
     };
@@ -325,14 +325,14 @@ pub fn make_entry(yi: &dyn Bookmarks, path: &Path, name: &str, kind: &str, date:
     }
 }
 
-/// Kayıtlı yol takılı olmayan bir diskte mi (`/Volumes/<ad>/…` ve `/Volumes/<ad>` yok)? Diskin adı.
+/// Is the saved path on a disk that is not mounted (`/Volumes/<name>/…` and no `/Volumes/<name>`)? The disk name.
 pub fn unmounted_disk(path: &Path) -> Option<String> {
     unmounted_disk_in(path, Path::new("/Volumes"))
 }
 
-/// `takili_olmayan_disk`, bağlama klasörü verilerek (testte geçici klasör). L4: `/Volumes/<ad>` yoksa ya da
-/// bir klasör olarak duruyor ama üzerine disk bağlı değilse (aygıtı `/Volumes` ile aynı: düzgün çıkarılmamış
-/// diskten kalan boş klasör) disk takılı değildir. Sembolik bağ (`Macintosh HD -> /`) takılı sayılır.
+/// `unmounted_disk` with the mount folder given (a temp folder in the test). L4: when `/Volumes/<name>` is missing, or
+/// exists as a folder but no disk is mounted on it (same device as `/Volumes`: an empty folder left by a disk that was
+/// not ejected properly), the disk is not mounted. A symbolic link (`Macintosh HD -> /`) counts as mounted.
 pub fn unmounted_disk_in(path: &Path, volumes: &Path) -> Option<String> {
     let inner = path.strip_prefix(volumes).ok()?;
     let name = inner.components().next()?.as_os_str();
@@ -345,7 +345,7 @@ pub fn unmounted_disk_in(path: &Path, volumes: &Path) -> Option<String> {
     (!mounted).then(|| name.to_string_lossy().into_owned())
 }
 
-/// İki yol aynı dosya sisteminde mi (bağlama noktası değil)? Bilinemezse false (takılı sayılır).
+/// Are the two paths on the same file system (not a mount point)? false when unknown (counted as mounted).
 fn same_device(a: &Path, b: &Path) -> bool {
     #[cfg(unix)]
     {
@@ -359,8 +359,8 @@ fn same_device(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Çökme artığı geçici dosyaları siler: `atomik_yaz`'ın `.<ad>.<uuid>.gecici` kalıbına uyan, sıradan
-/// dosya olan ve `en_az_yas`'tan eski olanlar (taze olan şu an yazılıyor olabilir). Dönüş: silinen sayısı.
+/// Removes crash leftover temp files: those matching the `.<name>.<uuid>.temp` pattern of `write_atomic`, that are plain
+/// files and older than `min_age` (a fresh one may be being written now). Returns the number removed.
 pub fn remove_leftover_temps(folder: &Path, min_age: std::time::Duration) -> usize {
     let Ok(inner) = fs::read_dir(folder) else {
         return 0;
@@ -398,13 +398,13 @@ pub fn remove_leftover_temps(folder: &Path, min_age: std::time::Duration) -> usi
     n
 }
 
-/// Bir yol çözülürken izlenecek en çok sembolik bağ sayısı (macOS `MAXSYMLINKS` ile aynı: 32).
+/// The most symbolic links followed while resolving a path (the same as macOS `MAXSYMLINKS`: 32).
 pub const SYMLINK_LIMIT: usize = 32;
 
-/// L4: yolu, var olan bileşenlerindeki sembolik bağları izleyerek (zincir, göreli hedef, ara klasör
-/// bağı) ve `.`/`..`'yı sözcüksel normalize ederek çözer. Var olmayan bileşenden sonrası yalnız normalize edilir
-/// (takılı olmayan diskteki hedef de böylece `/Volumes/<ad>/…` olarak görünür). En çok `BAG_SINIRI` bağ izlenir;
-/// döngüde ya da aşırı uzun zincirde o ana kadar çözülen yol döner (sonsuz döngü yok).
+/// L4: resolves the path by following the symbolic links in its existing components (chain, relative target,
+/// intermediate folder link) and normalising `.`/`..` lexically. After a component that does not exist it is only normalised
+/// (so a target on an unmounted disk shows as `/Volumes/<name>/…`). At most `SYMLINK_LIMIT` links are followed;
+/// on a loop or a too long chain the path resolved so far is returned (no endless loop).
 pub fn resolve_symlinks(path: &Path) -> PathBuf {
     use std::collections::VecDeque;
     use std::path::Component;
@@ -447,13 +447,13 @@ pub fn resolve_symlinks(path: &Path) -> PathBuf {
                 Ok(m) if m.file_type().is_symlink() => {
                     if let Ok(target) = fs::read_link(&candidate) {
                         followed += 1;
-                        // göreli hedef bağın klasörüne göre (cozulen), mutlak hedef kökten
+                        // a relative target relative to the folder of the link (resolved), an absolute target from the root
                         add(&mut rest, &mut resolved, &target, true);
                         continue;
                     }
                 }
                 Ok(_) => {}
-                Err(_) => var_may = false, // sonrası diskte yok: yalnız normalize
+                Err(_) => var_may = false, // the rest does not exist on disk: only normalise
             }
         }
         resolved = candidate;
@@ -464,10 +464,10 @@ pub fn resolve_symlinks(path: &Path) -> PathBuf {
     resolved
 }
 
-/// Ham hatayı kullanıcıya gidecek koda çevirir. Disk takılı değilse her hata `DiskYok`: kayıtlı yol ya da
-/// sembolik bağları çözülmüş hali (`bag_cozumle`: zincir, göreli hedef, ara klasör bağı) takılı
-/// olmayan diskteyse. Yer imi çözülemediyse kayıtlı yolun `lstat`'ı belirler (yok → Bulunamadi, izinsiz → Erisim,
-/// var → Gecici; bağsa hedefin `stat`'ı: yok → Bulunamadi, döngü/başka → Gecici).
+/// Turns the raw error into the code that goes to the user. When the disk is not mounted every error is `NoDisk`: when
+/// the saved path or its symlink-resolved form (`resolve_symlinks`: chain, relative target, intermediate folder link) is
+/// on an unmounted disk. When the bookmark could not be resolved, `lstat` of the saved path decides (missing → NotFound,
+/// no permission → Access, exists → Transient; for a link the `stat` of the target: missing → NotFound, loop/other → Transient).
 pub fn classify(saved_path: &Path, raw: RawError) -> ReadError {
     if let Some(disk) =
         unmounted_disk(saved_path).or_else(|| unmounted_disk(&resolve_symlinks(saved_path)))
@@ -485,8 +485,8 @@ pub fn classify(saved_path: &Path, raw: RawError) -> ReadError {
         RawError::Unresolved(m) => match fs::symlink_metadata(saved_path) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => ReadError::NotFound(m),
             Err(e) if e.kind() == io::ErrorKind::PermissionDenied => ReadError::Access(m),
-            // L4: kayıtlı yol sembolik bağsa hedefine bakılır (ölü bağ sonsuza dek "geçici" kalmasın); hedef
-            // takılı olmayan diskteyse yukarıda DiskYok döndü.
+            // L4: when the saved path is a symbolic link its target is checked (a dead link must not stay "transient" forever); a
+            // target on an unmounted disk already returned NoDisk above.
             Ok(b) if b.file_type().is_symlink() => match fs::metadata(saved_path) {
                 Err(e) if e.kind() == io::ErrorKind::NotFound => ReadError::NotFound(m),
                 Err(e) if e.kind() == io::ErrorKind::PermissionDenied => ReadError::Access(m),
@@ -497,8 +497,8 @@ pub fn classify(saved_path: &Path, raw: RawError) -> ReadError {
     }
 }
 
-/// Adım 1 (liste kilitliyken, kısa): kimliği doğrular ve kaydın kopyasını verir. Bilinmeyen/geçersiz
-/// kimlik → `Bilinmeyen` (dosya sistemine hiç dokunulmaz).
+/// Step 1 (with the list locked, short): checks the id and gives a copy of the entry. An unknown/invalid id →
+/// `Unknown` (the file system is not touched at all).
 pub fn take_entry(list: &RecentList, id: &str) -> Result<Entry, ReadError> {
     if uuid::Uuid::parse_str(id).is_err() {
         return Err(ReadError::Unknown);
@@ -506,8 +506,8 @@ pub fn take_entry(list: &RecentList, id: &str) -> Result<Entry, ReadError> {
     list.find(id).cloned().ok_or(ReadError::Unknown)
 }
 
-/// Adım 2 (KİLİTSİZ; büyük EPUB'da uzun sürebilir): kaydı yer imiyle ya da düz yolla okur. Yolun türü
-/// kayıttakiyle uyuşmazsa (D7; yer imli kayıtta çözülen yol) hiç okunmaz: `Gecersiz`.
+/// Step 2 (NOT locked; may take long for a big EPUB): reads the entry with the bookmark or the plain path. When the kind
+/// of the path does not match the entry (D7; the resolved path for an entry with a bookmark) it is not read at all: `Invalid`.
 pub fn read_entry(
     entry: &Entry,
     yi: &dyn Bookmarks,
@@ -525,7 +525,7 @@ pub fn read_entry(
             .extension()
             .is_some_and(|u| u.eq_ignore_ascii_case("epub"));
         if kind == "epub" && epub_with_extension && p.is_dir() {
-            // L1: klasör paketi; içi okunamıyorsa (izin, iCloud'dan inmemiş) kalıcı "geçersiz" değil.
+            // L1: a folder package; when its content cannot be read (permission, not downloaded from iCloud) it is not permanently "invalid".
             use crate::epub_folder::{package_state, PackageState};
             match package_state(p) {
                 PackageState::Package => {}
@@ -558,8 +558,8 @@ pub fn read_entry(
     }
 }
 
-/// Adım 3 (liste kilitliyken, kısa): başarıda kayıt başa alınır (bayatsa yer imi/yol yenilenir); hata
-/// kalıcıysa kayıt çıkar, değilse durur. Kayıt bu arada temizlendiyse liste değişmez.
+/// Step 3 (with the list locked, short): on success the entry moves to the front (a stale bookmark/path is renewed); a
+/// permanent error removes the entry, otherwise it stays. When the entry was cleared meanwhile the list does not change.
 pub fn apply_result(
     list: &mut RecentList,
     entry: &Entry,
@@ -589,8 +589,8 @@ pub fn apply_result(
     }
 }
 
-/// Listedeki kaydı okur (üç adım tek kilitte; uygulama `files::son_kaydi_oku` ile okumayı kilitsiz yapar).
-/// Dönüş: (bayt, kaydın özeti). `liste` değiştiyse çağıran kaydeder ve menüyü yeniler.
+/// Reads an entry of the list (the three steps under one lock; the app reads without the lock with `files::read_recent_entry`).
+/// Returns: (bytes, the entry summary). When `list` changed the caller saves it and refreshes the menu.
 pub fn read(
     list: &mut RecentList,
     yi: &dyn Bookmarks,
@@ -634,29 +634,29 @@ pub(crate) mod tests {
         d
     }
 
-    /// (L4 elle adımı için gözlem): kayıt, Rust'a verilen yolu (sembolik bağın kendi yolu) OLDUĞU GİBİ tutar
-    /// (çözmez). Gerçek Apple yer imi bağ yolundan oluşturulur; çözümünde dönen yol aşağıda sabitlenir. Hangi yolun
-    /// geldiği Aç penceresine bağlıdır: NSOpenPanel `resolvesAliases` öntanımlı açık (rfd değiştirmiyor).
+    /// (observation for the manual L4 step): the entry keeps the path given to Rust (the path of the symbolic link itself)
+    /// AS IT IS (does not resolve it). A real Apple bookmark is made from the link path; the path returned on resolving is
+    /// fixed below. Which path arrives depends on the Open dialog: NSOpenPanel `resolvesAliases` is on by default (rfd does not change it).
     #[cfg(target_os = "macos")]
     #[test]
     fn entry_keeps_symlink_path_bookmark_observation() {
         use std::os::unix::fs::symlink;
         let d = temp_folder().canonicalize().unwrap();
-        let target = d.join("hedef.pdf");
+        let target = d.join("target.pdf");
         fs::write(&target, b"%PDF-1.4 0b").unwrap();
         let bag = d.join("bag.pdf");
         symlink(&target, &bag).unwrap();
         let entry = make_entry(&AppleBookmarks, &bag, "bag.pdf", "pdf", 1);
-        assert_eq!(entry.path, bag.to_string_lossy(), "kayıt bağ yolunu tutar");
+        assert_eq!(entry.path, bag.to_string_lossy(), "the entry keeps the link path");
         assert_eq!(entry.name, "bag.pdf");
         let bookmark = entry
             .bookmark
             .as_deref()
             .map(|b| base64::engine::general_purpose::STANDARD.decode(b).unwrap());
         eprintln!(
-            "0b gözlem: yer imi {}",
+            "0b observation: bookmark {}",
             if bookmark.is_some() {
-                "oluştu"
+                "made"
             } else {
                 "none"
             }
@@ -664,12 +664,12 @@ pub(crate) mod tests {
         if let Some(b) = bookmark {
             let o = AppleBookmarks
                 .access_and_read(&b, &|p: &Path| fs::read(p))
-                .unwrap_or_else(|e| panic!("yer imi çözülemedi: {e:?}"));
-            eprintln!("0b gözlem: çözülen yol {}", o.path.display());
+                .unwrap_or_else(|e| panic!("bookmark could not be resolved: {e:?}"));
+            eprintln!("0b observation: resolved path {}", o.path.display());
             assert_eq!(o.bytes, b"%PDF-1.4 0b");
-            // Gözlem (macOS 26.6.2): bağ yolundan oluşturulan yer imi HEDEF dosyaya çözülür.
-            assert_eq!(o.path, target, "yer imi bağı izler, hedefin yolunu verir");
-            // Son Açılanlar'dan ilk başarılı açılışta kayıt yolu çözülen (hedef) yola güncellenir; ad aynı kalır.
+            // Observation (macOS 26.6.2): a bookmark made from a link path resolves to the TARGET file.
+            assert_eq!(o.path, target, "the bookmark follows the link, gives the path of the target");
+            // on the first successful open from Recent Items the entry path is updated to the resolved (target) path; the name stays.
             let mut l = RecentList::default();
             let id = l.add(entry.clone());
             let (bytes, summary) =
@@ -679,7 +679,7 @@ pub(crate) mod tests {
             assert_eq!(
                 l.find(&id).unwrap().path,
                 target.to_string_lossy(),
-                "açılıştan sonra kayıt hedef yolu tutar"
+                "after opening the entry keeps the target path"
             );
         }
         let _ = fs::remove_dir_all(&d);
@@ -700,10 +700,10 @@ pub(crate) mod tests {
             l.entries
                 .iter()
                 .all(|k| k.path != "/a/0.pdf" && k.path != "/a/1.pdf"),
-            "en eskiler düştü"
+            "the oldest dropped"
         );
         assert!(l.find(&first).is_none());
-        // aynı yol yeniden: başa gelir, tek kalır, kimliği korunur
+        // the same path again: comes first, stays single, keeps its id
         let old = l.entries[5].id.clone();
         let path = l.entries[5].path.clone();
         let returned = l.add(k(&path));
@@ -718,11 +718,11 @@ pub(crate) mod tests {
         let mut l = RecentList::default();
         let a = l.add(k("/a.pdf"));
         let b = l.add(k("/b.pdf"));
-        l.move_to_front(&a, 99, Some("NEW".into()), Some("/tasindi/a.pdf".into()));
+        l.move_to_front(&a, 99, Some("NEW".into()), Some("/moved/a.pdf".into()));
         assert_eq!(l.entries[0].id, a);
         assert_eq!(l.entries[0].date, 99);
         assert_eq!(l.entries[0].bookmark.as_deref(), Some("NEW"));
-        assert_eq!(l.entries[0].path, "/tasindi/a.pdf");
+        assert_eq!(l.entries[0].path, "/moved/a.pdf");
         assert!(l.forget(&b));
         assert!(!l.forget(&b));
         assert_eq!(l.entries.len(), 1);
@@ -732,7 +732,7 @@ pub(crate) mod tests {
     fn corrupt_json_or_missing_file_gives_empty_list_invalid_entries_dropped() {
         let d = temp_folder();
         let path = d.join(FILE_NAME);
-        assert_eq!(RecentList::load(&path), RecentList::default(), "dosya yok");
+        assert_eq!(RecentList::load(&path), RecentList::default(), "no file");
         for corrupt in [
             "",
             "{",
@@ -749,7 +749,7 @@ pub(crate) mod tests {
                 "{corrupt:?}"
             );
         }
-        // geçerli + geçersiz kimlik + bilinmeyen tür + 12 kayıt → 10 geçerli
+        // valid + invalid id + unknown kind + 12 entries → 10 valid
         let mut l = RecentList::default();
         for i in 0..12 {
             l.entries.push(k(&format!("/x/{i}.pdf")));
@@ -763,12 +763,12 @@ pub(crate) mod tests {
             .entries
             .iter()
             .all(|k| k.path != "/x/0.pdf" && k.path != "/x/1.pdf"));
-        assert_eq!(temp_files(&d), Vec::<String>::new(), "geçici dosya kalmadı");
+        assert_eq!(temp_files(&d), Vec::<String>::new(), "no temp file left");
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// L2: klasördeki `.gecici` uzantılı dosyalar (atomik_yaz'ın adı `.<ad>.<uuid>.gecici`; eski denetim sabit
-    /// `<ad>.gecici` adını aradığı için hep geçiyordu).
+    /// L2: the files with the `.temp` extension in the folder (the name of write_atomic is `.<name>.<uuid>.temp`; the old
+    /// check looked for a fixed `<name>.temp` name, so it always passed).
     pub(crate) fn temp_files(d: &Path) -> Vec<String> {
         let mut l: Vec<String> = fs::read_dir(d)
             .unwrap()
@@ -779,25 +779,25 @@ pub(crate) mod tests {
         l
     }
 
-    /// L1: klasör paketi EPUB'un içi okunamıyorsa (iCloud'dan inmemiş/dataless, izinsiz META-INF) kayıt
-    /// SİLİNMEZ; içi okunabilen ama container.xml'i olmayan klasör gerçekten geçersizdir (silinir).
+    /// L1: when the content of a folder package EPUB cannot be read (not downloaded from iCloud/dataless, META-INF without
+    /// permission) the entry is NOT REMOVED; a folder whose content can be read but has no container.xml is really invalid (removed).
     #[cfg(unix)]
     #[test]
     fn entry_stays_when_folder_package_contents_unreadable() {
         use std::os::unix::fs::PermissionsExt;
         let d = temp_folder();
-        let locked = d.join("Kilitli.epub");
+        let locked = d.join("Locked.epub");
         fs::create_dir_all(locked.join("META-INF")).unwrap();
         fs::write(locked.join("META-INF/container.xml"), "<c/>").unwrap();
         fs::write(locked.join("mimetype"), "application/epub+zip").unwrap();
-        let blank = d.join("Inmemis.epub");
+        let blank = d.join("NotDownloaded.epub");
         fs::create_dir_all(&blank).unwrap();
-        let fake = d.join("Sahte.epub");
+        let fake = d.join("Fake.epub");
         fs::create_dir_all(&fake).unwrap();
         fs::write(fake.join("not.txt"), "x").unwrap();
         let mut l = RecentList::default();
         let ka = l.add(k(locked.to_str().unwrap()));
-        let kb = l.add(make_entry(&Fake::new(), &locked, "Kilitli.epub", "epub", 1));
+        let kb = l.add(make_entry(&Fake::new(), &locked, "Locked.epub", "epub", 1));
         let mc = l.add(k(blank.to_str().unwrap()));
         let kd = l.add(k(fake.to_str().unwrap()));
         fs::set_permissions(locked.join("META-INF"), fs::Permissions::from_mode(0o000)).unwrap();
@@ -823,26 +823,26 @@ pub(crate) mod tests {
         );
         assert!(
             result[2].starts_with("TRANSIENT:"),
-            "içi boş (inmemiş) paket: {}",
+            "empty (not downloaded) package: {}",
             result[2]
         );
         assert!(
             result[3].starts_with("INVALID:"),
-            "container.xml'siz klasör: {}",
+            "folder without container.xml: {}",
             result[3]
         );
         for id in [&ka, &kb, &mc] {
-            assert!(l.find(id).is_some(), "içi okunamayan paket kaydı durur");
+            assert!(l.find(id).is_some(), "the entry of a package whose content cannot be read stays");
         }
-        assert!(l.find(&kd).is_none(), "gerçekten geçersiz klasör çıkarılır");
-        // izin geri gelince aynı kayıt açılır
+        assert!(l.find(&kd).is_none(), "a really invalid folder is removed");
+        // the same entry opens when the permission comes back
         assert!(read(&mut l, &Fake::new(), &ka, 3, &read_fn).is_ok());
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// L4: hedefi silinmiş sembolik bağ "geçici" değil "bulunamadı" (kalıcı çıkar); hedefi takılı olmayan
-    /// diskteyse "disk yok". Boş kalmış bağlama klasörü (`/Volumes/<ad>` var ama disk bağlı değil) disk
-    /// takılı sayılmaz; `/Volumes/Macintosh HD` gibi sembolik bağ takılıdır.
+    /// L4: a symbolic link whose target was deleted is "not found" (removed for good), not "transient"; when its target is
+    /// on an unmounted disk it is "no disk". An empty mount folder (`/Volumes/<name>` exists but no disk is mounted) does
+    /// not count as mounted; a symbolic link like `/Volumes/Macintosh HD` is mounted.
     #[cfg(unix)]
     #[test]
     fn dead_symlink_not_found_empty_mount_folder_no_disk() {
@@ -861,7 +861,7 @@ pub(crate) mod tests {
             }
         }
         let d = temp_folder();
-        let target = d.join("hedef.pdf");
+        let target = d.join("target.pdf");
         fs::write(&target, b"%PDF").unwrap();
         let bag = d.join("bag.pdf");
         symlink(&target, &bag).unwrap();
@@ -890,52 +890,52 @@ pub(crate) mod tests {
         let ha = error(&mut l, &ka);
         let hb = error(&mut l, &kb);
         let hc = error(&mut l, &mc);
-        assert!(ha.starts_with("NOTFOUND:"), "ölü bağ (yer imli): {ha}");
-        assert!(hb.starts_with("NOTFOUND:"), "ölü bağ (yer imsiz): {hb}");
+        assert!(ha.starts_with("NOTFOUND:"), "dead link (with bookmark): {ha}");
+        assert!(hb.starts_with("NOTFOUND:"), "dead link (without bookmark): {hb}");
         assert!(
             hc.starts_with("NODISK:") && hc.contains(&disk),
-            "bağın hedefi takılı olmayan diskte: {hc}"
+            "the target of the link is on an unmounted disk: {hc}"
         );
         assert!(
             l.find(&ka).is_none() && l.find(&kb).is_none(),
-            "ölü bağ kaydı çıkar"
+            "the dead link entry is removed"
         );
-        assert!(l.find(&mc).is_some(), "disk yoksa kayıt durur");
-        // bağlama klasörü
+        assert!(l.find(&mc).is_some(), "without the disk the entry stays");
+        // mount folder
         let vol = d.join("Volumes");
-        fs::create_dir_all(vol.join("Bos")).unwrap();
-        symlink("/", vol.join("Kok")).unwrap();
+        fs::create_dir_all(vol.join("Empty")).unwrap();
+        symlink("/", vol.join("Root")).unwrap();
         assert_eq!(
-            unmounted_disk_in(&vol.join("Bos/Kitap/a.pdf"), &vol),
-            Some("Bos".into()),
-            "boş bağlama klasörü: disk takılı değil"
+            unmounted_disk_in(&vol.join("Empty/Book/a.pdf"), &vol),
+            Some("Empty".into()),
+            "empty mount folder: the disk is not mounted"
         );
         assert_eq!(
-            unmounted_disk_in(&vol.join("Yok/a.pdf"), &vol),
-            Some("Yok".into())
+            unmounted_disk_in(&vol.join("Missing/a.pdf"), &vol),
+            Some("Missing".into())
         );
         assert_eq!(
-            unmounted_disk_in(&vol.join("Kok/Users/a.pdf"), &vol),
+            unmounted_disk_in(&vol.join("Root/Users/a.pdf"), &vol),
             None,
-            "sembolik bağ (Macintosh HD gibi) takılı"
+            "a symbolic link (like Macintosh HD) is mounted"
         );
         assert_eq!(
             unmounted_disk_in(Path::new("/Users/x/a.pdf"), &vol),
             None,
-            "Volumes dışı"
+            "outside Volumes"
         );
-        assert_eq!(unmounted_disk_in(&vol, &vol), None, "disk adı yok");
+        assert_eq!(unmounted_disk_in(&vol, &vol), None, "no disk name");
         assert_eq!(
             unmounted_disk(Path::new("/Volumes/Macintosh HD/Users/a.pdf")),
             None,
-            "açılış diski takılı"
+            "the startup disk is mounted"
         );
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// Bağ zinciri, göreli hedef (`..` dahil, normalize) ve ara klasör bağı
-    /// takılı olmayan diske gidiyorsa DISKYOK (kayıt durur); yer imli ve yer imsiz kayıtta aynı. Döngü ve çok
-    /// uzun zincir sınırlı derinlikte biter (DISKYOK sayılmaz, kayıt silinmez).
+    /// When a link chain, a relative target (`..` included, normalised) or an intermediate folder link
+    /// leads to an unmounted disk: NODISK (the entry stays); the same with and without a bookmark. A loop and a very
+    /// long chain end at a limited depth (not counted as NODISK, the entry is not removed).
     #[cfg(unix)]
     #[test]
     fn symlink_chain_relative_target_intermediate_folder_no_disk() {
@@ -957,44 +957,44 @@ pub(crate) mod tests {
         let disk = format!("mc-mounted-non-{}", uuid::Uuid::new_v4());
         let vol = format!("/Volumes/{disk}");
         let deep = "../".repeat(d.components().count() + 3);
-        // zincir: zincir1 -> zincir2 -> /Volumes/<disk>/a.pdf
-        symlink(format!("{vol}/a.pdf"), d.join("zincir2.pdf")).unwrap();
-        symlink(d.join("zincir2.pdf"), d.join("zincir1.pdf")).unwrap();
-        // göreli hedef (normalize edilmeden /Volumes önekini taşımaz) ve göreli zincir
-        symlink(format!("{deep}Volumes/{disk}/b.pdf"), d.join("goreli.pdf")).unwrap();
-        symlink("goreli.pdf", d.join("goreli-zincir.pdf")).unwrap();
+        // chain: chain1 -> chain2 -> /Volumes/<disk>/a.pdf
+        symlink(format!("{vol}/a.pdf"), d.join("chain2.pdf")).unwrap();
+        symlink(d.join("chain2.pdf"), d.join("chain1.pdf")).unwrap();
+        // a relative target (does not carry the /Volumes prefix without normalising) and a relative chain
+        symlink(format!("{deep}Volumes/{disk}/b.pdf"), d.join("relative.pdf")).unwrap();
+        symlink("relative.pdf", d.join("relative-chain.pdf")).unwrap();
         symlink(
             format!("./alt/../{deep}Volumes/./{disk}/c.pdf"),
-            d.join("noktali.pdf"),
+            d.join("dotted.pdf"),
         )
         .unwrap();
-        // ara klasör bağı: d/disk-klasor -> /Volumes/<disk>/Kitaplar; kayıt d/disk-klasor/c.pdf
-        symlink(format!("{vol}/Kitaplar"), d.join("disk-folder")).unwrap();
-        // 10 halkalı zincir
-        symlink(format!("{vol}/uzun.pdf"), d.join("halka0.pdf")).unwrap();
+        // intermediate folder link: d/disk-folder -> /Volumes/<disk>/Books; the entry d/disk-folder/c.pdf
+        symlink(format!("{vol}/Books"), d.join("disk-folder")).unwrap();
+        // a chain of 10 links
+        symlink(format!("{vol}/long.pdf"), d.join("link0.pdf")).unwrap();
         for i in 1..10 {
             symlink(
-                format!("halka{}.pdf", i - 1),
-                d.join(format!("halka{i}.pdf")),
+                format!("link{}.pdf", i - 1),
+                d.join(format!("link{i}.pdf")),
             )
             .unwrap();
         }
         let paths = [
-            d.join("zincir1.pdf"),
-            d.join("goreli.pdf"),
-            d.join("goreli-zincir.pdf"),
-            d.join("noktali.pdf"),
+            d.join("chain1.pdf"),
+            d.join("relative.pdf"),
+            d.join("relative-chain.pdf"),
+            d.join("dotted.pdf"),
             d.join("disk-folder/c.pdf"),
-            d.join("halka9.pdf"),
+            d.join("link9.pdf"),
         ];
         let read_fn = |p: &Path| fs::read(p);
         let mut failed = Vec::new();
         for y in &paths {
             let name = y.file_name().unwrap().to_string_lossy().into_owned();
-            // aynı yolda tek kayıt olur (Liste::ekle): yer imli ve yer imsiz ayrı listelerde
+            // one entry per path (RecentList::add): with and without a bookmark in separate lists
             for (entry, kind) in [
                 (make_entry(&Unresolvable, y, &name, "pdf", 1), "yer imli"),
-                (k(y.to_str().unwrap()), "yer imsiz"),
+                (k(y.to_str().unwrap()), "without bookmark"),
             ] {
                 assert_eq!(entry.bookmark.is_some(), kind == "yer imli");
                 let mut l = RecentList::default();
@@ -1004,12 +1004,12 @@ pub(crate) mod tests {
                     .to_string();
                 if !(h.starts_with("NODISK:") && h.contains(&disk)) || l.find(&id).is_none() {
                     failed.push(format!(
-                        "{kind} {}: {h} (kayıt {})",
+                        "{kind} {}: {h} (entry {})",
                         name,
                         if l.find(&id).is_some() {
                             "stopped"
                         } else {
-                            "SİLİNDİ"
+                            "REMOVED"
                         }
                     ));
                 }
@@ -1017,10 +1017,10 @@ pub(crate) mod tests {
         }
         assert!(failed.is_empty(), "{failed:#?}");
         let mut l = RecentList::default();
-        // döngü ve sınırı aşan zincir: biter, DISKYOK değil, kayıt durur (kalıcı silme yok)
+        // a loop and a chain over the limit: it ends, not NODISK, the entry stays (no permanent removal)
         symlink(d.join("dongu2.pdf"), d.join("dongu1.pdf")).unwrap();
         symlink(d.join("dongu1.pdf"), d.join("dongu2.pdf")).unwrap();
-        symlink(format!("{vol}/cok-uzun.pdf"), d.join("u0.pdf")).unwrap();
+        symlink(format!("{vol}/very-long.pdf"), d.join("u0.pdf")).unwrap();
         for i in 1..=SYMLINK_LIMIT + 5 {
             symlink(format!("u{}.pdf", i - 1), d.join(format!("u{i}.pdf"))).unwrap();
         }
@@ -1035,21 +1035,21 @@ pub(crate) mod tests {
             assert!(!h.starts_with("NODISK:"), "{}: {h}", y.display());
             assert!(l.find(&id).is_some(), "{}: {h}", y.display());
         }
-        // yol çözücünün kendisi: normalize + sınır
+        // the path resolver itself: normalise + limit
         assert_eq!(
-            resolve_symlinks(&d.join("goreli.pdf")),
+            resolve_symlinks(&d.join("relative.pdf")),
             PathBuf::from(format!("{vol}/b.pdf"))
         );
         assert_eq!(
             resolve_symlinks(Path::new("/a/./b/../c")),
             PathBuf::from("/a/c"),
-            "bağsız yol yalnız normalize edilir"
+            "a path without links is only normalised"
         );
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// L7: çökme artığı geçici dosyalar (`.<ad>.<uuid>.gecici`, belli bir yaştan eski) açılışta silinir;
-    /// taze olanlar (şu an yazılıyor olabilir), kalıba uymayanlar, klasör ve bağlar dokunulmaz.
+    /// L7: crash leftover temp files (`.<name>.<uuid>.temp`, older than a given age) are removed at start-up;
+    /// fresh ones (may be being written now), ones not matching the pattern, folders and links are not touched.
     #[cfg(unix)]
     #[test]
     fn leftover_temp_files_are_removed() {
@@ -1072,14 +1072,14 @@ pub(crate) mod tests {
         let original = old("projects.json");
         let folder = d.join(format!(".x.{}.temp", u()));
         fs::create_dir_all(&folder).unwrap();
-        let bag_target = old("hedef.txt");
+        let bag_target = old("target.txt");
         let bag = d.join(format!(".bag.{}.temp", u()));
         std::os::unix::fs::symlink(&bag_target, &bag).unwrap();
         let n = remove_leftover_temps(&d, Duration::from_secs(60));
-        assert_eq!(n, 2, "iki eski artık silindi");
+        assert_eq!(n, 2, "two old leftovers removed");
         assert!(
             !artik1.exists() && !artik2.exists(),
-            "eski artıklar silindi"
+            "old leftovers removed"
         );
         for rest in [
             &fresh,
@@ -1089,19 +1089,19 @@ pub(crate) mod tests {
             &folder,
             &bag_target,
         ] {
-            assert!(rest.exists(), "dokunulmamalı: {}", rest.display());
+            assert!(rest.exists(), "must not be touched: {}", rest.display());
         }
-        assert!(fs::symlink_metadata(&bag).is_ok(), "bağ dokunulmadı");
+        assert!(fs::symlink_metadata(&bag).is_ok(), "the link was not touched");
         assert_eq!(
             remove_leftover_temps(&d.join("none"), Duration::from_secs(60)),
             0,
-            "klasör yok"
+            "no folder"
         );
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// Sahte yer imi: bayt = yolun kendisi; `bayat` ve `reddet` ile davranış seçilir; erişim sayacı açık
-    /// erişim kalmadığını (kısa ömürlü) denetler.
+    /// A fake bookmark: bytes = the path itself; the behaviour is chosen with `stale` and `deny`; an access counter checks
+    /// that no access stays open (short lived).
     struct Fake {
         stale: bool,
         reject: bool,
@@ -1122,7 +1122,7 @@ pub(crate) mod tests {
         fn create(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
             Ok(Some(path.to_string_lossy().as_bytes().to_vec()))
         }
-        /// Gerçek macOS gibi: dosya yoksa (ya da diski takılı değilse) yer imi çözülemez.
+        /// Like the real macOS: a bookmark cannot be resolved when the file is missing (or its disk is not mounted).
         fn access_and_read(
             &self,
             b: &[u8],
@@ -1154,7 +1154,7 @@ pub(crate) mod tests {
     #[test]
     fn read_rejects_unknown_and_arbitrary_path_id_without_touching_files() {
         let d = temp_folder();
-        let actual = d.join("gizli.pdf");
+        let actual = d.join("secret.pdf");
         fs::write(&actual, b"%PDF-hidden").unwrap();
         let mut l = RecentList::default();
         l.add(make_entry(
@@ -1186,9 +1186,9 @@ pub(crate) mod tests {
         }
         assert!(
             touched.borrow().is_empty(),
-            "bilinmeyen kimlikte dosya okunmamalı"
+            "a file must not be read for an unknown id"
         );
-        assert_eq!(l.entries.len(), 1, "bilinmeyen kimlik listeyi değiştirmez");
+        assert_eq!(l.entries.len(), 1, "an unknown id does not change the list");
         fs::remove_dir_all(&d).unwrap();
     }
 
@@ -1209,57 +1209,57 @@ pub(crate) mod tests {
         let (bytes, summary) = read(&mut l, &yi, &ka, 50, &|p: &Path| fs::read(p)).unwrap();
         assert_eq!(bytes, b"%PDF-a");
         assert_eq!(summary.name, "a.pdf");
-        assert_eq!(l.entries[0].id, ka, "okunan başa alındı");
+        assert_eq!(l.entries[0].id, ka, "the read entry moved to the front");
         assert_eq!(l.entries[0].date, 50);
         assert_eq!(
             l.entries[0].bookmark.as_deref(),
             Some("TkVX"),
-            "stale place mark yenilendi (base64 'NEW')"
+            "stale bookmark renewed (base64 'NEW')"
         );
-        assert_eq!(*yi.is_open.borrow(), 0, "erişim bırakıldı");
+        assert_eq!(*yi.is_open.borrow(), 0, "access released");
         assert_eq!(*yi.max_open.borrow(), 1);
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// S11c: silinmiş dosya "bulunamadı" ve listeden kalıcı çıkar (yer imli ve yer imsiz kayıt).
+    /// S11c: a deleted file is "not found" and leaves the list for good (entries with and without a bookmark).
     #[test]
     fn read_deleted_entry_not_found_and_removed_from_list() {
         let d = temp_folder();
-        let a = d.join("silinecek.pdf");
-        let b = d.join("duz-silinecek.pdf");
+        let a = d.join("to-delete.pdf");
+        let b = d.join("plain-to-delete.pdf");
         fs::write(&a, b"%PDF").unwrap();
         fs::write(&b, b"%PDF").unwrap();
         let mut l = RecentList::default();
-        let ka = l.add(make_entry(&Fake::new(), &a, "silinecek.pdf", "pdf", 1));
+        let ka = l.add(make_entry(&Fake::new(), &a, "to-delete.pdf", "pdf", 1));
         let kb = l.add(k(b.to_str().unwrap()));
-        let mc = l.add(k(d.join("kalan.pdf").to_str().unwrap()));
+        let mc = l.add(k(d.join("remaining.pdf").to_str().unwrap()));
         fs::remove_file(&a).unwrap();
         fs::remove_file(&b).unwrap();
         for id in [&ka, &kb] {
             let h = read(&mut l, &Fake::new(), id, 2, &|p: &Path| fs::read(p)).unwrap_err();
             assert!(h.to_string().starts_with("NOTFOUND:"), "{h}");
-            assert!(l.find(id).is_none(), "bulunamayan çıkarıldı");
+            assert!(l.find(id).is_none(), "the one not found was removed");
         }
-        assert!(l.find(&mc).is_some(), "ötekiler durur");
+        assert!(l.find(&mc).is_some(), "the others stay");
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// O4: erişim reddi kaydı SİLMEZ (entitlement/imza farkı geçici olabilir); ayrımlı "ERISIM:" kodu.
+    /// O4: access denied does NOT REMOVE the entry (an entitlement/signature difference may be temporary); a separate "ACCESS:" code.
     #[test]
     fn access_denied_keeps_the_entry() {
         let d = temp_folder();
-        let a = d.join("izinsiz.pdf");
+        let a = d.join("denied.pdf");
         fs::write(&a, b"%PDF").unwrap();
         let mut l = RecentList::default();
-        let ka = l.add(make_entry(&Fake::new(), &a, "izinsiz.pdf", "pdf", 1));
+        let ka = l.add(make_entry(&Fake::new(), &a, "denied.pdf", "pdf", 1));
         let red = Fake {
             reject: true,
             ..Fake::new()
         };
         let h = read(&mut l, &red, &ka, 2, &|p: &Path| fs::read(p)).unwrap_err();
         assert!(h.to_string().starts_with("ACCESS:"), "{h}");
-        assert!(l.find(&ka).is_some(), "erişim reddinde kayıt durur");
-        // yer imsiz kayıtta okuma izin hatası (sandbox EPERM) de kaydı tutar
+        assert!(l.find(&ka).is_some(), "the entry stays on access denied");
+        // a read permission error (sandbox EPERM) on an entry without a bookmark keeps the entry too
         let kb = l.add(k(a.to_str().unwrap()));
         let unpermitted = |_: &Path| -> io::Result<Vec<u8>> {
             Err(io::Error::from(io::ErrorKind::PermissionDenied))
@@ -1270,50 +1270,50 @@ pub(crate) mod tests {
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// O4: takılı olmayan diskteki (`/Volumes/<ad>` yok) kayıt silinmez; "DISKYOK:" kodu diskin adını verir.
+    /// O4: an entry on an unmounted disk (no `/Volumes/<name>`) is not removed; the "NODISK:" code gives the disk name.
     #[test]
     fn unmounted_disk_keeps_the_entry() {
         let disk = format!("mc-mounted-non-{}", uuid::Uuid::new_v4());
-        let path = format!("/Volumes/{disk}/Kitaplar/tez.pdf");
+        let path = format!("/Volumes/{disk}/Books/thesis.pdf");
         let mut l = RecentList::default();
-        let ka = l.add(k(&path)); // yer imsiz
+        let ka = l.add(k(&path)); // without a bookmark
         let kb = l.add(make_entry(
             &Fake::new(),
-            Path::new(&path.replace("tez", "iki")),
-            "iki.pdf",
+            Path::new(&path.replace("tez", "two")),
+            "two.pdf",
             "pdf",
             1,
-        )); // yer imli: çözülemez
+        )); // with a bookmark: cannot be resolved
         for id in [&ka, &kb] {
             let h = read(&mut l, &Fake::new(), id, 2, &|p: &Path| fs::read(p)).unwrap_err();
             let m = h.to_string();
             assert!(m.starts_with("NODISK:") && m.contains(&disk), "{m}");
-            assert!(l.find(id).is_some(), "takılı olmayan diskteki kayıt durur");
+            assert!(l.find(id).is_some(), "the entry on an unmounted disk stays");
         }
     }
 
-    /// O4: geçici okuma hatası (dosya yerinde) kaydı tutar; "GECICI:" kodu.
+    /// O4: a transient read error (the file is in place) keeps the entry; the "TRANSIENT:" code.
     #[test]
     fn transient_read_error_keeps_the_entry() {
         let d = temp_folder();
-        let a = d.join("yerinde.pdf");
+        let a = d.join("in-place.pdf");
         fs::write(&a, b"%PDF").unwrap();
         let mut l = RecentList::default();
         let ka = l.add(k(a.to_str().unwrap()));
-        let kb = l.add(make_entry(&Fake::new(), &a, "yerinde.pdf", "pdf", 1));
+        let kb = l.add(make_entry(&Fake::new(), &a, "in-place.pdf", "pdf", 1));
         let mounted = |_: &Path| -> io::Result<Vec<u8>> {
             Err(io::Error::other("Resource deadlock avoided"))
         };
         for id in [&ka, &kb] {
             let h = read(&mut l, &Fake::new(), id, 2, &mounted).unwrap_err();
             assert!(h.to_string().starts_with("TRANSIENT:"), "{h}");
-            assert!(l.find(id).is_some(), "geçici hatada kayıt durur");
+            assert!(l.find(id).is_some(), "the entry stays on a transient error");
         }
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// O4: yer imi çözülemedi ama dosya yerinde (lstat: var) → GECICI; üst klasör kilitli (lstat: EACCES;
-    /// gerçek macOS burada da "The file doesn't exist" veriyor) → ERISIM. İkisinde de kayıt durur.
+    /// O4: the bookmark could not be resolved but the file is in place (lstat: exists) → TRANSIENT; the parent folder is locked
+    /// (lstat: EACCES; the real macOS also gives "The file doesn't exist" here) → ACCESS. The entry stays in both.
     #[cfg(unix)]
     #[test]
     fn unresolvable_bookmark_classified_by_saved_path() {
@@ -1332,7 +1332,7 @@ pub(crate) mod tests {
             }
         }
         let d = temp_folder();
-        let in_place = d.join("yerinde.pdf");
+        let in_place = d.join("in-place.pdf");
         fs::write(&in_place, b"%PDF").unwrap();
         let locked = d.join("locked");
         fs::create_dir_all(&locked).unwrap();
@@ -1341,7 +1341,7 @@ pub(crate) mod tests {
         let ka = l.add(make_entry(
             &Unresolvable,
             &in_place,
-            "yerinde.pdf",
+            "in-place.pdf",
             "pdf",
             1,
         ));
@@ -1354,8 +1354,8 @@ pub(crate) mod tests {
         ));
         let mc = l.add(make_entry(
             &Unresolvable,
-            &d.join("yok.pdf"),
-            "yok.pdf",
+            &d.join("missing.pdf"),
+            "missing.pdf",
             "pdf",
             1,
         ));
@@ -1376,19 +1376,19 @@ pub(crate) mod tests {
         assert!(hc.starts_with("NOTFOUND:"), "{hc}");
         assert!(
             l.find(&ka).is_some() && l.find(&kb).is_some(),
-            "yerinde/kilitli kayıt durur"
+            "the in-place/locked entries stay"
         );
-        assert!(l.find(&mc).is_none(), "yok olan çıkar");
+        assert!(l.find(&mc).is_none(), "the missing one is removed");
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// D7: yer imsiz kayıtta yol türü denetlenir (elle düzenlenmiş son-acilanlar.json keyfi dosya okutamaz).
+    /// D7: the kind of the path is checked for an entry without a bookmark (a hand-edited recent-files.json cannot make an arbitrary file be read).
     #[test]
     fn kind_checked_for_entry_without_bookmark() {
         let d = temp_folder();
         let txt = d.join("not.txt");
         fs::write(&txt, b"text").unwrap();
-        let folder = d.join("klasor.pdf");
+        let folder = d.join("folder.pdf");
         fs::create_dir_all(&folder).unwrap();
         let mut l = RecentList::default();
         let touched = RefCell::new(Vec::<PathBuf>::new());
@@ -1406,25 +1406,25 @@ pub(crate) mod tests {
             let id = l.add(entry);
             let h = read(&mut l, &Fake::new(), &id, 2, &read_fn).unwrap_err();
             assert!(h.to_string().starts_with("INVALID:"), "{path}: {h}");
-            assert!(l.find(&id).is_none(), "geçersiz kayıt çıkarılır: {path}");
+            assert!(l.find(&id).is_none(), "an invalid entry is removed: {path}");
         }
         assert!(
             touched.borrow().is_empty(),
-            "tür uymayan yol okunmamalı: {:?}",
+            "a path with a mismatching kind must not be read: {:?}",
             touched.borrow()
         );
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// O2: hedef adı 255 bayta dek (UTF-8 çok baytlı dahil) — geçici ad `.<ad>.<uuid>.gecici` de
-    /// 255 baytı aşmamalı (eskiden +45 bayt → ENAMETOOLONG).
+    /// O2: a target name up to 255 bytes (UTF-8 multi-byte included) — the temp name `.<name>.<uuid>.temp` must not
+    /// pass 255 bytes either (+45 bytes in the past → ENAMETOOLONG).
     #[test]
     fn write_atomic_with_255_byte_name_temp_name_matches_pattern_and_limit() {
         let d = temp_folder();
         for name in [
-            "ğ".repeat(126) + ".pdf", // 256 bayt → 255'e kırpılır (karakter sınırında: 254)
+            "ğ".repeat(126) + ".pdf", // 256 bytes → cut to 255 (at a character boundary: 254)  // turkish-ok: Turkish test text (UTF-8 names)
             "a".repeat(251) + ".pdf", // tam 255
-            "Ş".repeat(100) + &"x".repeat(51), // 251
+            "Ş".repeat(100) + &"x".repeat(51), // 251  // turkish-ok: Turkish test text (UTF-8 names)
         ] {
             let name =
                 crate::files::truncate_bytes(&name, crate::files::NAME_MAX_BYTES).to_string();
@@ -1433,19 +1433,19 @@ pub(crate) mod tests {
             assert_eq!(fs::read(&target).unwrap(), b"data");
         }
         assert!(temp_files(&d).is_empty(), "{:?}", temp_files(&d));
-        // geçici ad kalıbı (artik_gecicileri_temizle tanır) ve sınır: kırpılmış ad + uuid
+        // the temp name pattern (remove_leftover_temps knows it) and the limit: the cut name + uuid
         let source = include_str!("recent.rs");
         let body = &source[source.find("pub fn write_atomic").unwrap()..];
         let body = &body[..body.find("\n}\n").unwrap()];
         assert!(
             body.contains("TEMP_SUFFIX_BYTES") && body.contains("truncate_bytes("),
-            "geçici ad kırpılmıyor"
+            "the temp name is not cut"
         );
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// D8: eşzamanlı atomik yazımlar birbirinin geçici dosyasını ezmez (hepsi başarılı, son içerik
-    /// yazılanlardan biri, geçici dosya kalmaz); yazım rename'den önce diske eşitlenir (sync_all).
+    /// D8: concurrent atomic writes do not overwrite each other's temp file (all succeed, the last content is one of the
+    /// written ones, no temp file left); the write is synced to disk before the rename (sync_all).
     #[test]
     fn write_atomic_concurrent_and_no_temp_file_left() {
         let d = temp_folder();
@@ -1464,7 +1464,7 @@ pub(crate) mod tests {
             })
             .collect();
         let failed: usize = threads.into_iter().map(|t| t.join().unwrap()).sum();
-        assert_eq!(failed, 0, "eşzamanlı yazımda hata");
+        assert_eq!(failed, 0, "error in a concurrent write");
         let last: serde_json::Value = serde_json::from_slice(&fs::read(&target).unwrap()).unwrap();
         assert!(last["i"].is_u64() && last["j"].is_u64(), "{last}");
         let rest: Vec<_> = fs::read_dir(&d)
@@ -1472,15 +1472,15 @@ pub(crate) mod tests {
             .map(|g| g.unwrap().file_name().to_string_lossy().into_owned())
             .filter(|a| a != "projects.json")
             .collect();
-        assert!(rest.is_empty(), "geçici dosya kaldı: {rest:?}");
+        assert!(rest.is_empty(), "a temp file was left: {rest:?}");
         let source = include_str!("recent.rs");
         let body = &source[source.find("pub fn write_atomic").unwrap()..];
         let body = &body[..body.find("\n}\n").unwrap()];
-        assert!(body.contains(".sync_all()"), "rename öncesi sync_all yok");
+        assert!(body.contains(".sync_all()"), "no sync_all before the rename");
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// L3: bozuk (base64 olmayan) yer imi "bulunamadı (silinmiş ya da taşınmış)" değil "geçersiz kayıt".
+    /// L3: a broken (not base64) bookmark is not "not found (deleted or moved)" but "invalid entry".
     #[test]
     fn entry_without_bookmark_read_by_path_corrupt_bookmark_invalid() {
         let d = temp_folder();
@@ -1496,16 +1496,16 @@ pub(crate) mod tests {
                 .0,
             b"%PDF-flat"
         );
-        entry.bookmark = Some("%%% base64 değil".into());
-        entry.path = "/baska".into();
+        entry.bookmark = Some("%%% not base64".into());
+        entry.path = "/other".into();
         let k2 = l.add(entry);
         let h = read(&mut l, &Fake::new(), &k2, 2, &|p: &Path| fs::read(p));
         assert!(matches!(&h, Err(ReadError::Invalid(_))), "{:?}", h.err());
-        assert!(l.find(&k2).is_none(), "bozuk yer imli kayıt çıkarılır");
+        assert!(l.find(&k2).is_none(), "a broken bookmark entry is removed");
         fs::remove_dir_all(&d).unwrap();
     }
 
-    /// öncesi `son-acilanlar.json` olduğu gibi açılır (biçim değişmedi; arayüz dili kaydı etkilemez).
+    /// An old `son-acilanlar.json` (the legacy file name) opens as it is (the legacy field names are read through serde aliases).  // turkish-ok: legacy file name (migration)
     #[test]
     fn legacy_recent_files_record_is_read() {
         let y = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1516,21 +1516,21 @@ pub(crate) mod tests {
         assert_eq!(l.entries[0].name, "Mavi Pusula.epub");
         assert_eq!(l.entries[0].kind, "epub");
         assert!(l.entries[0].bookmark.is_some());
-        assert_eq!(l.entries[1].name, "Çiğdemköy & Ekler.pdf");
+        assert_eq!(l.entries[1].name, "Çiğdemköy & Ekler.pdf");  // turkish-ok: Turkish test text (UTF-8 names)
         assert_eq!(
             l.entries[1].bookmark, None,
-            "yerimi alanı olmayan eski kayıt"
+            "an old entry without the bookmark field"
         );
         let summary = serde_json::to_string(&l.summaries()).unwrap();
         assert!(
-            summary.contains("Çiğdemköy & Ekler.pdf") && !summary.contains("/Users/"),
+            summary.contains("Çiğdemköy & Ekler.pdf") && !summary.contains("/Users/"),  // turkish-ok: Turkish test text (UTF-8 names)
             "{summary}"
         );
     }
 
     #[test]
     fn summary_has_no_path_or_bookmark() {
-        let mut entry = k("/gizli/yol/a.pdf");
+        let mut entry = k("/secret/path/a.pdf");
         entry.bookmark = Some("QUJD".into());
         let json = serde_json::to_string(&Summary::from(&entry)).unwrap();
         assert!(

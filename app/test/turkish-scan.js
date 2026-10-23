@@ -113,7 +113,7 @@ const WORDS = new Set([
     'saklama satir satirlar satirlari sayac sayfa sayfalar sayfasi sayfaya sayfayi sayi sayilan sayilar sayilari',
     'sayili sayisi sec secenek secenekler secici secildi secili secim secimi secin segler sekil sekiller sekiz',
     'sekme sekmeler sekmesi serbest seridi serit sessiz sifir sifirla sifrele sifreleme sifreli sigan sigdir',
-    'sigmiyor sikili sikisik sikistirmasiz sil silik silindi silinecek silinemedi silinir silinmemeli silinmis',
+    'sigmiyor sikili sikisik sikistirmasiz silik silindi silinecek silinemedi silinir silinmemeli silinmis',
     'simdi simetrik simgeler sinama sinamasi sinif siniflandir sinir sinirda siniri sinirinda sinirlar sinirli',
     'sira sirada siralama sirali sirasi sirasinda sirt sistem siyah sizan sizinti sokum sola soluk sona sonek',
     'sonra sonraki sonrasinda sonu sonuc sonuclar sonuclari sonucu sor sorular sorun sorunlari sorunlu sorunu soz',

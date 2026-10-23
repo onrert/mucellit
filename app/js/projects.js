@@ -148,11 +148,11 @@
       ]));
     });
     container.appendChild(ul);
-    var yeniAd = el('input', { type: 'text', id: 'step-fresh-name', placeholder: t('projects.step.new_name') });
+    var newName = el('input', { type: 'text', id: 'step-fresh-name', placeholder: t('projects.step.new_name') });
     container.appendChild(el('div', { class: 'line' }, [
-      yeniAd,
+      newName,
       el('button', { type: 'button', id: 'step-add', text: t('projects.step.add'), onclick: function () {
-        try { M.addStep(k, yeniAd.value); save(); drawList(); drawDetail(); } catch (e) { O.notify(e.message, 'error'); }
+        try { M.addStep(k, newName.value); save(); drawList(); drawDetail(); } catch (e) { O.notify(e.message, 'error'); }
       } })
     ]));
   }

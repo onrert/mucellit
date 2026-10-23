@@ -221,7 +221,7 @@ function trMiniDefinition() {
     '<h1>Birinci Bölüm</h1>' +  // turkish-ok: Turkish test text
     `<p class="first">Bu kitapta <span class="emphasis">eğik yazılmış</span> ve <strong>kalın yazılmış</strong> sözcükler var; <span class="bold-class">sınıfla kalın</span> da var.</p>` +  // turkish-ok: Turkish test text
     `<p>Iğdır'da ılık bir İstanbul sabahı;<br/>şöyle güzel çiçekler: ÖĞÜŞÇ ğüşıöçİ.</p>` +  // turkish-ok: Turkish test text
-    '<p class="hidden">GIZLIMETIN bu paragraf görünmemeli.</p>' +  // turkish-ok: Turkish test text
+    '<p class="hidden">HIDDENTEXT bu paragraf görünmemeli.</p>' +  // turkish-ok: Turkish test text
     p(120) + p(90) + '<hr/>' + p(140) +
     `<blockquote><p>${paragraphText(r, 40)}</p></blockquote>` +
     '<ul><li>birinci madde</li><li>ikinci madde</li></ul><ol><li>sıralı bir</li><li>sıralı iki</li></ol>' +  // turkish-ok: Turkish test text
@@ -231,10 +231,10 @@ function trMiniDefinition() {
     '<table><tr><td>hücre bir</td><td>hücre iki</td></tr><tr><td>alt bir</td><td>alt iki</td></tr></table>' +  // turkish-ok: Turkish test text
     p(160) + p(110),
     { css: ['style.css'], title: 'Birinci' });  // turkish-ok: Turkish test text
-  const b2 = xhtml('<h2 class="centered">İkinci Bölüm</h2>' + p(150) + p(130) + p(170) + `<p class="new-page">YENISAYFA ${paragraphText(r, 30)}</p>` + p(80),  // turkish-ok: Turkish test text
+  const b2 = xhtml('<h2 class="centered">İkinci Bölüm</h2>' + p(150) + p(130) + p(170) + `<p class="new-page">NEWPAGE ${paragraphText(r, 30)}</p>` + p(80),  // turkish-ok: Turkish test text
     { css: ['style.css'], title: 'İkinci' });  // turkish-ok: Turkish test text
   const b3 = xhtml('<h2>Üçüncü Bölüm</h2>' + `<p>Dipnot işareti<a epub:type="noteref" href="#n1">1</a> burada.</p>` + p(200) +  // turkish-ok: Turkish test text
-    `<aside epub:type="footnote" id="n1"><p>1. Dipnot metni.</p></aside>` + `<p style="font-style: italic; text-align: right">SATIRICI eğik ve sağa yaslı.</p>`,  // turkish-ok: Turkish test text
+    `<aside epub:type="footnote" id="n1"><p>1. Dipnot metni.</p></aside>` + `<p style="font-style: italic; text-align: right">INLINESTYLE eğik ve sağa yaslı.</p>`,  // turkish-ok: Turkish test text
     { css: ['style.css'], title: 'Üçüncü' });  // turkish-ok: Turkish test text
   const coverX = xhtml('<div><img src="images/cover.png" alt="kapak"/></div>', { title: 'Kapak' });  // turkish-ok: Turkish test text
   return {
