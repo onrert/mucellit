@@ -112,10 +112,10 @@ test('shouldRotateBacks: landscape/portrait × short/long edge, four combination
 test('layout: only the backs turn, the fronts do not (four combinations)', () => {
   const impose = d.sewn({ pageCount: 4, sheetsPerSignature: 1 });
   [[297, 210, 148, 210, 'short', false], [297, 210, 148, 210, 'long', true],
-    [210, 297, 100, 150, 'short', true], [210, 297, 100, 150, 'long', false]].forEach(([pg, py, bg, by, cev, expected]) => {
-    const r = y.layout(impose, { paperWidth: pg, paperHeight: py, bookWidth: bg, bookHeight: by, duplex: cev });
-    assert.equal(r.sides.find((f) => f.side === 'front').rotate180, false, cev);
-    assert.equal(r.sides.find((f) => f.side === 'back').rotate180, expected, pg + 'x' + py + ' ' + cev);
+    [210, 297, 100, 150, 'short', true], [210, 297, 100, 150, 'long', false]].forEach(([pg, py, bg, by, flipEdge, expected]) => {
+    const r = y.layout(impose, { paperWidth: pg, paperHeight: py, bookWidth: bg, bookHeight: by, duplex: flipEdge });
+    assert.equal(r.sides.find((f) => f.side === 'front').rotate180, false, flipEdge);
+    assert.equal(r.sides.find((f) => f.side === 'back').rotate180, expected, pg + 'x' + py + ' ' + flipEdge);
   });
 });
 

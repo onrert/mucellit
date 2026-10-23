@@ -32,7 +32,7 @@ fn file<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
 /// The wait before writing to disk (frequent changes merge into one write).
 pub const DELAY: Duration = Duration::from_secs(1);
 /// The event with which the worker tells the webview it could not write (payload: the error text).
-pub const ERROR_EVENT: &str = "backup-writeFailed";
+pub const ERROR_EVENT: &str = "backup-write-failed";
 
 /// Is the backup valid: a JSON object and at most `MAX_BYTES` bytes.
 pub fn validate(json: &str) -> Result<(), String> {

@@ -34,7 +34,7 @@
       paperThickness: settings.paperThickness
     });
     var place = MC.layout.layout(imposition, settings);
-    if (place.doesNotFit) throw new Error(place.warnings[0] || t('output.doesNotFit'));
+    if (place.doesNotFit) throw new Error(place.warnings[0] || t('output.does_not_fit'));
 
     var sourceDoc = null;
     var used = {};

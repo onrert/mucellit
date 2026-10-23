@@ -152,7 +152,7 @@
       });
     });
     for (var s = 1; s <= result.totalPages; s++) {
-      if (!seen[s]) throw new Error(t('imposition.notPlaced', { s: s }));
+      if (!seen[s]) throw new Error(t('imposition.not_placed', { s: s }));
     }
     return true;
   }

@@ -75,7 +75,7 @@
 
   // Labels are dictionary keys (epub.field.* / epub.mark.*), translated when the interface is set up.
   var FIELDS = [
-    ['fontSize', 'epub-fontSize', 'epub.field.fontSize', 6, 24, 0.5],
+    ['fontSize', 'epub-fontSize', 'epub.field.font_size', 6, 24, 0.5],
     ['lineSpacing', 'epub-line', 'epub.field.line', 1, 3, 0.05],
     ['top', 'epub-top', 'epub.field.top', 0, 60, 0.5],
     ['bottom', 'epub-bottom', 'epub.field.bottom', 0, 60, 0.5],
@@ -191,9 +191,9 @@
     if (!dz.pages.length) { var e = new Error(MC.epubPackage.MESSAGE.E5); e.code = 'E5'; throw e; }
 
     progress(t('epub.progress.write_pdf', { n: dz.pages.length }));
-    var ekWarning = [];
+    var extraWarning = [];
     var pdf = await MC.writePdf.writePdf(dz.pages, { widthPt: widthPt, heightPt: heightPt, title: pkg.title, author: pkg.author, lang: pkg.lang },
-      { PDFLib: root.PDFLib, fontkit: root.fontkit, fonts: k.ttf, images: env.images, warnings: ekWarning, counter: env.counter });
+      { PDFLib: root.PDFLib, fontkit: root.fontkit, fonts: k.ttf, images: env.images, warnings: extraWarning, counter: env.counter });
 
     var s = env.counter;
     var text = [];
@@ -203,7 +203,7 @@
     if (missingChar) text.push(t('epub.warning.missing_char', { n: missingChar }));
     var unsupported = zip.unsupportedEncodings ? zip.unsupportedEncodings() : [];
     if (unsupported.length) text.push(t('epub.warning.encoding', { encodings: unsupported.join(', ') }));
-    text = text.concat(ekWarning);
+    text = text.concat(extraWarning);
     if (isCurrent()) showWarning(text.join(' '));
     return pdf;
   }

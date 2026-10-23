@@ -84,7 +84,7 @@
       </div>
 
       <h3 data-i18n="impose.marks">Marks</h3>
-      <label class="choice"><input type="checkbox" id="cropMarks" checked> <span data-i18n="impose.cropMarks">Crop marks</span></label>
+      <label class="choice"><input type="checkbox" id="cropMarks" checked> <span data-i18n="impose.crop_marks">Crop marks</span></label>
       <label class="choice"><input type="checkbox" id="folding" checked> <span data-i18n="impose.folding">Fold marks</span></label>
       <label class="choice"><input type="checkbox" id="spine-mark" checked> <span data-i18n="impose.spine_marks">Collation marks on the spine (stepped squares)</span></label>
 
@@ -235,13 +235,13 @@
       </div>
       <label class="field"><span data-i18n="calculator.spine_rule">Spine stiffener rule (flat spine)</span>
         <select id="h-spineRule">
-          <option value="twoT" data-i18n="calculator.rule.twoT">S + 2t (default)</option>
-          <option value="onlyS" data-i18n="calculator.rule.onlyS">S only (joint gap grows by t)</option>
+          <option value="twoT" data-i18n="calculator.rule.two_t">S + 2t (default)</option>
+          <option value="onlyS" data-i18n="calculator.rule.only_s">S only (joint gap grows by t)</option>
         </select>
       </label>
       <div class="pair simple">
-        <label class="field"><span data-i18n="calculator.jointGap">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-number id="h-jointGap" value="" placeholder="automatic" data-i18n-attr="placeholder:calculator.auto" min="0.5" step="0.5"></label>
-        <label class="field"><span data-i18n="calculator.turnIn">Turn-in e (mm)</span><input type="text" inputmode="decimal" data-number id="h-turnIn" value="15" min="1" step="0.5"></label>
+        <label class="field"><span data-i18n="calculator.joint_gap">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-number id="h-jointGap" value="" placeholder="automatic" data-i18n-attr="placeholder:calculator.auto" min="0.5" step="0.5"></label>
+        <label class="field"><span data-i18n="calculator.turn_in">Turn-in e (mm)</span><input type="text" inputmode="decimal" data-number id="h-turnIn" value="15" min="1" step="0.5"></label>
       </div>
       <div class="pair simple">
         <label class="field"><span data-i18n="calculator.spare_sheets">Spare printer sheets</span><input type="text" inputmode="decimal" data-number id="h-spareSheets" value="0" min="0" step="1"></label>
@@ -312,11 +312,11 @@
         <summary data-i18n="learn.numbers">Your book's numbers</summary>
         <p class="use-calculator"><button type="button" id="guide-use-calculator" data-i18n="learn.take_from_calculator">Use values from the Calculator tab</button></p>
         <form id="guide-number-form" novalidate>
-          <label><span data-i18n="learn.g.signatureCount">Signatures</span><input id="guide-g-signatureCount" inputmode="numeric" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.sheetsPerSignature">Sheets per signature</span><input id="guide-g-sheetsPerSignature" inputmode="numeric" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.bookWidth">Book width (mm)</span><input id="guide-g-bookWidth" inputmode="decimal" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.bookHeight">Book height (mm)</span><input id="guide-g-bookHeight" inputmode="decimal" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.paperThickness">Paper thickness (mm)</span><input id="guide-g-paperThickness" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.signature_count">Signatures</span><input id="guide-g-signatureCount" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.sheets_per_signature">Sheets per signature</span><input id="guide-g-sheetsPerSignature" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.book_width">Book width (mm)</span><input id="guide-g-bookWidth" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.book_height">Book height (mm)</span><input id="guide-g-bookHeight" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.paper_thickness">Paper thickness (mm)</span><input id="guide-g-paperThickness" inputmode="decimal" autocomplete="off"></label>
           <button type="submit" data-i18n="learn.apply">Apply</button>
         </form>
         <p id="guide-number-error" class="error" role="alert" hidden></p>

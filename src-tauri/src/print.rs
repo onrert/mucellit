@@ -152,16 +152,16 @@ pub const PRINTING_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// Waits for the result from the channel for `duration` (the blocking wait on a separate thread). Returns: (result, timed out).
 /// On timeout a "no answer" error, when the channel closed a "could not be set up" error.
 pub async fn wait_result<T: Send + 'static>(
-    al: std::sync::mpsc::Receiver<Result<T, String>>,
-    sure: Duration,
+    rx: std::sync::mpsc::Receiver<Result<T, String>>,
+    wait_for: Duration,
 ) -> (Result<T, String>, bool) {
     use std::sync::mpsc::RecvTimeoutError;
-    match tauri::async_runtime::spawn_blocking(move || al.recv_timeout(sure)).await {
+    match tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(wait_for)).await {
         Ok(Ok(s)) => (s, false),
         Ok(Err(RecvTimeoutError::Timeout)) => (
             Err(text(
                 "rust.no_printing_answer",
-                &[("dk", &(sure.as_secs() / 60).to_string())],
+                &[("minutes", &(wait_for.as_secs() / 60).to_string())],
             )),
             true,
         ),
@@ -196,11 +196,11 @@ pub fn clear_old_outputs(folder: &Path, lifetime: Duration, now: SystemTime) -> 
 /// Writes the Preview output: `<folder>/<safe name>.pdf` (overwritten when the same name exists). The written path.
 pub fn write_output(folder: &Path, encoded_name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
     fs::create_dir_all(folder)
-        .map_err(|e| text("rust.writeFailed", &[("error", &e.to_string())]))?;
+        .map_err(|e| text("rust.write_failed", &[("error", &e.to_string())]))?;
     clear_cache(folder, SystemTime::now());
     let path = folder.join(crate::files::safe_name(encoded_name, "pdf"));
     crate::recent::write_atomic(&path, bytes)
-        .map_err(|e| text("rust.writeFailed", &[("error", &e.to_string())]))?;
+        .map_err(|e| text("rust.write_failed", &[("error", &e.to_string())]))?;
     Ok(path)
 }
 
@@ -237,7 +237,7 @@ pub async fn open_in_preview<R: Runtime>(
         let folder = app
             .path()
             .app_cache_dir()
-            .map_err(|e| text("rust.writeFailed", &[("error", &e.to_string())]))?
+            .map_err(|e| text("rust.write_failed", &[("error", &e.to_string())]))?
             .join(OUTPUT_FOLDER);
         // The body is written without a copy (low 5).
         let path = write_output(&folder, &title(&request, "x-name"), raw_body(&request)?)?;
@@ -512,7 +512,7 @@ pub mod mac {
         bytes: Vec<u8>,
         name: String,
     ) -> Result<bool, String> {
-        let (send, al) = mpsc::channel::<PrintOutcome>();
+        let (send, rx) = mpsc::channel::<PrintOutcome>();
         let error = send.clone();
         let window = window.clone();
         app.run_on_main_thread(move || {
@@ -530,7 +530,7 @@ pub mod mac {
         })
         .map_err(|e| e.to_string())?;
         // Low 4: a timed wait; on timeout the open sheet record is cleared (ENABLED does not get stuck).
-        let (result, timeout) = wait_result(al, PRINTING_TIMEOUT).await;
+        let (result, timeout) = wait_result(rx, PRINTING_TIMEOUT).await;
         let _ = if timeout {
             app.run_on_main_thread(release_timeout)
         } else {
@@ -547,15 +547,15 @@ pub mod mac {
             .ok_or_else(|| text("rust.no_preview", &[]))?;
         let url = NSURL::from_file_path(path).ok_or_else(|| {
             text(
-                "rust.writeFailed",
+                "rust.write_failed",
                 &[("error", &path.display().to_string())],
             )
         })?;
         let settings = NSWorkspaceOpenConfiguration::configuration();
         settings.setActivates(true);
-        let (send, al) = mpsc::channel::<Result<(), String>>();
+        let (send, rx) = mpsc::channel::<Result<(), String>>();
         let block = block2::RcBlock::new(
-            move |_uyg: *mut objc2_app_kit::NSRunningApplication, error: *mut NSError| {
+            move |_app: *mut objc2_app_kit::NSRunningApplication, error: *mut NSError| {
                 let s = match unsafe { error.as_ref() } {
                     Some(h) => Err(h.localizedDescription().to_string()),
                     None => Ok(()),
@@ -569,13 +569,13 @@ pub mod mac {
             &settings,
             Some(&block),
         );
-        Ok(al)
+        Ok(rx)
     }
 
     /// Opens the file in Preview; an error when there is no Preview or it cannot open (the NSError text). An error when there is no answer in 30 s.
     pub async fn open_in_preview(path: &Path) -> Result<(), String> {
-        let al = start_preview(path)?;
-        tauri::async_runtime::spawn_blocking(move || al.recv_timeout(Duration::from_secs(30)))
+        let rx = start_preview(path)?;
+        tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(30)))
             .await
             .map_err(|e| e.to_string())?
             .unwrap_or_else(|_| Err(text("rust.no_preview_answer", &[])))
@@ -841,7 +841,7 @@ mod tests {
         // requirement is for the AppKit objects. In real use the delegate is set up on the main thread.
         let mtm = unsafe { MainThreadMarker::new_unchecked() };
         for (success, expected) in [(Bool::YES, true), (Bool::NO, false)] {
-            let (send, al) = std::sync::mpsc::channel();
+            let (send, rx) = std::sync::mpsc::channel();
             let t = mac::PrintDelegate::new_entry(mtm, send, None, None);
             let object: &AnyObject = &t;
             let responses: bool = unsafe {
@@ -854,13 +854,13 @@ mod tests {
             let _: () = unsafe {
                 msg_send![object, printOperationDidRun: operation, success: success, contextInfo: blank]
             };
-            assert_eq!(al.try_recv().unwrap(), Ok(expected));
+            assert_eq!(rx.try_recv().unwrap(), Ok(expected));
             assert!(!t.pending());
             // a second call sends no new result
             let _: () = unsafe {
                 msg_send![object, printOperationDidRun: operation, success: Bool::YES, contextInfo: blank]
             };
-            assert!(al.try_recv().is_err());
+            assert!(rx.try_recv().is_err());
         }
     }
 
@@ -892,7 +892,7 @@ mod tests {
     fn print_result_awaited_with_timeout_in_source() {
         let g = mac_print_body();
         assert!(
-            !g.contains("al.recv()"),
+            !g.contains("rx.recv()"),
             "the result is awaited without a limit"
         );
         assert!(
@@ -934,25 +934,25 @@ mod tests {
         use objc2::runtime::{AnyObject, Bool};
         use objc2::{msg_send, MainThreadMarker};
         let short = Duration::from_millis(50);
-        let (g, al) = std::sync::mpsc::channel::<Result<bool, String>>();
+        let (g, rx) = std::sync::mpsc::channel::<Result<bool, String>>();
         g.send(Ok(true)).unwrap();
         assert_eq!(
-            tauri::async_runtime::block_on(wait_result(al, short)),
+            tauri::async_runtime::block_on(wait_result(rx, short)),
             (Ok(true), false)
         );
-        let (_g, al) = std::sync::mpsc::channel::<Result<bool, String>>();
-        let (s, za) = tauri::async_runtime::block_on(wait_result(al, short));
-        assert!(za && s.as_ref().unwrap_err().contains('0'), "{s:?}");
-        assert_eq!(s, Err(text("rust.no_printing_answer", &[("dk", "0")])));
-        let (g, al) = std::sync::mpsc::channel::<Result<bool, String>>();
+        let (_g, rx) = std::sync::mpsc::channel::<Result<bool, String>>();
+        let (s, timed_out) = tauri::async_runtime::block_on(wait_result(rx, short));
+        assert!(timed_out && s.as_ref().unwrap_err().contains('0'), "{s:?}");
+        assert_eq!(s, Err(text("rust.no_printing_answer", &[("minutes", "0")])));
+        let (g, rx) = std::sync::mpsc::channel::<Result<bool, String>>();
         drop(g);
         assert_eq!(
-            tauri::async_runtime::block_on(wait_result(al, short)),
+            tauri::async_runtime::block_on(wait_result(rx, short)),
             (Err(text("rust.printing_setup_failed", &[])), false)
         );
         // SAFETY: only our own NSObject subclass (see the print_delegate test).
         let mtm = unsafe { MainThreadMarker::new_unchecked() };
-        let (send, al) = std::sync::mpsc::channel();
+        let (send, rx) = std::sync::mpsc::channel();
         let t = mac::PrintDelegate::new_entry(mtm, send, None, None);
         mac::set_active(t.clone());
         assert!(mac::page_open());
@@ -974,7 +974,7 @@ mod tests {
         let _: () = unsafe {
             msg_send![object, printOperationDidRun: operation, success: Bool::YES, contextInfo: blank]
         };
-        assert!(al.try_recv().is_err());
+        assert!(rx.try_recv().is_err());
     }
 
     /// Low 5 (behaviour): limit = the file open limit; a bigger body is rejected with a clear error.

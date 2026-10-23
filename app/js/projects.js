@@ -101,7 +101,7 @@
     ]));
     if (k.settings) {
       var a = k.settings;
-      var ap = { kind: settingsKind(a.bindingType), kg: a.paperWidth, ky: a.paperHeight, bg: a.bookWidth, by: a.bookHeight, n: a.sheetsPerSignature };
+      var ap = { kind: settingsKind(a.bindingType), pw: a.paperWidth, ph: a.paperHeight, bw: a.bookWidth, bh: a.bookHeight, n: a.sheetsPerSignature };
       container.appendChild(el('p', { class: 'small', text: t(a.bindingType === 'sewn' ? 'projects.saved_settings_signature' : 'projects.saved_settings', ap) }));
     }
     container.appendChild(el('div', { class: 'line' }, [

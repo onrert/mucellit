@@ -103,30 +103,30 @@ function fake() {
 function checkTeardown(source) {
   // the rAF and setTimeout id ranges overlap: both count from 1 (separate counters in a real browser too)
   let r = 0, z = 0;
-  const raf = new Set(), zmn = new Set(), cancelRaf = [], cancelZmn = [];
+  const raf = new Set(), timeouts = new Set(), cancelRaf = [], cancelTimeouts = [];
   const clear = [];
   const ui = new Proxy({}, { get(_, k) { if (k === 'clear') return (f) => clear.push(f); if (k === 'then') return undefined; return () => undefined; } });
   const ctx = vm.createContext({
     Math, JSON, Map, Set, String, Number, Object, Array,
     innerWidth: 1280, innerHeight: 860, window: fake(), document: fake(), MutationObserver: class { observe() {} disconnect() {} },
     requestAnimationFrame: () => { r += 1; raf.add(r); return r; }, cancelAnimationFrame: (id) => cancelRaf.push(id),
-    setTimeout: () => { z += 1; zmn.add(z); return z; }, clearTimeout: (id) => cancelZmn.push(id),
+    setTimeout: () => { z += 1; timeouts.add(z); return z; }, clearTimeout: (id) => cancelTimeouts.push(id),
   });
   ctx.self = ctx;
   ctx.Mucellit = { learn: { cf: { mountFigure: () => ui, xrMount: () => undefined } } };
   vm.runInContext(source, ctx, { filename: 'cf-page.js' });
   ctx.Mucellit.learn.cfMount({ text: {} });
-  const givenRaf = [...raf], givenZmn = [...zmn];
+  const givenRaf = [...raf], givenTimeouts = [...timeouts];
   // clashing id: rAF 1 and setTimeout 1 are the same number. Correct teardown: every rAF id with cancelAnimationFrame, every
   // setTimeout id with clearTimeout, once; no cancel with the wrong function (the app's timer with the same number).
   for (const f of clear) f();
   const s = [];
-  const say = (l) => l.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
-  const cr = say(cancelRaf.filter((x) => x !== 0)), cz = say(cancelZmn);
-  if (givenRaf.length < 2 || givenZmn.length < 1) s.push(`the expected timers were not set up (rAF ${givenRaf.length}, setTimeout ${givenZmn.length})`);
+  const tally = (l) => l.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
+  const cr = tally(cancelRaf.filter((x) => x !== 0)), cz = tally(cancelTimeouts);
+  if (givenRaf.length < 2 || givenTimeouts.length < 1) s.push(`the expected timers were not set up (rAF ${givenRaf.length}, setTimeout ${givenTimeouts.length})`);
   for (const id of givenRaf) if (cr.get(id) !== 1) s.push(`rAF ${id}: cancelAnimationFrame ${cr.get(id) || 0} times`);
-  for (const id of givenZmn) if (cz.get(id) !== 1) s.push(`setTimeout ${id}: clearTimeout ${cz.get(id) || 0} times`);
-  if (cancelZmn.length !== givenZmn.length) s.push(`clearTimeout ${cancelZmn.length} calls, ${givenZmn.length} timers (an rAF id went to clearTimeout)`);
+  for (const id of givenTimeouts) if (cz.get(id) !== 1) s.push(`setTimeout ${id}: clearTimeout ${cz.get(id) || 0} times`);
+  if (cancelTimeouts.length !== givenTimeouts.length) s.push(`clearTimeout ${cancelTimeouts.length} calls, ${givenTimeouts.length} timers (an rAF id went to clearTimeout)`);
   if (cr.size && [...cr.values()].reduce((a, b) => a + b, 0) !== givenRaf.length) s.push(`cancelAnimationFrame ${[...cr.values()].reduce((a, b) => a + b, 0)} calls, ${givenRaf.length} rAF (a setTimeout id went to cancelAnimationFrame)`);
   return s;
 }
@@ -159,8 +159,8 @@ test('D4: the app name exemption only for the full name ("Mücellit", "MUCELLIT"
 const EN = I18n.extractJson(read(path.join(APP, 'i18n', 'en.js')));
 const TR = I18n.extractJson(read(path.join(APP, 'i18n', 'tr.js')));
 // texts that name the f measurement (Calculator + calculation reasons + guide panel/note)
-const JOINT_KEY = ['calculator.jointGap', 'calculator.result.jointGap', 'calculator.warning.jointGap', 'calculator.rule.onlyS', 'calculator.description', 'calc.name.jointGap',
-  'calc.name.board_width', 'calc.reason.joint_gap_too_large', 'learn.p.jointGap', 'learn.numbers_note', 'learn.cover.board.description', 'learn.cover.covering.description'];
+const JOINT_KEY = ['calculator.joint_gap', 'calculator.result.joint_gap', 'calculator.warning.joint_gap', 'calculator.rule.only_s', 'calculator.description', 'calc.name.joint_gap',
+  'calc.name.board_width', 'calc.reason.joint_gap_too_large', 'learn.p.joint_gap', 'learn.numbers_note', 'learn.cover.board.description', 'learn.cover.covering.description'];
 function checkTerm(en, tr) {
   const s = [];
   const flat = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
@@ -175,10 +175,10 @@ test('D5: the joint (f) measurement has one term in en-US, "joint gap" (Calculat
   assert.deepEqual(checkTerm(EN, TR), []);
 });
 test('D5 faulty input: caught when a single "hinge gap" comes back, the term is removed or tr changes', () => {
-  assert.ok(checkTerm({ ...EN, 'calculator.result.jointGap': 'Hinge gap f' }, TR).length > 0);
-  assert.ok(checkTerm({ ...EN, 'learn.s.book.jointGap': 'HINGE' }, TR).length > 0, 'figure label');
-  assert.ok(checkTerm({ ...EN, 'learn.p.jointGap': 'Gap f' }, TR).length > 0);
-  assert.ok(checkTerm(EN, { ...TR, 'learn.p.jointGap': 'Menteşe f' }).length > 0);  // turkish-ok: expected Turkish UI text
+  assert.ok(checkTerm({ ...EN, 'calculator.result.joint_gap': 'Hinge gap f' }, TR).length > 0);
+  assert.ok(checkTerm({ ...EN, 'learn.s.book.joint_gap': 'HINGE' }, TR).length > 0, 'figure label');
+  assert.ok(checkTerm({ ...EN, 'learn.p.joint_gap': 'Gap f' }, TR).length > 0);
+  assert.ok(checkTerm(EN, { ...TR, 'learn.p.joint_gap': 'Menteşe f' }).length > 0);  // turkish-ok: expected Turkish UI text
   assert.ok(checkTerm({}, {}).length > 0, 'empty dictionary');
 });
 

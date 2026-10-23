@@ -74,7 +74,7 @@
         const cv = ch.Rl([(G.LB0 + G.LB1)/2, G.zc + (st.open > .5 ? G.T : 0)]);
         LB.push({ at: [G.XB1 - 20, cv[0], cv[1]], text: st.open > .5 ? t('learn.s.book.stuck') : t('learn.s.book.front_cover'), on: st.openT >= 0 });
         LB.push({ at: [G.XB1, ...ch.R1([(G.S0 + G.S1)/2, G.zc])], text: t('learn.s.book.spine'), on: false });
-        LB.push({ at: [G.XB1, ...ch.Rl([G.LB0 - 3.5, G.zc - .3])], text: t('learn.s.book.jointGap'), on: st.openT >= 0 });
+        LB.push({ at: [G.XB1, ...ch.Rl([G.LB0 - 3.5, G.zc - .3])], text: t('learn.s.book.joint_gap'), on: st.openT >= 0 });
         LB.push({ at: [G.XK1, G.K0 + .2, ZB + 3], text: t('learn.s.book.fore_edge'), on: false });
         if (st.open > .5 && st.turned === 0) LB.push({ at: [G.XK1 - 30, ...leaf(0, st.turnA > 0 ? st.turnA : 0, ch, 0)[2]], text: t('learn.s.book.free'), on: st.turnT >= 0 });
       }

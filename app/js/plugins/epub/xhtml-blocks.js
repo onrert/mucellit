@@ -184,7 +184,7 @@
   async function documentToBlocks(text, path, env) {
     var doc = parse(text);
     var rules = await collectStyles(doc, path, env);
-    var onb = env.inlineCache || (env.inlineCache = new Map());
+    var styleCache = env.inlineCache || (env.inlineCache = new Map());
     var rootEl = doc.documentElement;
     var body = doc.getElementsByTagNameNS('*', 'body')[0] || doc.getElementsByTagName('body')[0] || rootEl;
     var blocks = [];
@@ -270,7 +270,7 @@
           if (c.nodeType === 3 || c.nodeType === 4) { parts.push(c.data); continue; }
           if (c.nodeType !== 1) continue;
           var a = name(c);
-          if (SKIP[a] || c.hasAttribute('hidden') || elStyle(c, rules, onb).display === 'none') continue;
+          if (SKIP[a] || c.hasAttribute('hidden') || elStyle(c, rules, styleCache).display === 'none') continue;
           var split = BLOCK[a] || a === 'td' || a === 'th' || a === 'tr' || a === 'table' || a === 'br';
           if (split) parts.push(' ');
           walk(c);
@@ -293,7 +293,7 @@
       var rows = Array.prototype.filter.call(all, function (tr) { return nearestTable(tr) === el; });
       rows.forEach(function (tr) {
         var cells = Array.prototype.filter.call(tr.childNodes, function (c) {
-          return c.nodeType === 1 && (name(c) === 'td' || name(c) === 'th') && !c.hasAttribute('hidden') && elStyle(c, rules, onb).display !== 'none';
+          return c.nodeType === 1 && (name(c) === 'td' || name(c) === 'th') && !c.hasAttribute('hidden') && elStyle(c, rules, styleCache).display !== 'none';
         }).map(cellText).filter(Boolean);
         if (!cells.length) return;
         blocks.push({ kind: 'paragraph', align: 'left', indent: false, leftIndent: bg.leftLevel || 0, rightIndent: bg.rightLevel || 0, lang: bg.lang, parts: [{ text: cells.join(' · '), italic: !!bg.italic, bold: !!bg.bold, lang: bg.lang }] });
@@ -311,7 +311,7 @@
         var a = name(c);
         if (SKIP[a]) continue;
         if (c.hasAttribute('hidden')) continue;
-        var st = elStyle(c, rules, onb);
+        var st = elStyle(c, rules, styleCache);
         if (st.display === 'none') continue;
         var kind = epubTur(c);
         var y = Object.assign({}, bg);
@@ -363,7 +363,7 @@
     }
 
     var rootLang = rootEl.getAttribute('xml:lang') || rootEl.getAttribute('lang') || body.getAttribute('xml:lang') || body.getAttribute('lang') || env.lang || '';
-    var rootStyle = elStyle(body, rules, onb);
+    var rootStyle = elStyle(body, rules, styleCache);
     await walk(body, { lang: rootLang, align: flipAlign(rootStyle['text-align']) || null, italic: isItalic(rootStyle['font-style'], false), bold: isBold(rootStyle['font-weight'], false), leftLevel: 0, rightLevel: 0 });
     close();
     while (blocks.length && blocks[blocks.length - 1].kind === 'pageEnd') blocks.pop();

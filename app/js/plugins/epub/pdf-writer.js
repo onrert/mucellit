@@ -31,9 +31,9 @@
   function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('../../i18n.js'); }
   function t(a, p) { return I18n().t(a, p); }
 
-  function fontError(e) { var h = new Error(t('pdfwriter.embedFailed')); h.font = true; h.cause = e; return h; }
+  function fontError(e) { var h = new Error(t('pdfwriter.embed_failed')); h.font = true; h.cause = e; return h; }
   /** An unexpected error is turned into a clear text (coded errors stay as they are). */
-  function turkishError(e) { if (e && e.code) return e; var h = new Error(t('pdfwriter.writeFailed')); h.cause = e; return h; }
+  function turkishError(e) { if (e && e.code) return e; var h = new Error(t('pdfwriter.write_failed')); h.cause = e; return h; }
 
   async function write(pages, info, sources, subset) {
     var PDFLib = sources.PDFLib;

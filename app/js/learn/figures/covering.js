@@ -119,7 +119,7 @@
       const LB = [], bk = st.drop > .5;
       if (bk){ LB.push({ at: [fcXB, ...G.rL([(fcLB0 + fcLB1)/2, fcZT])], text: t('learn.s.covering.brd', { a: o.number(Db), b: o.number(Dh) }), on: st.dropT >= 0 });
         LB.push({ at: [fcXB, (fcS0 + fcS1)/2, fcZT], text: t('learn.s.covering.strip', { a: o.number(R), b: o.number(Dh) }), on: st.dropT >= 0 });
-        LB.push({ at: [fcXB, (fcLB0 + fcS1)/2, fcZ0], text: t('learn.s.covering.jointGap', { f: o.number(F) }), on: st.closeT >= 0 }); }
+        LB.push({ at: [fcXB, (fcLB0 + fcS1)/2, fcZ0], text: t('learn.s.covering.joint_gap', { f: o.number(F) }), on: st.closeT >= 0 }); }
       if (st.glue > 0 && st.drop < 1) LB.push({ at: [150, fcCY0 + (fcCY1 - fcCY0)*st.glue*.5, fcZ0], text: t('learn.s.covering.glue'), on: st.glueT >= 0 });
       if (st.foldH < 1) LB.push({ at: [fcCX1, (fcRB0 + fcRB1)/2, fcZ0], text: t('learn.s.covering.long', { e: o.number(O.e), t: o.number(T) }), on: st.foldT >= 0 && st.foldH < 1 });
       if (st.foldL < 1) LB.push({ at: [(fcXA + fcXB)/2, ...G.cloth[G.cloth.length - 1].p], text: t('learn.s.covering.short'), on: st.foldT >= 0 && st.foldH >= 1 });

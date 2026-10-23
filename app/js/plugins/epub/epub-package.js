@@ -64,9 +64,9 @@
     });
     if (kindle) throw error('E4');
     // old Apple marker: fixed-layout = true in META-INF/com.apple.ibooks.display-options.xml
-    var elma = 'META-INF/com.apple.ibooks.display-options.xml';
-    if (zip.has(elma)) {
-      var d = xml(await zip.text(elma));
+    var appleOptions = 'META-INF/com.apple.ibooks.display-options.xml';
+    if (zip.has(appleOptions)) {
+      var d = xml(await zip.text(appleOptions));
       if (d && all(d, 'option').some(function (o) { return o.getAttribute('name') === 'fixed-layout' && String(o.textContent).trim() === 'true'; })) throw error('E4');
     }
   }

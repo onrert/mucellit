@@ -345,7 +345,7 @@ test('openRecent: a listed entry → read_recent_file → File; NOTFOUND/ACCESS/
   assert.equal(await t.openRecent('u1'), null);
 });
 
-test('onMenu: the File items trigger the right button/tab; a notice when Save is off; last:<id> opens the document; a faulty id is ignored', async () => {
+test('onMenu: the File items trigger the right button/tab; a notice when Save is off; recent:<id> opens the document; a faulty id is ignored', async () => {
   const clicks = [];
   const button = (id, disabled) => ({ disabled: !!disabled, click() { clicks.push(id); } });
   const elements = { 'pdf-select': button('pdf-select'), 'export-transfer': button('export-transfer', true), 'json-export': button('json-export'), 'json-import-button': button('json-import-button') };
@@ -360,7 +360,7 @@ test('onMenu: the File items trigger the right button/tab; a notice when Save is
   s.P.onMenu('json-import');
   assert.deepEqual(clicks, ['pdf-select', 'export-transfer', 'json-export', 'json-import-button']);
   assert.deepEqual(s.tab, ['impose', 'impose', 'projects', 'projects']);
-  await s.P.onMenu('last:u1');
+  await s.P.onMenu('recent:u1');
   assert.deepEqual(s.opened, [{ name: 'Tez.pdf', kind: 'application/pdf', text: '%PDF' }]);
   // the event path does the same
   await s.listener.menu({ payload: 'tab-calculator' });
@@ -379,7 +379,7 @@ test('onMenu: the File items trigger the right button/tab; a notice when Save is
 
 test('a document that cannot be opened from the Recent Items menu goes to a notice (the Promise is not rejected)', async () => {
   const s = setupTauri({ response: { recent_files: [{ id: 'u2', name: 'Gone.epub', kind: 'epub' }], read_recent_file: () => Promise.reject('NOTFOUND: missing') } });
-  await s.P.onMenu('last:u2');
+  await s.P.onMenu('recent:u2');
   assert.equal(s.opened.length, 0);
   assert.match(s.notices.at(-1)[0], /^Dosya açılamadı: Gone\.epub bulunamadı/);  // turkish-ok: expected Turkish UI text
   assert.equal(s.notices.at(-1)[1], 'error');
@@ -506,11 +506,11 @@ test('O2 an empty backup (a deliberate clean-up) is not restored, no "restored" 
   assert.ok(!s.notices.some((b) => /geri yüklendi/.test(b[0])), 'no notice: ' + JSON.stringify(s.notices));  // turkish-ok: expected Turkish UI text
 });
 
-test('O2 a failed delayed write in Rust (backup-writeFailed event) is reported', async () => {
+test('O2 a failed delayed write in Rust (backup-write-failed event) is reported', async () => {
   const s = setupTauri({ response: { read_backup: null, pending_opens: [] } });
   await s.P.ready;
-  assert.equal(typeof s.listener['backup-writeFailed'], 'function', 'the event is listened to');
-  s.listener['backup-writeFailed']({ payload: 'backup could not be written: disk full' });
+  assert.equal(typeof s.listener['backup-write-failed'], 'function', 'the event is listened to');
+  s.listener['backup-write-failed']({ payload: 'backup could not be written: disk full' });
   assert.ok(s.notices.some((b) => /otomatik yedeği yazılamadı: backup could not be written: disk full/.test(b[0]) && b[1] === 'error'));  // turkish-ok: expected Turkish UI text
 });
 
@@ -538,8 +538,8 @@ test('D9 saveMessage: on a partial save only the page count of the saved files; 
   assert.equal(partial.text, 'Kaydedildi: /K/o.pdf (12 yüz). Kaydedilmedi (vazgeçildi): a.pdf.');  // turkish-ok: expected Turkish UI text
   const two = P.saveMessage({ saved: [{ name: 'o.pdf', path: '/K/o.pdf', side: 12 }, { name: 'a.pdf', path: '/K/a.pdf', side: 12 }], cancelled: [], failed: [] }, 24);
   assert.equal(two.text, 'Kaydedildi: /K/o.pdf, /K/a.pdf (24 yüz).');  // turkish-ok: expected Turkish UI text
-  const bilgisiz = P.saveMessage({ saved: [{ name: 'o.pdf', path: '/K/o.pdf' }], cancelled: ['a.pdf'], failed: [] }, 24);
-  assert.equal(bilgisiz.text, 'Kaydedildi: /K/o.pdf. Kaydedilmedi (vazgeçildi): a.pdf.', 'no total is written without per-file information');  // turkish-ok: expected Turkish UI text
+  const withoutInfo = P.saveMessage({ saved: [{ name: 'o.pdf', path: '/K/o.pdf' }], cancelled: ['a.pdf'], failed: [] }, 24);
+  assert.equal(withoutInfo.text, 'Kaydedildi: /K/o.pdf. Kaydedilmedi (vazgeçildi): a.pdf.', 'no total is written without per-file information');  // turkish-ok: expected Turkish UI text
   const s = setupTauri({ response: { save_file: (b, o) => { const name = decodeURIComponent(o.headers['x-name']); return name === 'x-fronts.pdf' ? { name, path: '/K/' + name } : null; } } });
   const r = await s.P.saveAll([{ name: 'x-fronts.pdf', bytes: new Uint8Array([1]), side: 6 }, { name: 'x-backs.pdf', bytes: new Uint8Array([2]), side: 6 }], 'application/pdf');
   assert.deepEqual(JSON.parse(JSON.stringify(r.saved)), [{ name: 'x-fronts.pdf', path: '/K/x-fronts.pdf', side: 6 }]);
@@ -621,14 +621,14 @@ test('in the Mac app the browser-specific texts are the Mac texts (storage hint,
 test('without i18n.js (no Mucellit.i18n) platform-tauri.js does not throw while loading; the texts from the loaded en dictionary, the key without it', async () => {
   const hint = { attribute: {}, textContent: 'static', setAttribute(a, v) { this.attribute[a] = v; } };
   const document = { readyState: 'complete', getElementById: (id) => (id === 'storage-hint' ? hint : null) };
-  const run = (mostDictionary) => {
+  const run = (withEnglishDictionary) => {
     const T = fakeTauri(true);
     const call = [];
     T.core.invoke = (k) => { call.push(k); return Promise.resolve(k === 'read_backup' ? null : k === 'pending_opens' ? [] : null); };
     const ctx = { __TAURI__: T, document: document, setTimeout: () => 0, Blob };
     ctx.self = ctx;
     vm.createContext(ctx);
-    if (mostDictionary) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'i18n', 'en.js'), 'utf8'), ctx);
+    if (withEnglishDictionary) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'i18n', 'en.js'), 'utf8'), ctx);
     vm.runInContext(read('platform.js'), ctx, { filename: 'platform.js' });
     vm.runInContext(read('platform-tauri.js'), ctx, { filename: 'platform-tauri.js' }); // the test FAILs if it throws
     return { P: ctx.Mucellit.platform, call };

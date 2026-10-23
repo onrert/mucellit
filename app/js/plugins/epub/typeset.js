@@ -78,7 +78,7 @@
     function finish() { if (cur && cur.segs.length) icons.push(cur); cur = null; }
     (block.parts || []).forEach(function (p) {
       if (p.lineBreak) { finish(); icons.push({ lineBreak: true }); return; }
-      var segBoy = fontSize * (p.small ? 0.85 : 1) * (p.top ? 0.7 : 1);
+      var segSize = fontSize * (p.small ? 0.85 : 1) * (p.top ? 0.7 : 1);
       var style = styleName(p);
       var lang = p.lang || block.lang || '';
       var parts = String(p.text || '').split(/([ \t\n\r\f]+)/);
@@ -86,7 +86,7 @@
         if (!t) return;
         if (SPACE_RE.test(t) && !t.replace(SPACE_RE, '')) { finish(); return; }
         if (!cur) cur = { segs: [], lang: lang };
-        cur.segs.push({ text: t, style: style, fontSize: segBoy, top: !!p.top });
+        cur.segs.push({ text: t, style: style, fontSize: segSize, top: !!p.top });
       });
     });
     finish();
@@ -206,15 +206,15 @@
     }
     if (hyphenate && /^tr\b/i.test(w.lang || '') && H()) {
       // every substring separated by '-', U+2010 and U+00AD is hyphenated separately (the hyphenator gave no point when it saw a hyphen)
-      var altBas = 0;
+      var partStart = 0;
       var addAlternatives = function (part, ofs) {
         H().breakPoints(part).forEach(function (k) { add(ofs + k, !H().isNoHyphen(part, k), 2); });
       };
       for (var j = 0; j <= t.length; j++) {
         var cj = j < t.length ? t.charAt(j) : '';
         if (j === t.length || cj === '-' || cj === '‐' || cj === SOFT) {
-          if (j > altBas) addAlternatives(t.slice(altBas, j), altBas);
-          altBas = j + 1;
+          if (j > partStart) addAlternatives(t.slice(partStart, j), partStart);
+          partStart = j + 1;
         }
       }
     }

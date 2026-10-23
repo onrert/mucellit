@@ -20,7 +20,7 @@
   function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('./i18n.js'); }
   function t(a, p) { return I18n().t(a, p); }
   /** Field name (for error texts): "calc.name.<key>" in the dictionary. */
-  function name(key) { return t('calc.name.' + key); }
+  function name(key) { return t('calc.name.' + key.replace(/[A-Z]/g, function (c) { return '_' + c.toLowerCase(); })); }
 
   var DEFAULTS = {
     bindingType: 'sewn',   // 'sewn' | 'single1' | 'single2'
@@ -71,11 +71,11 @@
     var p = Math.ceil(checkNumber(page, 'page_count', 1));
     if (bindingType === 'sewn') {
       var fs = 4 * sheetsPerSignature;
-      var tam = Math.floor(p / fs);
-      var rest = p - tam * fs;
-      var signatureCount = tam + (rest > 0 ? 1 : 0);
+      var full = Math.floor(p / fs);
+      var rest = p - full * fs;
+      var signatureCount = full + (rest > 0 ? 1 : 0);
       var last = rest > 0 ? (shrinkLastSignature ? Math.ceil(rest / 4) : sheetsPerSignature) : 0;
-      var total = tam * fs + last * 4;
+      var total = full * fs + last * 4;
       return { totalPages: total, signatureCount: signatureCount, printSheets: total / 4 };
     }
     if (bindingType === 'single1') {
@@ -102,8 +102,8 @@
     });
     var sheetsPerSignature = checkNumber(g.sheetsPerSignature, 'sheets_per_signature', 1);
     if (!Number.isInteger(sheetsPerSignature) || sheetsPerSignature > 8) throw new RangeError(t('calc.sheets_per_signature', { value: g.sheetsPerSignature }));
-    var tam = padded(g.bindingType, g.pageCount, sheetsPerSignature, !!g.shrinkLastSignature);
-    var leaves = leafCount(tam.totalPages);
+    var full = padded(g.bindingType, g.pageCount, sheetsPerSignature, !!g.shrinkLastSignature);
+    var leaves = leafCount(full.totalPages);
     var spine = spineThicknessOf(leaves, g.paperThickness, g.endpaperAllowance);
     var bookWidth = checkNumber(g.bookWidth, 'book_width', 1);
     var bookHeight = checkNumber(g.bookHeight, 'book_height', 1);
@@ -164,10 +164,10 @@
     return {
       input: g,
       pageCount: Number(g.pageCount),
-      totalPages: tam.totalPages,
-      blankPages: tam.totalPages - Math.ceil(Number(g.pageCount)),
+      totalPages: full.totalPages,
+      blankPages: full.totalPages - Math.ceil(Number(g.pageCount)),
       leaves: leaves,
-      signatureCount: tam.signatureCount,
+      signatureCount: full.signatureCount,
       spineThickness: spine,
       board: { width: Db, height: Dh, count: 2 },
       spineStrip: { width: R, height: Dh, count: 1 },
@@ -179,7 +179,7 @@
       endpapers: { width: roundOff(2 * W), height: H, count: 2 },
       mull: { width: roundOff(spine + 50), height: mullHeight },
       headbands: { length: spine, count: 2 },
-      printSheets: tam.printSheets + Math.max(0, Math.round(Number(g.spareSheets) || 0))
+      printSheets: full.printSheets + Math.max(0, Math.round(Number(g.spareSheets) || 0))
     };
   }
 

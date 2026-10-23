@@ -33,7 +33,7 @@ const MAPPING = {
   pageCount: (g) => { const sheetSignature = g.sheetsPerSignature * 2, pageSignature = sheetSignature * 2; return g.signatureCount * pageSignature; },
   sheetsPerSignature: (g) => g.sheetsPerSignature, bookWidth: (g) => g.bookWidth, bookHeight: (g) => g.bookHeight, paperThickness: (g) => g.paperThickness,
 };
-const applyMapping = (g, ek) => Object.assign({}, ek || {}, Object.fromEntries(Object.entries(MAPPING).map(([a, fn]) => [a, fn(g)])));
+const applyMapping = (g, extra) => Object.assign({}, extra || {}, Object.fromEntries(Object.entries(MAPPING).map(([a, fn]) => [a, fn(g)])));
 
 /** Differences between the panel result and the calc.js result (empty = the same). */
 function compare(o, r) {
@@ -127,13 +127,13 @@ test('1000 random inputs (without a base) and 500 random inputs (with a random C
     assert.deepEqual(compare(o, r), [], JSON.stringify(g));
   }
   for (let i = 0; i < 500; i++) {
-    const ek = { boardThickness: [1, 1.5, 2, 2.5, 3][Math.floor(rnd() * 5)], square: [0, 2, 3, 4][Math.floor(rnd() * 4)], turnIn: [12, 15, 18][Math.floor(rnd() * 3)],
+    const extra = { boardThickness: [1, 1.5, 2, 2.5, 3][Math.floor(rnd() * 5)], square: [0, 2, 3, 4][Math.floor(rnd() * 4)], turnIn: [12, 15, 18][Math.floor(rnd() * 3)],
       jointGap: rnd() < 0.5 ? 'auto' : 6 + Math.floor(rnd() * 4), endpaperAllowance: rnd() < 0.5 ? 0 : 0.4, spineRule: rnd() < 0.7 ? 'twoT' : 'onlyS', spareSheets: Math.floor(rnd() * 3) };
-    const base = random(rnd), baseData = Size.fromBase(calculatorState(applyMapping(base, ek)));
+    const base = random(rnd), baseData = Size.fromBase(calculatorState(applyMapping(base, extra)));
     assert.ok(baseData.input, JSON.stringify(base));
     const g = random(rnd), o = Size.calculate(g, baseData);
-    const r = Calc.calculate(applyMapping(g, { ...ek, spineShape: 'flat', shrinkLastSignature: false }));
-    assert.deepEqual(compare(o, r), [], JSON.stringify({ g, ek }));
+    const r = Calc.calculate(applyMapping(g, { ...extra, spineShape: 'flat', shrinkLastSignature: false }));
+    assert.deepEqual(compare(o, r), [], JSON.stringify({ g, extra }));
   }
 });
 

@@ -76,7 +76,7 @@
       try { d.settingsUi(container); } catch (e) {
         var p = container.ownerDocument.createElement('p');
         p.className = 'warning';
-        p.textContent = t('plugin.setupFailed', { name: d.name, error: e && e.message ? e.message : e });
+        p.textContent = t('plugin.setup_failed', { name: d.name, error: e && e.message ? e.message : e });
         container.appendChild(p);
       }
     });

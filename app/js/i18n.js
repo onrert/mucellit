@@ -150,8 +150,8 @@
   /** Fills the parameters in a single pass ({x} inside a value is not filled again; same as Rust i18n::fill). */
   function fill(text, p) {
     if (!p) return text;
-    return text.replace(/\{([a-zA-Z0-9_]+)\}/g, function (tam, name) {
-      return Object.prototype.hasOwnProperty.call(p, name) && p[name] !== undefined && p[name] !== null ? String(p[name]) : tam;
+    return text.replace(/\{([a-zA-Z0-9_]+)\}/g, function (match, name) {
+      return Object.prototype.hasOwnProperty.call(p, name) && p[name] !== undefined && p[name] !== null ? String(p[name]) : match;
     });
   }
 

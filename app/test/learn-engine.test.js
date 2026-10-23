@@ -156,14 +156,14 @@ test('the namespace checker catches a leaking global name (faulty input test)', 
   const clean = SCRIPTS.map((b) => [b, read(path.join(APP, b))]);
   const corrupt = (file, fn) => clean.map(([b, k]) => [b, b === file ? fn(k) : k]);
   const learnJs = 'js/learn/learn.js';
-  const varyant = {
+  const variants = {
     'top-level const': corrupt('js/learn/learn-lessons.js', (k) => k + '\nconst LEAKING = 1;'),
     'top-level function': corrupt(learnJs, (k) => k + '\nfunction leakingIslev() {}'),
     'self property': corrupt('js/learn/figures/common.js', (k) => k + '\nself.__st = {};'),
     'IIFE removed (engine)': corrupt('js/learn/cf-engine.js', (k) => { const y = k.replace("(function (root) {\nroot.Mucellit", 'var root = self;\nroot.Mucellit').replace(/\}\)\(typeof self !== 'undefined' \? self : this\);\s*$/, '\n'); assert.notEqual(y, k); return y; }),
     'cf not frozen': corrupt('js/learn/cf-engine.js', (k) => { const y = k.replace('MC.cf = Object.freeze({', 'MC.cf = ({'); assert.notEqual(y, k); return y; }),
   };
-  for (const [name, k] of Object.entries(varyant)) {
+  for (const [name, k] of Object.entries(variants)) {
     const r = namespaceNames(k);
     assert.ok(r.added.length > 0 || r.lexical.length > 0 || !r.cfFrozen, name + ' not caught');
   }

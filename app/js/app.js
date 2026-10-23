@@ -30,7 +30,7 @@
     if (og) {
       try { if (name === 'learn') og.show(); else og.hide(); }
       catch (e) { // the tab switch is not left half done; the error is reported and not swallowed (it also shows in the console)
-        O.notify(D.t('learn.openFailed', { error: e && e.message ? e.message : e }), 'error');
+        O.notify(D.t('learn.open_failed', { error: e && e.message ? e.message : e }), 'error');
         setTimeout(function () { throw e; }, 0);
       }
     }
@@ -127,7 +127,7 @@
     // missing (i18n.js failed to load/threw) the notice uses the en dictionary text (the static interface is English too).
     MC.platform.ready.then(start).catch(function (e) {
       var error = e && e.message ? e.message : e;
-      O.notify(D ? D.t('app.startFailed', { error: error }) : "The app couldn't start: " + error, 'error');
+      O.notify(D ? D.t('app.start_failed', { error: error }) : "The app couldn't start: " + error, 'error');
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', prepareAndStart);

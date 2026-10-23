@@ -52,7 +52,7 @@
   var CP437 = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀' +  // turkish-ok: CP437 code page table, not Turkish text
     'αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ';
 
-  function adCoz(b, utf8Flag) {
+  function decodeName(b, utf8Flag) {
     var ascii = true;
     for (var i = 0; i < b.length; i++) if (b[i] >= 0x80) { ascii = false; break; }
     if (ascii) return String.fromCharCode.apply(null, b);
@@ -194,14 +194,14 @@
       var crc = v.getUint32(p + 16, true);
       var tight = v.getUint32(p + 20, true);
       var size = v.getUint32(p + 24, true);
-      var adUz = v.getUint16(p + 28, true), ekUz = v.getUint16(p + 30, true), commentUz = v.getUint16(p + 32, true);
+      var nameLen = v.getUint16(p + 28, true), extraLen = v.getUint16(p + 30, true), commentLen = v.getUint16(p + 32, true);
       var offset = v.getUint32(p + 42, true);
       if (tight === 0xffffffff || size === 0xffffffff || offset === 0xffffffff) throw error('E7', ['zip64']);
-      if (p + 46 + adUz > eocd) throw error('E1', ['name_limit']);
-      var hamAd = adCoz(b.subarray(p + 46, p + 46 + adUz), (flag & 0x800) !== 0);
-      p += 46 + adUz + ekUz + commentUz;
-      if (/\/$/.test(hamAd)) continue; // folder
-      var name = normal(hamAd);
+      if (p + 46 + nameLen > eocd) throw error('E1', ['name_limit']);
+      var rawName = decodeName(b.subarray(p + 46, p + 46 + nameLen), (flag & 0x800) !== 0);
+      p += 46 + nameLen + extraLen + commentLen;
+      if (/\/$/.test(rawName)) continue; // folder
+      var name = normal(rawName);
       if (!name) continue;
       if (flag & 1) throw error('E3', ['encrypted_input', { name: name }]);
       if (!(name in inputs)) order.push(name);

@@ -229,15 +229,18 @@ const DYNAMIC = ['step.', 'epub.E', 'epub.detail.', 'binding.kind.', 'calc.name.
  * required on every stage, .title/.description/.button on every step; .tool/.caution/.description_few optional (only
  * for a step in the lesson list).
  */
+/** Lesson and step ids are camelCase; the dictionary keys are snake_case (the same rule as learn.js keyPart). */
+const keyPart = (s) => s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
 function learnLessonKeys(source) {
   const ctx = {}; ctx.self = ctx; vm.createContext(ctx);
   vm.runInContext(source, ctx, { filename: 'learn-lessons.js' });
   const required = new Set(), optional = new Set();
   for (const d of ctx.Mucellit.learn.lessons) {
-    required.add(`learn.${d.id}.name`); required.add(`learn.${d.id}.summary`);
+    const id = keyPart(d.id);
+    required.add(`learn.${id}.name`); required.add(`learn.${id}.summary`);
     for (const a of d.steps) {
-      for (const e of ['title', 'description', 'button']) required.add(`learn.${d.id}.${a}.${e}`);
-      for (const e of ['tool', 'caution', 'description_few']) optional.add(`learn.${d.id}.${a}.${e}`);
+      for (const e of ['title', 'description', 'button']) required.add(`learn.${id}.${keyPart(a)}.${e}`);
+      for (const e of ['tool', 'caution', 'description_few']) optional.add(`learn.${id}.${keyPart(a)}.${e}`);
     }
   }
   return { required, optional };

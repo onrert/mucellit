@@ -22,6 +22,7 @@
   const MC = root.Mucellit.learn, I18n = root.Mucellit.i18n, doc = root.document;
   const t = (a, p) => I18n.t(a, p);
   const $ = id => doc.getElementById('guide-' + id);   // ids have the guide- prefix
+  const keyPart = s => s.replace(/[A-Z]/g, c => '_' + c.toLowerCase()); // ids are camelCase, dictionary keys snake_case
   const LESSONS = MC.lessons;
   const NUMBER_FIELDS = ['signatureCount', 'sheetsPerSignature', 'bookWidth', 'bookHeight', 'paperThickness'];
 
@@ -56,16 +57,16 @@
       board: size2(o.Db, o.Dh), spineStrip: size2(o.R, o.Dh), covering: size2(o.covering.width, o.covering.height),
       endpapers: size2(o.endpapers.width, o.endpapers.height), mull: size2(o.mull.width, o.mull.height), headbands: number(o.headbands),
       hole: o.station.number, range: number(o.station.range, 0), endAllowance: number(o.station.endAllowance), thread: number(o.thread, 0),
-      cornerAlt: number(o.corner[0]), cornerTop: number(o.corner[1]),
+      cornerMin: number(o.corner[0]), cornerMax: number(o.corner[1]),
       lastPage: o.y * 4, back2: o.y * 4 - 1, rest: Math.max(0, o.N - 3)
     };
   }
 
   /* ---------- figure ---------- */
   const cfText = () => ({
-    view: t('learn.cf.view'), fromFront: t('learn.cf.fromFront'),
+    view: t('learn.cf.view'), fromFront: t('learn.cf.from_front'),
     rotates: t('learn.cf.rotates'), see_inside: t('learn.cf.see_inside'), labels: t('learn.cf.labels'),
-    zoomIn: t('learn.cf.zoomIn'), zoomOut: t('learn.cf.zoomOut'), reset: t('learn.cf.reset')
+    zoomIn: t('learn.cf.zoom_in'), zoomOut: t('learn.cf.zoom_out'), reset: t('learn.cf.reset')
   });
 
   function unmount() { if (state.ui) { try { state.ui.unmount(); } catch (_) { /* already removed */ } state.ui = null; state.fig = null; } }
@@ -84,7 +85,7 @@
     for (let j = 0; j < state.i; j++) fig.step[d.steps[j]].last(st);
     const cfg = Object.assign({}, fig.cfg, {
       root: $('stage'), text: cfText(), xr: state.xr, label: state.label, turn: 'full',
-      buttons: d.steps.map((id, j) => ({ id, label: t(`learn.${d.id}.${id}.button`), onClick: () => run(j) })),
+      buttons: d.steps.map((id, j) => ({ id, label: t(`learn.${keyPart(d.id)}.${keyPart(id)}.button`), onClick: () => run(j) })),
       viewChanged: g => { if ('xr' in g) state.xr = g.xr ? 1 : 0; if ('label' in g) state.label = g.label; }
     });
     state.ui = MC.cfMount(cfg);
@@ -170,7 +171,7 @@
       const li = doc.createElement('li'), b = doc.createElement('button'); b.type = 'button';
       b.className = 'stage' + (a === state.a ? ' current' : '') + (state.done[a] >= x.steps.length ? ' finished' : '');
       const no = doc.createElement('span'); no.className = 'no'; no.textContent = String(a + 1);
-      const name = doc.createElement('span'); name.className = 'name'; name.textContent = t(`learn.${x.id}.name`);
+      const name = doc.createElement('span'); name.className = 'name'; name.textContent = t(`learn.${keyPart(x.id)}.name`);
       const sy = doc.createElement('span'); sy.className = 'sy'; sy.textContent = t('learn.step_count', { i: state.done[a], n: x.steps.length });
       b.append(no, name, sy); b.disabled = state.flow;
       b.onclick = () => setup(a, 0);
@@ -183,18 +184,18 @@
     $('progress-bar').parentNode.setAttribute('aria-valuemax', String(top));
     $('progress-text').textContent = t('learn.general', { i: done, n: top });
     // step card
-    $('stage-name').textContent = t('learn.stage_no', { a: state.a + 1, an: LESSONS.length }) + ' · ' + t(`learn.${d.id}.name`);
-    $('stage-summary').textContent = t(`learn.${d.id}.summary`, D);
+    $('stage-name').textContent = t('learn.stage_no', { a: state.a + 1, count: LESSONS.length }) + ' · ' + t(`learn.${keyPart(d.id)}.name`);
+    $('stage-summary').textContent = t(`learn.${keyPart(d.id)}.summary`, D);
     const stepList = $('steps'); stepList.textContent = '';
     d.steps.forEach((id, j) => {
       const li = doc.createElement('li');
       li.className = (j < state.i ? 'finished' : '') + (j === state.i ? ' current' : '');
-      li.textContent = t(`learn.${d.id}.${id}.title`, D);
+      li.textContent = t(`learn.${keyPart(d.id)}.${keyPart(id)}.title`, D);
       stepList.appendChild(li);
     });
     const card = $('card');
     if (state.i < n) {
-      const id = d.steps[state.i], k = `learn.${d.id}.${id}`;
+      const id = d.steps[state.i], k = `learn.${keyPart(d.id)}.${keyPart(id)}`;
       const few = d.few && d.few[id] && d.few[id](state.size);
       $('step-no').textContent = t('learn.step_no', { i: state.i + 1, n });
       $('step-title').textContent = t(k + '.title', D);
@@ -204,10 +205,10 @@
       $('caution-box').hidden = !caution; $('caution').textContent = caution ? t(k + '.caution', D) : '';
       card.classList.remove('last');
     } else {
-      const sonA = state.a === LESSONS.length - 1;
+      const isLastStage = state.a === LESSONS.length - 1;
       $('step-no').textContent = t('learn.stage_done');
-      $('step-title').textContent = sonA ? t('learn.finished_title') : t('learn.next_stage', { name: t(`learn.${LESSONS[state.a + 1].id}.name`) });
-      $('step-description').textContent = sonA ? t('learn.finished_text', D) : t(`learn.${LESSONS[state.a + 1].id}.summary`, D);
+      $('step-title').textContent = isLastStage ? t('learn.finished_title') : t('learn.next_stage', { name: t(`learn.${keyPart(LESSONS[state.a + 1].id)}.name`) });
+      $('step-description').textContent = isLastStage ? t('learn.finished_text', D) : t(`learn.${keyPart(LESSONS[state.a + 1].id)}.summary`, D);
       $('tool-box').hidden = true; $('caution-box').hidden = true;
       card.classList.add('last');
     }
@@ -237,9 +238,9 @@
     line('learn.p.spine', mm(number(o.S)));
     line('learn.p.board', mm(size2(o.Db, o.Dh)));
     line('learn.p.strip', mm(size2(o.R, o.Dh)));
-    line('learn.p.jointGap', mm(number(o.f)));
+    line('learn.p.joint_gap', mm(number(o.f)));
     line('learn.p.square', mm(number(o.k)));
-    line('learn.p.turnIn', mm(number(o.e)));
+    line('learn.p.turn_in', mm(number(o.e)));
     line('learn.p.corner', t('learn.mm_range', { a: number(o.corner[0]), b: number(o.corner[1]) }));
     line('learn.p.covering', mm(size2(o.covering.width, o.covering.height)));
     line('learn.p.endpapers', mm(size2(o.endpapers.width, o.endpapers.height)));
@@ -260,7 +261,7 @@
     for (const a of NUMBER_FIELDS) $('g-' + a).setAttribute('aria-invalid', failed.includes(a) ? 'true' : 'false');
     if (failed.length) {
       $('number-error').hidden = false;
-      $('number-error').textContent = t('learn.invalid', { fields: failed.map(a => t('learn.g.' + a)).join(', ') });
+      $('number-error').textContent = t('learn.invalid', { fields: failed.map(a => t('learn.g.' + keyPart(a))).join(', ') });
       return false;
     }
     $('number-error').hidden = true;
@@ -287,7 +288,7 @@
     for (const a of NUMBER_FIELDS) $('g-' + a).setAttribute('aria-invalid', 'false');
     if (!tb.input) {
       note.hidden = false;
-      note.textContent = tb.fields ? t('learn.calculator_outside', { fields: tb.fields.map(a => t('learn.g.' + a)).join(', ') }) : t('learn.calculator_error');
+      note.textContent = tb.fields ? t('learn.calculator_outside', { fields: tb.fields.map(a => t('learn.g.' + keyPart(a))).join(', ') }) : t('learn.calculator_error');
       if (!state.size) { state.base = null; state.size = MC.size.calculate(state.input); writeFields(); writeResults(); return true; }
       return false;
     }

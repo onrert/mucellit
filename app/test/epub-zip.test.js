@@ -213,12 +213,12 @@ test('zip (.epub.zip): cases where the prefix is kept (container at the root, tw
   assert.equal(both.rootPrefix(), '');
   assert.equal(both.has('X.epub/META-INF/container.xml'), true);
   // a container at the root and every entry under META-INF/ (nested META-INF/META-INF/container.xml) → untouched
-  const icIce = Z.read(U.makeZip([
+  const nested = Z.read(U.makeZip([
     { name: 'META-INF/container.xml', data: '<c/>' },
     { name: 'META-INF/META-INF/container.xml', data: '<c/>' },
   ]));
-  assert.equal(icIce.rootPrefix(), '');
-  assert.equal(icIce.has('META-INF/META-INF/container.xml'), true);
+  assert.equal(nested.rootPrefix(), '');
+  assert.equal(nested.has('META-INF/META-INF/container.xml'), true);
   // two separate top folders
   const two = Z.read(await prefixedZip('A.epub/', [{ name: 'B/x.txt', data: 'x' }]));
   assert.equal(two.rootPrefix(), '');

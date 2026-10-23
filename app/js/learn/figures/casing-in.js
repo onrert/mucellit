@@ -83,25 +83,25 @@
       const LB = [], bt = tr([G.K0 + O.W*.4, zb + S]);
       if (k > .6){
         // the points are spread along the book (the arrows do not gather at one corner)
-        LB.push({ at: [(G.XK0 + G.XK1)/2, ...tr([G.K1 - 1, zb + S - 3])], text: t('learn.s.casingIn.mull'), on: false });
-        LB.push({ at: [G.XK1, ...tr([G.K0 + O.W*.6, zb + S*.5])], text: t('learn.s.casingIn.folds', { n: O.N }), on: false });
-        LB.push({ at: [G.XB0 + 25, G.RB0 + 2, G.zc + 1], text: t('learn.s.casingIn.board', { t: o.number(T) }), on: false });
-        LB.push({ at: [G.XB1 - 35, ...ch.R1([(G.S0 + G.S1)/2, G.zc + 1])], text: t('learn.s.casingIn.strip'), on: false });
+        LB.push({ at: [(G.XK0 + G.XK1)/2, ...tr([G.K1 - 1, zb + S - 3])], text: t('learn.s.casing_in.mull'), on: false });
+        LB.push({ at: [G.XK1, ...tr([G.K0 + O.W*.6, zb + S*.5])], text: t('learn.s.casing_in.folds', { n: O.N }), on: false });
+        LB.push({ at: [G.XB0 + 25, G.RB0 + 2, G.zc + 1], text: t('learn.s.casing_in.board', { t: o.number(T) }), on: false });
+        LB.push({ at: [G.XB1 - 35, ...ch.R1([(G.S0 + G.S1)/2, G.zc + 1])], text: t('learn.s.casing_in.strip'), on: false });
       } else {
-        if (st.place < 1 && !(st.deneT >= 0)) LB.push({ at: [G.XK1 - 20, ...bt], text: st.glueA > 0 ? t('learn.s.casingIn.endpaper_glue') : t('learn.s.casingIn.endpaper_bottom'), on: st.glueAT >= 0 });
-        if (st.mark > .5 && st.place < 1) LB.push({ at: [G.XK0 + 7, G.K0, zt0], text: t('learn.s.casingIn.mark'), on: st.deneT >= 0 });
-        if (st.wasteA > .3 || st.wasteU > .3) LB.push({ at: st.wasteA > .3 ? [G.XK1 - 40 - (O.H + 30)*(1 - st.wasteA), ...tr([G.K0 - 6, zb + .35])] : [G.XK1 - 40 - (O.H + 30)*(1 - st.wasteU), G.K0 - 6, zb + S - .3], text: t('learn.s.casingIn.scrap'), on: st.glueAT >= 0 || st.glueUT >= 0 });
-        else if (st.c < .5) LB.push({ at: [G.XK1 - 20, ...bt], text: st.glueU > 0 ? t('learn.s.casingIn.endpaper_glue') : t('learn.s.casingIn.endpaper_top'), on: st.glueUT >= 0 });
-        if (st.c < .5) LB.push({ at: [G.XB1, (G.LB0 + G.LB1)/2, G.zc + 2], text: t('learn.s.casingIn.turnIn'), on: false });
-        LB.push({ at: [G.XB1, ...ch.R1([(G.S0 + G.S1)/2, G.zc])], text: t('learn.s.casingIn.strip'), on: st.closeT >= 0 });
-        LB.push({ at: [G.XB1, (G.RB1 + G.S0)/2, G.zc - .3], text: t('learn.s.casingIn.jointGap', { f: o.number(O.f) }), on: st.yerT >= 0 });
-        if (st.place >= 1 && st.c < .5) LB.push({ at: [G.XK0 + 10, G.K0, zb + 2], text: t('learn.s.casingIn.square', { k: o.number(O.k) }), on: st.yerT >= 0 });
-        LB.push({ at: [G.XK1 - 1.5, ...tr([G.K1 + 1.2, zb + 4])], text: t('learn.s.casingIn.headbands'), on: false });
-        if (st.groove > 0 || st.boneFolderT >= 0) LB.push({ at: [G.XB0 + 30, yJ, bookTop], text: t('learn.s.casingIn.groove'), on: st.boneFolderT >= 0 });
-        if (st.boneFolderT >= 0) LB.push({ at: [kLerp(G.XB0 - 10, G.XB1 - 140, st.boneFolderX) + 140, yJ, bookTop + 4], text: t('learn.s.casingIn.boneFolder'), on: true });
-        if (st.wax > .5) LB.push({ at: [G.XK1 - 30, G.K0 - 10, zb + S], text: t('learn.s.casingIn.waxed'), on: st.mumT >= 0 });
-        if (st.mist > .5) LB.push({ at: [G.XB1 + 8, yJ, bookTop + 2], text: t('learn.s.casingIn.mist'), on: st.sisT >= 0 });
-        if (st.press > .5) LB.push({ at: [W2 - 14, yPc, bookTop + 60], text: t('learn.s.casingIn.press'), on: st.pressT >= 0 || st.dryT >= 0 });
+        if (st.place < 1 && !(st.deneT >= 0)) LB.push({ at: [G.XK1 - 20, ...bt], text: st.glueA > 0 ? t('learn.s.casing_in.endpaper_glue') : t('learn.s.casing_in.endpaper_bottom'), on: st.glueAT >= 0 });
+        if (st.mark > .5 && st.place < 1) LB.push({ at: [G.XK0 + 7, G.K0, zt0], text: t('learn.s.casing_in.mark'), on: st.deneT >= 0 });
+        if (st.wasteA > .3 || st.wasteU > .3) LB.push({ at: st.wasteA > .3 ? [G.XK1 - 40 - (O.H + 30)*(1 - st.wasteA), ...tr([G.K0 - 6, zb + .35])] : [G.XK1 - 40 - (O.H + 30)*(1 - st.wasteU), G.K0 - 6, zb + S - .3], text: t('learn.s.casing_in.scrap'), on: st.glueAT >= 0 || st.glueUT >= 0 });
+        else if (st.c < .5) LB.push({ at: [G.XK1 - 20, ...bt], text: st.glueU > 0 ? t('learn.s.casing_in.endpaper_glue') : t('learn.s.casing_in.endpaper_top'), on: st.glueUT >= 0 });
+        if (st.c < .5) LB.push({ at: [G.XB1, (G.LB0 + G.LB1)/2, G.zc + 2], text: t('learn.s.casing_in.turn_in'), on: false });
+        LB.push({ at: [G.XB1, ...ch.R1([(G.S0 + G.S1)/2, G.zc])], text: t('learn.s.casing_in.strip'), on: st.closeT >= 0 });
+        LB.push({ at: [G.XB1, (G.RB1 + G.S0)/2, G.zc - .3], text: t('learn.s.casing_in.joint_gap', { f: o.number(O.f) }), on: st.yerT >= 0 });
+        if (st.place >= 1 && st.c < .5) LB.push({ at: [G.XK0 + 10, G.K0, zb + 2], text: t('learn.s.casing_in.square', { k: o.number(O.k) }), on: st.yerT >= 0 });
+        LB.push({ at: [G.XK1 - 1.5, ...tr([G.K1 + 1.2, zb + 4])], text: t('learn.s.casing_in.headbands'), on: false });
+        if (st.groove > 0 || st.boneFolderT >= 0) LB.push({ at: [G.XB0 + 30, yJ, bookTop], text: t('learn.s.casing_in.groove'), on: st.boneFolderT >= 0 });
+        if (st.boneFolderT >= 0) LB.push({ at: [kLerp(G.XB0 - 10, G.XB1 - 140, st.boneFolderX) + 140, yJ, bookTop + 4], text: t('learn.s.casing_in.bone_folder'), on: true });
+        if (st.wax > .5) LB.push({ at: [G.XK1 - 30, G.K0 - 10, zb + S], text: t('learn.s.casing_in.waxed'), on: st.mumT >= 0 });
+        if (st.mist > .5) LB.push({ at: [G.XB1 + 8, yJ, bookTop + 2], text: t('learn.s.casing_in.mist'), on: st.sisT >= 0 });
+        if (st.press > .5) LB.push({ at: [W2 - 14, yPc, bookTop + 60], text: t('learn.s.casing_in.press'), on: st.pressT >= 0 || st.dryT >= 0 });
       }
       s += xrCallouts(LB, k > .6 && st.c >= 1 ? [G.XB0 - 4, G.XB1 + 4, G.RB0 - 4, G.S1 + 6, 0, bookTop + 8] : [0, W2, 0, D2, 0, HMAX]);
       return s;
@@ -113,56 +113,56 @@
     // waste paper: laid in (.35 s), glue brushed on, pulled out (.7 s)
     const withWaste = (st, ui, name, tKey, glue, done) => kOrder(st, ui, [['wasteT', .35, u => { st[name] = u; }], [tKey, 1.6, glue], ['wasteT', .7, u => { st.brush = null; st[name] = 1 - u; }]], () => { st[name] = 0; done(); });
     const step = {
-      dryFit: { action(st, ui){ if (busy(st, ui)) return false; if (st.attempt >= 1){ ui.flash(t('learn.s.casingIn.f_has_try')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_try', { k: o.number(O.k) }), 2800);
+      dryFit: { action(st, ui){ if (busy(st, ui)) return false; if (st.attempt >= 1){ ui.flash(t('learn.s.casing_in.f_has_try')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_try', { k: o.number(O.k) }), 2800);
           kRun(st, ui, 'deneT', 3.6, u => { st.attempt = u; st.mark = kSeg(u, .42, .58); }, () => { st.attempt = 1; st.mark = 1; finish(st); }); return true; },
         last(st){ st.attempt = 1; st.mark = 1; } },
-      bottom: { action(st, ui){ if (busy(st, ui)) return false; if (st.attempt < 1){ ui.flash(t('learn.s.casingIn.f_first_try')); return false; }
-          if (st.glueA >= 1){ ui.flash(t('learn.s.casingIn.f_has_glue')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_bottom'), 3200);
+      bottom: { action(st, ui){ if (busy(st, ui)) return false; if (st.attempt < 1){ ui.flash(t('learn.s.casing_in.f_first_try')); return false; }
+          if (st.glueA >= 1){ ui.flash(t('learn.s.casing_in.f_has_glue')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_bottom'), 3200);
           // the face on top while the block lies upside down: y mirrored in turned coordinates (2hY − y)
           withWaste(st, ui, 'wasteA', 'glueAT', u => { st.glueA = u; const p = brushY(u, BH + S + .4); st.brush = [p[0], 2*hY - p[1], p[2]]; }, () => { st.glueA = 1; finish(st); }); return true; },
         last(st){ st.glueA = 1; st.wasteA = 0; } },
-      place: { action(st, ui){ if (busy(st, ui)) return false; if (st.glueA < 1){ ui.flash(t('learn.s.casingIn.f_first_bottom')); return false; }
-          if (st.place >= 1){ ui.flash(t('learn.s.casingIn.f_has_place')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_place', { k: o.number(O.k) }), 2800); kRun(st, ui, 'yerT', 1.8, u => { st.place = u; }, () => { st.place = 1; finish(st); }); return true; },
+      place: { action(st, ui){ if (busy(st, ui)) return false; if (st.glueA < 1){ ui.flash(t('learn.s.casing_in.f_first_bottom')); return false; }
+          if (st.place >= 1){ ui.flash(t('learn.s.casing_in.f_has_place')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_place', { k: o.number(O.k) }), 2800); kRun(st, ui, 'yerT', 1.8, u => { st.place = u; }, () => { st.place = 1; finish(st); }); return true; },
         last(st){ st.place = 1; } },
-      top: { action(st, ui){ if (busy(st, ui)) return false; if (st.place < 1){ ui.flash(t('learn.s.casingIn.f_first_place')); return false; }
-          if (st.glueU >= 1){ ui.flash(t('learn.s.casingIn.f_has_glue')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_top'), 3200);
+      top: { action(st, ui){ if (busy(st, ui)) return false; if (st.place < 1){ ui.flash(t('learn.s.casing_in.f_first_place')); return false; }
+          if (st.glueU >= 1){ ui.flash(t('learn.s.casing_in.f_has_glue')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_top'), 3200);
           withWaste(st, ui, 'wasteU', 'glueUT', u => { st.glueU = u; st.brush = brushY(u, zb + S + .4); }, () => { st.glueU = 1; finish(st); }); return true; },
         last(st){ st.glueU = 1; st.wasteU = 0; } },
-      close: { action(st, ui){ if (busy(st, ui)) return false; if (st.glueU < 1){ ui.flash(t('learn.s.casingIn.f_first_top')); return false; }
-          if (st.c >= 1){ ui.flash(t('learn.s.casingIn.f_closed')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_close'), 2400); kRun(st, ui, 'closeT', 2.2, u => { st.c = u; }, () => { st.c = 1; finish(st); }); return true; },
+      close: { action(st, ui){ if (busy(st, ui)) return false; if (st.glueU < 1){ ui.flash(t('learn.s.casing_in.f_first_top')); return false; }
+          if (st.c >= 1){ ui.flash(t('learn.s.casing_in.f_closed')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_close'), 2400); kRun(st, ui, 'closeT', 2.2, u => { st.c = u; }, () => { st.c = 1; finish(st); }); return true; },
         last(st){ st.c = 1; } },
-      jointGap: { action(st, ui){ if (busy(st, ui)) return false; if (st.c < 1){ ui.flash(t('learn.s.casingIn.f_close_first')); return false; }
-          if (st.groove >= 1){ ui.flash(t('learn.s.casingIn.f_has_groove')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_groove'), 2400);
+      jointGap: { action(st, ui){ if (busy(st, ui)) return false; if (st.c < 1){ ui.flash(t('learn.s.casing_in.f_close_first')); return false; }
+          if (st.groove >= 1){ ui.flash(t('learn.s.casing_in.f_has_groove')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_groove'), 2400);
           kRun(st, ui, 'boneFolderT', 2.4, u => { st.boneFolderX = u < .5 ? ease(u*2) : 1 - ease((u - .5)*2); st.groove = Math.min(1, u*1.6); }, () => { st.groove = 1; st.boneFolderT = -1; finish(st); }); return true; },
         last(st){ st.groove = 1; st.boneFolderT = -1; } },
       // ---- press
-      waxed: { action(st, ui){ if (busy(st, ui)) return false; if (st.wax >= 1){ ui.flash(t('learn.s.casingIn.f_has_wax')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_wax'), 2600); kRun(st, ui, 'mumT', 1.2, u => { st.wax = u; }, () => { st.wax = 1; finish(st); }); return true; },
+      waxed: { action(st, ui){ if (busy(st, ui)) return false; if (st.wax >= 1){ ui.flash(t('learn.s.casing_in.f_has_wax')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_wax'), 2600); kRun(st, ui, 'mumT', 1.2, u => { st.wax = u; }, () => { st.wax = 1; finish(st); }); return true; },
         last(st){ st.wax = 1; } },
-      mist: { action(st, ui){ if (busy(st, ui)) return false; if (st.wax < 1){ ui.flash(t('learn.s.casingIn.f_first_wax')); return false; }
-          if (st.mist >= 1){ ui.flash(t('learn.s.casingIn.f_rods_done')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_rods'), 2400); kRun(st, ui, 'sisT', 1, u => { st.mist = u; }, () => { st.mist = 1; finish(st); }); return true; },
+      mist: { action(st, ui){ if (busy(st, ui)) return false; if (st.wax < 1){ ui.flash(t('learn.s.casing_in.f_first_wax')); return false; }
+          if (st.mist >= 1){ ui.flash(t('learn.s.casing_in.f_rods_done')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_rods'), 2400); kRun(st, ui, 'sisT', 1, u => { st.mist = u; }, () => { st.mist = 1; finish(st); }); return true; },
         last(st){ st.mist = 1; } },
-      press: { action(st, ui){ if (busy(st, ui)) return false; if (st.mist < 1){ ui.flash(t('learn.s.casingIn.f_first_rods')); return false; }
-          if (st.press >= 1){ ui.flash(t('learn.s.casingIn.f_press_done')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.casingIn.f_press'), 2200); kRun(st, ui, 'pressT', 1.4, u => { st.press = u; }, () => { st.press = 1; finish(st); }); return true; },
+      press: { action(st, ui){ if (busy(st, ui)) return false; if (st.mist < 1){ ui.flash(t('learn.s.casing_in.f_first_rods')); return false; }
+          if (st.press >= 1){ ui.flash(t('learn.s.casing_in.f_press_done')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.casing_in.f_press'), 2200); kRun(st, ui, 'pressT', 1.4, u => { st.press = u; }, () => { st.press = 1; finish(st); }); return true; },
         last(st){ st.press = 1; } },
-      dry: { action(st, ui){ if (busy(st, ui)) return false; if (st.press < 1){ ui.flash(t('learn.s.casingIn.f_first_press')); return false; }
-          if (st.dry >= 1){ ui.flash(t('learn.s.casingIn.f_dry')); return false; }
-          st.anim2 = true; kRun(st, ui, 'dryT', 2.4, u => { st.dry = u; }, () => { st.dry = 1; ui.flash(t('learn.s.casingIn.f_dried'), 2600); finish(st); }); return true; },
+      dry: { action(st, ui){ if (busy(st, ui)) return false; if (st.press < 1){ ui.flash(t('learn.s.casing_in.f_first_press')); return false; }
+          if (st.dry >= 1){ ui.flash(t('learn.s.casing_in.f_dry')); return false; }
+          st.anim2 = true; kRun(st, ui, 'dryT', 2.4, u => { st.dry = u; }, () => { st.dry = 1; ui.flash(t('learn.s.casing_in.f_dried'), 2600); finish(st); }); return true; },
         last(st){ st.dry = 1; } }
     };
     const st0 = { attempt: 0, deneT: -1, mark: 0, wasteA: 0, wasteU: 0, wasteT: -1, glueA: 0, glueAT: -1, place: 0, yerT: -1, glueU: 0, glueUT: -1, c: 0, closeT: -1, groove: 0, boneFolderT: -1, boneFolderX: 0,
       wax: 0, mumT: -1, mist: 0, sisT: -1, press: 0, pressT: -1, dry: 0, dryT: -1, brush: null, anim: 0, anim2: false };
     return { step, cfg: {
-      title: t('learn.casingIn.name'), credit: false, size: [W2, D2, HMAX], state: st0, scene,
-      stats: st => [{ label: t('learn.s.casingIn.st_drying'), value: t('learn.s.casingIn.st_hours', { n: Math.round(st.dry*24) }) }, { label: t('learn.s.casingIn.st_press'), value: st.press >= 1 ? t('learn.s.casingIn.st_clamped') : t('learn.s.casingIn.st'), small: true }]
+      title: t('learn.casing_in.name'), credit: false, size: [W2, D2, HMAX], state: st0, scene,
+      stats: st => [{ label: t('learn.s.casing_in.st_drying'), value: t('learn.s.casing_in.st_hours', { n: Math.round(st.dry*24) }) }, { label: t('learn.s.casing_in.st_press'), value: st.press >= 1 ? t('learn.s.casing_in.st_clamped') : t('learn.s.casing_in.st'), small: true }]
     } };
   };
 })(typeof self !== 'undefined' ? self : this);

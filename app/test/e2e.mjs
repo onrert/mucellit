@@ -123,16 +123,16 @@ function startServer() {
 
 /** Watches the page: console errors and network requests. */
 function watch(page, label) {
-  const iz = { errors: [], requests: [], prompts: [], confirms: [], confirmRed: false };
-  page.on('console', (m) => { if (m.type() === 'error') iz.errors.push(`[${label}] console.error: ${m.text()}`); });
-  page.on('pageerror', (e) => iz.errors.push(`[${label}] pageerror: ${e.message}`));
-  page.on('request', (r) => iz.requests.push(r.url()));
+  const trace = { errors: [], requests: [], prompts: [], confirms: [], confirmReject: false };
+  page.on('console', (m) => { if (m.type() === 'error') trace.errors.push(`[${label}] console.error: ${m.text()}`); });
+  page.on('pageerror', (e) => trace.errors.push(`[${label}] pageerror: ${e.message}`));
+  page.on('request', (r) => trace.requests.push(r.url()));
   page.on('dialog', (d) => {
-    if (d.type() === 'prompt') { iz.prompts.push(d.message()); return d.dismiss(); }
-    if (d.type() === 'confirm') { iz.confirms.push(d.message()); return iz.confirmRed ? d.dismiss() : d.accept(); }
+    if (d.type() === 'prompt') { trace.prompts.push(d.message()); return d.dismiss(); }
+    if (d.type() === 'confirm') { trace.confirms.push(d.message()); return trace.confirmReject ? d.dismiss() : d.accept(); }
     return d.accept();
   });
-  return iz;
+  return trace;
 }
 
 async function makeTestPdf(page) {
@@ -208,7 +208,7 @@ async function pdfFlow(page, address, label, criterion, screenImage) {
   const r = await inspectPdf(page, output, [1, 2, 3, 17]);
   check(criterion, r.pageCount === 24, `${label}: output 24 pages`, r.pageCount);
   const bad = r.sizes.map((b, i) => [i + 1, b]).filter(([, b]) => Math.abs(b[0] - 297) > 0.5 || Math.abs(b[1] - 210) > 0.5);
-  check(criterion, r.sizes.length === 24 && bad.length === 0, `${label}: her page 297×210 mm (±0.5)`,
+  check(criterion, r.sizes.length === 24 && bad.length === 0, `${label}: every page 297×210 mm (±0.5)`,
     bad.length ? JSON.stringify(bad) : `first ${r.sizes[0].map((x) => x.toFixed(2)).join('×')} mm`);
   const s1 = leftRight(r.texts[1]);
   check(criterion, s1.length === 2 && s1[0].str === '16' && s1[0].half === 'left' && s1[1].str === '1' && s1[1].half === 'right',
@@ -296,13 +296,13 @@ async function setupHelpers(page) {
       }
       return await doc.save();
     };
-    T.settings = (ek) => Object.assign({
+    T.settings = (extra) => Object.assign({
       bindingType: 'sewn', sheetsPerSignature: 1, shrinkLastSignature: false, creep: false, paperThickness: 0.1,
       paperWidth: 297, paperHeight: 210, bookWidth: 148, bookHeight: 210, scaling: 'fit', outerMargin: 0, gutter: 0,
       cropMarks: false, folding: false, spineMarks: false, duplex: 'short', outputMode: 'single', backsReversed: false,
-    }, ek || {});
-    T.build = async (source, pages, ek) => {
-      const s = await window.Mucellit.output.build({ sourceBytes: source, pages, settings: T.settings(ek), fileName: 'test.pdf' });
+    }, extra || {});
+    T.build = async (source, pages, extra) => {
+      const s = await window.Mucellit.output.build({ sourceBytes: source, pages, settings: T.settings(extra), fileName: 'test.pdf' });
       return s;
     };
     T.all = (n) => Array.from({ length: n }, (_, i) => ({ kind: 'pdf', source: i, rotate: 0 }));
@@ -360,8 +360,8 @@ async function ayFlowTwo(page, label) {
       ['portrait-long', { paperWidth: 210, paperHeight: 297, bookWidth: 100, bookHeight: 150, duplex: 'long' }],
     ];
     const o = {};
-    for (const [name, ek] of states) {
-      const s = await T.build(source, T.all(4), ek);
+    for (const [name, extra] of states) {
+      const s = await T.build(source, T.all(4), extra);
       const m = await T.texts(s.files[0].bytes);
       o[name] = m.map((p) => ({ order: p.elements.slice().sort((a, b) => a.x - b.x).map((e) => e.str), marks: p.elements.map((e) => Math.sign(e.a)) }));
     }
@@ -474,14 +474,14 @@ async function ayBlankToStart(page, address, label) {
   check(A, m.length === 1 && m[0].str === '7' && m[0].half === 'left', `${label}: with a blank at the start the 1st output page has only "7" on the left (right slot empty)`, JSON.stringify(m));
 }
 
-async function encryptedFlow(page, address, iz, label) {
+async function encryptedFlow(page, address, trace, label) {
   const A = 'AD1';
   const states = ['encrypted-owner-rc4.pdf', 'encrypted-owner-aes.pdf'];
   for (const name of states) {
     await page.goto(address);
     await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
     await page.click('#tab-button-impose');
-    iz.prompts.length = 0;
+    trace.prompts.length = 0;
     await page.setInputFiles('#pdf-file', { name: name, mimeType: 'application/pdf', buffer: await readFile(join(FIXTURE, name)) });
     await page.waitForSelector('#encrypted-warning', { timeout: 20000 });
     const warning = await page.textContent('#encrypted-warning');
@@ -499,13 +499,13 @@ async function encryptedFlow(page, address, iz, label) {
     await page.goto(address);
     await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
     await page.click('#tab-button-impose');
-    iz.prompts.length = 0;
+    trace.prompts.length = 0;
     await page.setInputFiles('#pdf-file', { name: name, mimeType: 'application/pdf', buffer: await readFile(join(FIXTURE, name)) });
     await page.waitForSelector('#passwordProtected-warning', { timeout: 20000 });
     await page.waitForTimeout(300);
     const warning = await page.textContent('#passwordProtected-warning');
     const cards = await page.locator('#small-thumbs .card').count();
-    check('AR3', iz.prompts.length === 0, `${label}: ${name}: no dialog (prompt) opened`, JSON.stringify(iz.prompts));
+    check('AR3', trace.prompts.length === 0, `${label}: ${name}: no dialog (prompt) opened`, JSON.stringify(trace.prompts));
     check('AR3', warning.includes('Bu PDF parolalı; önce parolayı kaldırın: qpdf --password=PAROLA --decrypt girdi.pdf cikti.pdf')  // turkish-ok: expected Turkish UI text
       && await page.isDisabled('#export-transfer') && cards === 0, `${label}: ${name}: Turkish password warning visible, no preview/card, download disabled`, `card=${cards}`);
   }
@@ -623,8 +623,8 @@ async function uiChecks(page, address, label) {
   check('AH', numbers(s2) === '12/216' && numbers(k2) === '352/250', `${label}: the "S only" rule stiffener 12, covering still 352×250`, `${s2} | ${k2}`);
   await page.selectOption('#h-spineRule', 'twoT');
   await page.selectOption('#h-spineShape', 'rounded');
-  const uyA = await page.textContent('#h-warnings');
-  check('AH', /eğri boyunu ölçüp girin/.test(uyA) && numbers(await cell('spineStrip')) === '19/216', `${label}: rounded spine, curve length empty → 19 mm and a warning`, uyA.trim().slice(0, 80));  // turkish-ok: expected Turkish UI text
+  const warningsA = await page.textContent('#h-warnings');
+  check('AH', /eğri boyunu ölçüp girin/.test(warningsA) && numbers(await cell('spineStrip')) === '19/216', `${label}: rounded spine, curve length empty → 19 mm and a warning`, warningsA.trim().slice(0, 80));  // turkish-ok: expected Turkish UI text
   await page.fill('#h-curveLength', '20');
   check('AH', numbers(await cell('spineStrip')) === '23/216' && (await page.textContent('#h-warnings')).trim() === '', `${label}: rounded spine, curve length 20 → 23 mm, no warning`);
   await page.fill('#h-curveLength', ''); await page.selectOption('#h-spineShape', 'flat');
@@ -948,16 +948,16 @@ async function epubPerformance(page, address, label) {
   await page.fill('#book-width', '148'); await page.fill('#book-height', '210'); await page.fill('#outer-margin', '0'); await page.fill('#binding-allowance', '0');
   const head = Date.now();
   const r = await pickEpub(page, 'long.epub', long, 120000);
-  const sure = (Date.now() - head) / 1000;
-  console.log(`info: ${label}: long.epub (~90 000 words, ${long.length} bytes) conversion ${sure.toFixed(1)} s, ${r.card} page`);
-  check('B14', r.card > 100 && sure < 60, `${label}: long.epub (~90 thousand words) conversion < 60 s`, `${sure.toFixed(1)} s, ${r.card} page; ${r.notice}`);
+  const took = (Date.now() - head) / 1000;
+  console.log(`info: ${label}: long.epub (~90 000 words, ${long.length} bytes) conversion ${took.toFixed(1)} s, ${r.card} page`);
+  check('B14', r.card > 100 && took < 60, `${label}: long.epub (~90 thousand words) conversion < 60 s`, `${took.toFixed(1)} s, ${r.card} page; ${r.notice}`);
 }
 
-function agCheck(iz, localPrefix, label, criterion) {
-  const out = iz.requests.filter((u) => !(u.startsWith(localPrefix) || u.startsWith('data:') || u.startsWith('blob:')));
+function networkCheck(trace, localPrefix, label, criterion) {
+  const out = trace.requests.filter((u) => !(u.startsWith(localPrefix) || u.startsWith('data:') || u.startsWith('blob:')));
   // every request other than file:// and the local server (http/https included) is not allowed
   check(criterion, out.length === 0, `${label}: no outside network request (only local requests)`,
-    out.length ? JSON.stringify([...new Set(out)]) : `${iz.requests.length} requests, all local`);
+    out.length ? JSON.stringify([...new Set(out)]) : `${trace.requests.length} requests, all local`);
 }
 
 // ------------------------------------------------------------------
@@ -965,7 +965,7 @@ function agCheck(iz, localPrefix, label, criterion) {
 // the old `if (!confirm(...)) return;` pattern took the Promise as "yes" and deleted without asking. For every action:
 // (a) native confirm "no" (dialog.dismiss), (b) a Tauri-like async confirm → false; the data does not change in either.
 // ------------------------------------------------------------------
-async function confirmFlow(page, address, iz, label) {
+async function confirmFlow(page, address, trace, label) {
   const O = 'G5';
   const os = await import('node:os');
   const fsp = await import('node:fs/promises');
@@ -1006,15 +1006,15 @@ async function confirmFlow(page, address, iz, label) {
     // (a) native confirm "no"
     const once = await readStorage(page);
     const stepOnce = await stepCount();
-    iz.confirms.length = 0;
-    iz.confirmRed = true;
+    trace.confirms.length = 0;
+    trace.confirmReject = true;
     await is.trigger();
-    for (let i = 0; i < 50 && iz.confirms.length === 0; i++) await calm();
+    for (let i = 0; i < 50 && trace.confirms.length === 0; i++) await calm();
     await calm();
-    iz.confirmRed = false;
+    trace.confirmReject = false;
     const afterA = await readStorage(page);
-    check(O, iz.confirms.length === 1 && isDeepStrictEqual(afterA, once) && (await stepCount()) === stepOnce,
-      `${label}: ${is.name}: native confirm "no" → data unchanged`, `confirm dialogs ${iz.confirms.length}, projects ${afterA && afterA.projects.length}`);
+    check(O, trace.confirms.length === 1 && isDeepStrictEqual(afterA, once) && (await stepCount()) === stepOnce,
+      `${label}: ${is.name}: native confirm "no" → data unchanged`, `confirm dialogs ${trace.confirms.length}, projects ${afterA && afterA.projects.length}`);
     // (b) like the Tauri dialog plug-in: confirm returns Promise<false>
     await asyncConfirm(false);
     await is.trigger();
@@ -1037,11 +1037,11 @@ async function confirmFlow(page, address, iz, label) {
   check(O, remove.projects.length === 1 && remove.projects[0].name !== selected, `${label}: Remove project: a confirm returning a Promise "yes" → the selected project was removed`, `${selected}; left ${remove.projects.map((k) => k.name).join(', ')}`);
   const backup2 = join(dirname(backupPath), 'backup2.json');
   await fsp.writeFile(backup2, JSON.stringify(first));
-  iz.confirms.length = 0;
+  trace.confirms.length = 0;
   await page.setInputFiles('#json-import', backup2);
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 2, null, { timeout: 10000 }).catch(() => {});
   const importData = await readStorage(page);
-  check(O, iz.confirms.length === 1 && isDeepStrictEqual(importData, first), `${label}: Import: native confirm "yes" → the data changed with the backup`, `confirm dialogs ${iz.confirms.length}, projects ${importData.projects.length}`);
+  check(O, trace.confirms.length === 1 && isDeepStrictEqual(importData, first), `${label}: Import: native confirm "yes" → the data changed with the backup`, `confirm dialogs ${trace.confirms.length}, projects ${importData.projects.length}`);
 
   // D9: Remove step "yes" (a confirm returning a Promise, Tauri-like) → the first step of the selected project is removed
   const stepBook = await page.textContent('#book-detail h2');
@@ -1058,12 +1058,12 @@ async function confirmFlow(page, address, iz, label) {
     `${label}: Remove step: a confirm returning a Promise "yes" → the first step was removed`, `confirm calls ${stepCounter}, steps ${stepOnce} → ${await stepCount()}`);
 
   // D9: Clear all native confirm "yes" → all the Projects data is removed
-  iz.confirms.length = 0;
+  trace.confirms.length = 0;
   await page.click('#data-clear');
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 0, null, { timeout: 10000 }).catch(() => {});
   const clean = await readStorage(page);
-  check('confirmation', iz.confirms.length === 1 && (!clean || clean.projects.length === 0) && (await page.locator('#book-list li').count()) === 0,
-    `${label}: Clear all: native confirm "yes" → all projects removed`, `confirm dialogs ${iz.confirms.length}, projects ${clean ? clean.projects.length : 0}`);
+  check('confirmation', trace.confirms.length === 1 && (!clean || clean.projects.length === 0) && (await page.locator('#book-list li').count()) === 0,
+    `${label}: Clear all: native confirm "yes" → all projects removed`, `confirm dialogs ${trace.confirms.length}, projects ${clean ? clean.projects.length : 0}`);
   await fsp.rm(dirname(backupPath), { recursive: true, force: true });
 }
 
@@ -1106,7 +1106,7 @@ async function releaseFlow(page, address, label) {
 // ------------------------------------------------------------------
 // CSP and freezing Object.prototype; the platform.pickFile result on import.
 // ------------------------------------------------------------------
-async function m1FixFlow(page, address, iz, label, cspTest) {
+async function m1FixFlow(page, address, trace, label, cspTest) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const rotated = await page.evaluate(() => ({ rotated: Object.isFrozen(Object.prototype), pdfLib: !!window.PDFLib, pdfjs: !!window.pdfjsLib }));
@@ -1147,7 +1147,7 @@ async function m1FixFlow(page, address, iz, label, cspTest) {
   await page.reload();
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   await page.click('#tab-button-projects');
-  const errorOnce = iz.errors.length;
+  const errorOnce = trace.errors.length;
   await page.evaluate((json) => {
     const P = window.Mucellit.platform;
     window.__selectOriginalFile = P.pickFile;
@@ -1167,8 +1167,8 @@ async function m1FixFlow(page, address, iz, label, cspTest) {
   await page.waitForTimeout(150);
   const notice = await page.textContent('#notice');
   const after = await readStorage(page);
-  check('import-transfer', /İçe aktarılamadı: picker could not open/.test(notice) && iz.errors.length === errorOnce && isDeepStrictEqual(after, backup),  // turkish-ok: expected Turkish UI text
-    `${label}: import: a pickFile rejection goes to a notice, no unhandled error, data unchanged`, `notice: ${notice}; new console errors ${iz.errors.length - errorOnce}`);
+  check('import-transfer', /İçe aktarılamadı: picker could not open/.test(notice) && trace.errors.length === errorOnce && isDeepStrictEqual(after, backup),  // turkish-ok: expected Turkish UI text
+    `${label}: import: a pickFile rejection goes to a notice, no unhandled error, data unchanged`, `notice: ${notice}; new console errors ${trace.errors.length - errorOnce}`);
   await page.evaluate(() => { window.Mucellit.platform.pickFile = window.__selectOriginalFile; });
 }
 
@@ -1437,12 +1437,12 @@ async function m2TauriSimulation(page, address, label) {
   }, t0, { timeout: 900 }).then((h) => h.jsonValue(), () => null);
   check('file', clean && clean.delay < 900 && typeof clean.session === 'string' && clean.order > 0,
     `${label}: O2 Clear all → the empty backup went to Rust without waiting (session + sequence)`, JSON.stringify(clean));
-  // when the delayed write in Rust fails (backup-writeFailed event) an error notice
+  // when the delayed write in Rust fails (backup-write-failed event) an error notice
   await clearNotice();
-  await page.evaluate(() => window.__fake.listener['backup-writeFailed']({ payload: 'backup could not be written: No space left on device' }));
+  await page.evaluate(() => window.__fake.listener['backup-write-failed']({ payload: 'backup could not be written: No space left on device' }));
   const yh = await page.evaluate(() => ({ text: document.getElementById('notice').textContent, error: document.getElementById('notice').classList.contains('error') }));
   check('file', /otomatik yedeği yazılamadı: backup could not be written: No space left on device/.test(yh.text) && yh.error,  // turkish-ok: expected Turkish UI text
-    `${label}: O2 the backup-writeFailed event goes to an error notice`, yh.text);
+    `${label}: O2 the backup-write-failed event goes to an error notice`, yh.text);
 }
 
 // ------------------------------------------------------------------
@@ -1554,7 +1554,7 @@ async function m6TrCheck(page, address, label) {
 }
 
 /** English interface (en-US): smoke + an old Turkish record + a manual language choice. */
-async function m6MostFlow(page, address, iz, label, tam) {
+async function m6EnglishFlow(page, address, trace, label, full) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const head = await page.evaluate(() => ({ lang: document.documentElement.lang, title: document.title, tab: Array.from(document.querySelectorAll('nav [role="tab"]')).map((b) => b.textContent),
@@ -1589,7 +1589,7 @@ async function m6MostFlow(page, address, iz, label, tam) {
   check('i18n', /^test-37\.pdf — 37 pages, first page 148 × 210 mm$/.test(height.source) && height.summary === '37 pages → padded to 48 (11 blank) · 3 signatures · 12 printer sheets (24 sides)' &&
     /^Signature 1 · sheet 1 \(outer\)output p\. 1–2$/.test(height.title) && height.card === 'source p. 1',
     `${label}: loaded PDF information, imposition summary (singular/plural), sheet title in English`, JSON.stringify(height));
-  if (tam) {
+  if (full) {
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-transfer')]);
     await page.waitForFunction(() => /ready/.test(document.getElementById('notice').textContent), null, { timeout: 30000 });
     const b = await page.textContent('#notice');
@@ -1644,13 +1644,13 @@ async function m6MostFlow(page, address, iz, label, tam) {
   check('i18n', !trLetter(sm), `${label}: no Turkish letter in the Projects view (except the user texts)`, (sm.match(new RegExp('.{0,30}' + TR_LETTER.source + '.{0,30}')) || [''])[0]);
   await noMissingKey(page, label);
   // manual language choice: no open document → no confirmation; switches to Turkish and stays; back to the system language → English
-  const confirmCount = iz.confirms.length;
+  const confirmCount = trace.confirms.length;
   await Promise.all([page.waitForEvent('load'), page.selectOption('#i18n-select', 'tr')]);
   await page.waitForSelector('html[data-ready="yes"]');
   await page.click('#tab-button-projects');
   const tr = await page.evaluate(() => ({ lang: document.documentElement.lang, tab: document.getElementById('tab-button-impose').textContent, choice: localStorage.getItem('mucellit.language'),
     value: document.getElementById('i18n-select').value, step: (document.querySelector('#steps .step-name') || {}).textContent }));
-  check('i18n', tr.lang === 'tr' && tr.tab === 'Düzenle' && tr.choice === 'tr' && tr.value === 'tr' && tr.step === '1. Hazırlık / PDF' && iz.confirms.length === confirmCount,  // turkish-ok: expected Turkish UI text
+  check('i18n', tr.lang === 'tr' && tr.tab === 'Düzenle' && tr.choice === 'tr' && tr.value === 'tr' && tr.step === '1. Hazırlık / PDF' && trace.confirms.length === confirmCount,  // turkish-ok: expected Turkish UI text
     `${label}: a manual Turkish choice (no confirmation without a document) reloads the page, stays, the steps in Turkish`, JSON.stringify(tr));
   const hintTr = await page.evaluate(() => document.getElementById('i18n-select').getAttribute('title'));
   check('print', hintTr === 'Dil', `${label}: after switching to Turkish the language picker tooltip is "Dil"`, String(hintTr));  // turkish-ok: expected Turkish UI text
@@ -1661,13 +1661,13 @@ async function m6MostFlow(page, address, iz, label, tam) {
   await page.click('#tab-button-impose');
   await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
   await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 37);
-  iz.confirmRed = true;
+  trace.confirmReject = true;
   await page.selectOption('#i18n-select', 'system');
   await page.waitForTimeout(500);
-  iz.confirmRed = false;
+  trace.confirmReject = false;
   const red = await page.evaluate(() => ({ lang: document.documentElement.lang, choice: localStorage.getItem('mucellit.language'), value: document.getElementById('i18n-select').value, card: document.querySelectorAll('#small-thumbs .card').length }));
-  check('i18n', iz.confirms.length === confirmCount + 1 && /Dil değişince pencere yeniden yüklenir/.test(iz.confirms[iz.confirms.length - 1]) && red.lang === 'tr' && red.choice === 'tr' && red.value === 'tr' && red.card === 37,  // turkish-ok: expected Turkish UI text
-    `${label}: with an open document the language change asks for confirmation (Turkish text); Cancel → language, choice and document unchanged`, JSON.stringify({ red, confirmation: iz.confirms.slice(-1) }));
+  check('i18n', trace.confirms.length === confirmCount + 1 && /Dil değişince pencere yeniden yüklenir/.test(trace.confirms[trace.confirms.length - 1]) && red.lang === 'tr' && red.choice === 'tr' && red.value === 'tr' && red.card === 37,  // turkish-ok: expected Turkish UI text
+    `${label}: with an open document the language change asks for confirmation (Turkish text); Cancel → language, choice and document unchanged`, JSON.stringify({ red, confirmation: trace.confirms.slice(-1) }));
   await Promise.all([page.waitForEvent('load'), page.selectOption('#i18n-select', 'system')]);
   await page.waitForSelector('html[data-ready="yes"]');
   const restored = await page.evaluate(() => ({ lang: document.documentElement.lang, choice: localStorage.getItem('mucellit.language'), value: document.getElementById('i18n-select').value }));
@@ -1890,20 +1890,20 @@ async function printingHidden(page, label) {
  * error in the console is the simulation itself (MC-SIMULATION); the interface is static English, the start-up error
  * is reported in English. The simulation errors are dropped after the check (for the "no console error" check at the end of the run).
  */
-async function m3NoTauriI18n(page, address, iz, label) {
+async function m3NoTauriI18n(page, address, trace, label) {
   await page.route('**/js/i18n.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'throw new Error("MC-SIMULATION i18n.js");' }));
-  const once = iz.errors.length;
+  const once = trace.errors.length;
   await page.goto(address);
   await page.waitForFunction(() => /start/.test(document.getElementById('notice').textContent), null, { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(300);
   const b = await page.evaluate(() => ({ name: window.Mucellit.platform.name, notice: document.getElementById('notice').textContent,
     tab: document.getElementById('tab-button-impose').textContent, storage: document.getElementById('storage-hint').textContent }));
-  const fresh = iz.errors.slice(once);
+  const fresh = trace.errors.slice(once);
   const outside = fresh.filter((h) => !/MC-SIMULATION/.test(h));
   check('print', b.name === 'tauri' && outside.length === 0 && fresh.length >= 1 && b.tab === 'Imposition' && /^The app couldn't start: /.test(b.notice) && /this Mac/.test(b.storage),
     `${label}: without i18n.js platform-tauri.js makes no extra console error (only the simulation error); the interface static English, the Mac storage hint English, the start-up error reported`,
     JSON.stringify({ ...b, console: fresh.map((h) => h.slice(0, 140)) }));
-  iz.errors.splice(once); // the simulation errors (and the ones counted as failed, if any) are dropped from the end-of-run check; the check is above
+  trace.errors.splice(once); // the simulation errors (and the ones counted as failed, if any) are dropped from the end-of-run check; the check is above
   await page.unroute('**/js/i18n.js');
 }
 
@@ -1912,7 +1912,7 @@ async function m3NoTauriI18n(page, address, iz, label) {
  * all three the labels are not empty: (a) in the chosen language (tr-TR → Turkish), (b) static English (index.html),
  * (c) English and the app works. The simulation errors (MC-SIMULATION) are dropped from the console check.
  */
-async function m6StartupError(page, address, iz, label) {
+async function m6StartupError(page, address, trace, label) {
   const I18n = require('../js/i18n.js');
   const dictionary = (code) => I18n.extractJson(readFileSync(join(APP, 'i18n', code + '.js'), 'utf8'));
   const EN = dictionary('en'), TR = dictionary('tr');
@@ -1920,7 +1920,7 @@ async function m6StartupError(page, address, iz, label) {
   const different = (l, s) => l.filter(([a, m]) => !m || m !== s[a]);
   const platformJs = readFileSync(join(APP, 'js', 'platform.js'), 'utf8');
   if (!platformJs.includes('ready: Promise.resolve(),')) throw new Error('platform.js simulation point not found');
-  const fallSimulation = () => { const once = iz.errors.length; iz.errors = iz.errors.filter((h) => !/MC-SIMULATION/.test(h)); return once - iz.errors.length; };
+  const fallSimulation = () => { const once = trace.errors.length; trace.errors = trace.errors.filter((h) => !/MC-SIMULATION/.test(h)); return once - trace.errors.length; };
   // (a)
   await page.route('**/js/platform.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: platformJs.replace('ready: Promise.resolve(),', "ready: Promise.reject(new Error('MC-SIMULATION ready')),") }));
   await page.goto(address);
@@ -1938,13 +1938,13 @@ async function m6StartupError(page, address, iz, label) {
   await page.waitForFunction(() => /start/.test(document.getElementById('notice').textContent), null, { timeout: 20000 }).catch(() => {});
   const lb = await labels();
   const b = await page.evaluate(() => ({ lang: document.documentElement.lang, notice: document.getElementById('notice').textContent, aria: document.getElementById('i18n-select').getAttribute('aria-label') }));
-  const bError = iz.errors.slice();
+  const bError = trace.errors.slice();
   const bFallen = fallSimulation();
   check('i18n', lb.length >= 100 && different(lb, EN).length === 0 && b.lang === 'en' && b.aria === 'Language' && /^The app couldn't start: /.test(b.notice) && bFallen >= 1,
     `${label}: (b) i18n.js threw: ${lb.length} labels static English (index.html), the start-up error reported in English`, JSON.stringify({ ...b, difference: different(lb, EN).slice(0, 3), console: bError.slice(0, 3).map((h) => h.slice(0, 120)) }));
   // in (b) any other error (an indirect result of the simulation) is listed so that it stays visible, and dropped
-  const indirect = iz.errors.length;
-  iz.errors = [];
+  const indirect = trace.errors.length;
+  trace.errors = [];
   check('i18n', indirect <= 3, `${label}: (b) without i18n.js at most a few indirect console errors outside the simulation (${indirect})`, JSON.stringify(bError.map((h) => h.slice(0, 120))));
   await page.unroute('**/js/i18n.js');
   // (c)
@@ -1989,8 +1989,8 @@ function learnCandidates() {
   return [...candidate];
 }
 /** Test traces (injected by Playwright; not product code): CSP violations and the rAF call count. */
-const LEARN_IZ = `(() => { window.__kcCsp = []; document.addEventListener('securitypolicyviolation', (e) => window.__kcCsp.push(e.violatedDirective + ' ' + (e.blockedURI || '')));
-  const r = window.requestAnimationFrame.bind(window); window.__kcRaf = 0; window.requestAnimationFrame = (f) => { window.__kcRaf++; return r(f); }; })();`;
+const LEARN_TRACE = `(() => { window.__mcCsp = []; document.addEventListener('securitypolicyviolation', (e) => window.__mcCsp.push(e.violatedDirective + ' ' + (e.blockedURI || '')));
+  const r = window.requestAnimationFrame.bind(window); window.__mcRaf = 0; window.requestAnimationFrame = (f) => { window.__mcRaf++; return r(f); }; })();`;
 const learnState = (page) => page.evaluate(() => { const d = window.Mucellit.learn.probe.state();
   return { a: d.a, i: d.i, n: d.n, flow: d.flow, finished: d.finished, playing: d.playing, installed: d.installed, visible: d.visible, figure: d.figure, manual: d.manual, match: d.match, input: d.input, isOpen: d.st ? d.st.open : null, done: d.done }; });
 /** The numbers panel table: { key: [numbers] } (read with the decimal/thousands separator of the language). */
@@ -2001,8 +2001,8 @@ const learnTable = (page, i18n) => page.evaluate(() => Object.fromEntries(Array.
   .then((t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, extractNumbers(v, i18n)])));
 const calculatorTable = (page, i18n) => page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('#h-result td[data-result]')).map((td) => [td.dataset.result, td.textContent])))
   .then((t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, extractNumbers(v, i18n)])));
-const TB_LEARN = { page: [176], signature: [11], sheet: [88], printing: [44], spine: [8.8], board: [144, 216], strip: [12.8, 216], jointGap: [7], covering: [348.8, 250], endpapers: [296, 210], mull: [58.8, 198], headbands: [8.8] };
-const tbFarki = (t) => Object.keys(TB_LEARN).filter((k) => JSON.stringify(t[k]) !== JSON.stringify(TB_LEARN[k])).map((k) => `${k}: ${JSON.stringify(t[k])}`);
+const TB_LEARN = { page: [176], signature: [11], sheet: [88], printing: [44], spine: [8.8], board: [144, 216], strip: [12.8, 216], joint_gap: [7], covering: [348.8, 250], endpapers: [296, 210], mull: [58.8, 198], headbands: [8.8] };
+const tableDifference = (t) => Object.keys(TB_LEARN).filter((k) => JSON.stringify(t[k]) !== JSON.stringify(TB_LEARN[k])).map((k) => `${k}: ${JSON.stringify(t[k])}`);
 async function writeCalculator(page, id, value) {
   await page.click('#tab-button-calculator');
   if (id === 'h-bindingType') await page.selectOption('#h-bindingType', value);
@@ -2010,18 +2010,18 @@ async function writeCalculator(page, id, value) {
 }
 
 /** Learn run (server, Tauri CSP header). language: 'tr' | 'en' (browser locale). */
-async function m7LearnFlow(page, address, iz, label, i18n) {
+async function m7LearnFlow(page, address, trace, label, i18n) {
   const D = require('../js/i18n.js');
   const DICT = D.extractJson(readFileSync(join(APP, 'i18n', i18n + '.js'), 'utf8'));
-  await page.addInitScript({ content: LEARN_IZ });
+  await page.addInitScript({ content: LEARN_TRACE });
   await setupLearnCheck(page);
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   // ---- the guide is not set up before the tab opens; no rAF when idle
-  const r0 = await page.evaluate(() => window.__kcRaf);
+  const r0 = await page.evaluate(() => window.__mcRaf);
   await page.waitForTimeout(600);
   const once = await learnState(page);
-  const blank = await page.evaluate((r0) => ({ stage: document.getElementById('guide-stage').childElementCount, raf: window.__kcRaf - r0, hidden: document.getElementById('tab-learn').hidden,
+  const blank = await page.evaluate((r0) => ({ stage: document.getElementById('guide-stage').childElementCount, raf: window.__mcRaf - r0, hidden: document.getElementById('tab-learn').hidden,
     tab: document.getElementById('tab-button-learn').textContent }), r0);
   check('learn', !once.installed && !once.figure && blank.stage === 0 && blank.raf === 0 && blank.hidden && blank.tab === DICT['tab.learn'],
     `${label}: the guide is not set up before the Learn tab opens, no figure and no rAF; tab 4 "${DICT['tab.learn']}"`, JSON.stringify({ once, blank }));
@@ -2032,7 +2032,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const same = await page.evaluate(() => window.Mucellit.learn.probe.state().size.calc === window.Mucellit.calculator.state().result);
   const og = await learnTable(page, i18n), hs = await calculatorTable(page, i18n);
   const reconcile = { page: (h) => h.totalPages.slice(0, 1), signature: (h) => h.signatureCount, sheet: (h) => h.leaves, printing: (h) => h.printSheets, spine: (h) => h.spineThickness,
-    board: (h) => h.board, strip: (h) => h.spineStrip, jointGap: (h) => h.jointGap, covering: (h) => h.covering, endpapers: (h) => h.endpapers, mull: (h) => h.mull, headbands: (h) => h.headbands };
+    board: (h) => h.board, strip: (h) => h.spineStrip, joint_gap: (h) => h.jointGap, covering: (h) => h.covering, endpapers: (h) => h.endpapers, mull: (h) => h.mull, headbands: (h) => h.headbands };
   const difference = Object.entries(reconcile).filter(([k, f]) => JSON.stringify(og[k]) !== JSON.stringify(f(hs))).map(([k, f]) => `${k}: ${JSON.stringify(og[k])} ≠ ${JSON.stringify(f(hs))}`);
   const field = await page.evaluate(() => ['signatureCount', 'sheetsPerSignature', 'bookWidth', 'bookHeight', 'paperThickness'].map((a) => document.getElementById('guide-g-' + a).value));
   check('learn', open.installed && open.figure && open.visible && !open.manual && same && difference.length === 0 && Object.keys(og).length >= 12 && og.page[0] === 208 && og.signature[0] === 13 &&
@@ -2079,13 +2079,13 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   check('learn', step === 45 && lesson.length === 10 && rest.length === 0 && lastStep.a === 9 && lastStep.i === 4 && card === DICT['learn.finished_title'],
     `${label}: the 45 steps of the 10 stages played (4×), all started and finished; last card "${DICT['learn.finished_title']}"`, JSON.stringify({ step, rest, last: [lastStep.a, lastStep.i], card }));
   // ---- Sample Book (by hand) and a manual change not passing to the Calculator
-  const ond = i18n === 'tr' ? '0,1' : '0.1';
-  const accept = await page.evaluate((ond) => window.Mucellit.learn.probe.numbers({ signatureCount: '11', sheetsPerSignature: '4', bookWidth: '148', bookHeight: '210', paperThickness: ond }), ond);
-  const tbElle = tbFarki(await learnTable(page, i18n));
+  const tenth = i18n === 'tr' ? '0,1' : '0.1';
+  const accept = await page.evaluate((tenth) => window.Mucellit.learn.probe.numbers({ signatureCount: '11', sheetsPerSignature: '4', bookWidth: '148', bookHeight: '210', paperThickness: tenth }), tenth);
+  const tbManual = tableDifference(await learnTable(page, i18n));
   const manual = await learnState(page);
   const hValue = await page.evaluate(() => document.getElementById('h-pageCount').value);
-  check('learn', accept === true && tbElle.length === 0 && manual.manual && hValue === '200',
-    `${label}: Sample Book (11 signatures × 4, 148 × 210, 0.1 mm) exactly in the panel; a manual change does not change the Calculator`, JSON.stringify({ tbElle, manual: manual.manual, hValue }));
+  check('learn', accept === true && tbManual.length === 0 && manual.manual && hValue === '200',
+    `${label}: Sample Book (11 signatures × 4, 148 × 210, 0.1 mm) exactly in the panel; a manual change does not change the Calculator`, JSON.stringify({ tbManual, manual: manual.manual, hValue }));
   // ---- the Calculator changes: the guide keeps the manual values; "Use values from the Calculator tab" binds; while bound it follows the Calculator (base from the Calculator)
   await writeCalculator(page, 'h-pageCount', 300);
   await page.click('#tab-button-learn');
@@ -2094,7 +2094,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const taken = await learnState(page), takeTable = await learnTable(page, i18n);
   await writeCalculator(page, 'h-pageCount', 162);
   await page.click('#tab-button-learn');
-  const tracks = await learnState(page), tbCalculator = tbFarki(await learnTable(page, i18n));
+  const tracks = await learnState(page), tbCalculator = tableDifference(await learnTable(page, i18n));
   const same2 = await page.evaluate(() => window.Mucellit.learn.probe.state().size.calc === window.Mucellit.calculator.state().result);
   check('learn', manualStays.manual && manualStays.input.signatureCount === 11 && !taken.manual && taken.input.signatureCount === 19 && takeTable.page[0] === 304 &&
     !tracks.manual && tracks.input.signatureCount === 11 && tbCalculator.length === 0 && same2,
@@ -2104,7 +2104,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   await writeCalculator(page, 'h-bindingType', 'single1');
   await page.click('#tab-button-learn');
   const match = await page.evaluate(() => ({ note: !document.getElementById('guide-match').hidden, d: window.Mucellit.learn.probe.state().match }));
-  const matchTb = tbFarki(await learnTable(page, i18n));
+  const matchTb = tableDifference(await learnTable(page, i18n));
   await writeCalculator(page, 'h-bindingType', 'sewn');
   await writeCalculator(page, 'h-bookWidth', 'abc');
   await page.click('#tab-button-learn');
@@ -2118,10 +2118,10 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   await page.evaluate(() => window.Mucellit.learn.probe.setup(0, 0));
   await page.click('#guide-fromStart-toEnd');
   await page.waitForFunction(() => { const d = window.Mucellit.learn.probe.state(); return d.flow && d.playing && d.i >= 1; }, null, { timeout: 20000 });
-  const yb0 = await page.evaluate(() => { const d = window.Mucellit.learn.probe.state(); window.__kcSt = d.st; window.__kcStage = document.getElementById('guide-stage').firstElementChild; return { a: d.a, i: d.i }; });
+  const yb0 = await page.evaluate(() => { const d = window.Mucellit.learn.probe.state(); window.__mcSt = d.st; window.__mcStage = document.getElementById('guide-stage').firstElementChild; return { a: d.a, i: d.i }; });
   await page.click('#tab-button-learn');
   const yb1 = await page.evaluate(() => { const d = window.Mucellit.learn.probe.state();
-    return { sameSt: d.st === window.__kcSt, sameStage: document.getElementById('guide-stage').firstElementChild === window.__kcStage, playing: d.playing, flow: d.flow, a: d.a, i: d.i }; });
+    return { sameSt: d.st === window.__mcSt, sameStage: document.getElementById('guide-stage').firstElementChild === window.__mcStage, playing: d.playing, flow: d.flow, a: d.a, i: d.i }; });
   await page.waitForFunction(([a, i]) => { const d = window.Mucellit.learn.probe.state(); return d.a !== a || d.i !== i || !d.flow; }, [yb0.a, yb0.i], { timeout: 20000 });
   const yb2 = await learnState(page);
   await page.click('#guide-fromStart-toEnd');   // stop
@@ -2138,9 +2138,9 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const immediately = await learnState(page);
   const stage = await page.evaluate(() => document.getElementById('guide-stage').childElementCount);
   await page.waitForTimeout(300);
-  const ra = await page.evaluate(() => window.__kcRaf);
+  const ra = await page.evaluate(() => window.__mcRaf);
   await page.waitForTimeout(1200);
-  const rb = await page.evaluate(() => window.__kcRaf);
+  const rb = await page.evaluate(() => window.__mcRaf);
   const hiddenPosition = await learnState(page);
   await page.click('#tab-button-learn');
   const restored = await learnState(page);
@@ -2163,7 +2163,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   check('learn', last && last.finished && last.a === 9 && last.i === 4 && last.isOpen === 0 && JSON.stringify(order) === '[1,2,3,4,5,6,7,8,9,10]' && button === DICT['learn.from_start_to_end'],
     `${label}: play from start to end (4×) finished: stage order 1→10, 4/4 at the last stage, cover closed (${Math.round((Date.now() - t0) / 1000)} sn)`, JSON.stringify({ order, last: last && [last.finished, last.a, last.i, last.isOpen], button }));
   // ---- CSP violations 0 (Tauri CSP header), missing keys 0, no error in the app notice
-  const lastTrace = await page.evaluate(() => ({ csp: window.__kcCsp.slice(), missing: window.Mucellit.i18n.missingKeys().filter((a) => /^(learn|tab)\./.test(a)), notice: document.getElementById('notice').className }));  // turkish-ok: expected Turkish UI text
+  const lastTrace = await page.evaluate(() => ({ csp: window.__mcCsp.slice(), missing: window.Mucellit.i18n.missingKeys().filter((a) => /^(learn|tab)\./.test(a)), notice: document.getElementById('notice').className }));  // turkish-ok: expected Turkish UI text
   check('learn', lastTrace.csp.length === 0 && lastTrace.missing.length === 0 && !/hata/.test(lastTrace.notice),  // turkish-ok: expected Turkish UI text
     `${label}: during Learn CSP violations 0 (Tauri CSP header), missing learn.* keys 0, no error notice`, JSON.stringify(lastTrace));
   // ---- language change: after the reload the Learn tab is open, the guide in the new language, stage/step kept
@@ -2194,7 +2194,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
 async function m7ReduceLearn(browser, address, label, local) {
   const ctx = await browser.newContext({ locale: local, reducedMotion: 'reduce', viewport: { width: 1280, height: 860 } });
   const page = await ctx.newPage();
-  const iz = watch(page, label);
+  const trace = watch(page, label);
   try {
     await setupLearnCheck(page);
     await page.goto(address);
@@ -2210,15 +2210,15 @@ async function m7ReduceLearn(browser, address, label, local) {
         D.setup(a, j + 1); const target = clean(D.state().st);
         D.setup(a, j); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         const art = document.getElementById('art'); let drawing = 0; const mo = new MutationObserver(() => drawing++); mo.observe(art, { childList: true });
-        const t0 = performance.now(); const p = D.run(j); const ok = p && p.then ? await p : p; const sure = performance.now() - t0;
+        const t0 = performance.now(); const p = D.run(j); const ok = p && p.then ? await p : p; const took = performance.now() - t0;
         await new Promise((r) => setTimeout(r, 0)); mo.disconnect();
         const transition = getComputedStyle(document.getElementById('figF')).transitionDuration;
         const H = JSON.parse(target), G = JSON.parse(clean(D.state().st)), difference = Object.keys({ ...H, ...G }).filter((x) => JSON.stringify(H[x]) !== JSON.stringify(G[x]));
-        return { ok, sure: Math.round(sure), drawing, difference, transition };
+        return { ok, took: Math.round(took), drawing, difference, transition };
       }, [a, j]);
       step++;
       const problem = [];
-      if (r.ok !== true) problem.push('did not start'); if (r.sure > 150) problem.push(`duration ${r.sure} ms`); if (r.drawing > 1) problem.push(`${r.drawing} gap square`);
+      if (r.ok !== true) problem.push('did not start'); if (r.took > 150) problem.push(`duration ${r.took} ms`); if (r.drawing > 1) problem.push(`${r.drawing} gap square`);
       if (r.difference.length) problem.push('end state differs: ' + r.difference.join(',')); if (!/^0s(, 0s)*$/.test(r.transition)) problem.push('transition ' + r.transition);
       if (problem.length) fail.push(`${a + 1}.${j + 1}: ${problem.join(', ')}`);
     }
@@ -2226,7 +2226,7 @@ async function m7ReduceLearn(browser, address, label, local) {
   } catch (e) {
     check('learn', false, `${label}: the reduced motion run stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
   }
-  check('learn', iz.errors.length === 0, `${label}: no console error in the reduced motion run`, iz.errors.slice(0, 3).join(' | ') || '0 errors');
+  check('learn', trace.errors.length === 0, `${label}: no console error in the reduced motion run`, trace.errors.slice(0, 3).join(' | ') || '0 errors');
   await ctx.close();
 }
 
@@ -2251,9 +2251,9 @@ async function m7LearnSmoke(page, address, label, menu) {
   const product = await page.evaluate(() => Object.keys(window.Mucellit.learn).sort());
   check('learn', !product.includes('probe') && product.includes('tab'),
     `${label}: no test interface in the product code (Mucellit.learn.probe undefined; only tab/size/cf/…)`, JSON.stringify(product));
-  await page.evaluate(() => { window.__kcStage = document.getElementById('guide-stage').firstElementChild; });
+  await page.evaluate(() => { window.__mcStage = document.getElementById('guide-stage').firstElementChild; });
   await open();
-  const y = await page.evaluate(() => ({ same: document.getElementById('guide-stage').firstElementChild === window.__kcStage, finished: document.querySelectorAll('#guide-steps li.finished').length,
+  const y = await page.evaluate(() => ({ same: document.getElementById('guide-stage').firstElementChild === window.__mcStage, finished: document.querySelectorAll('#guide-steps li.finished').length,
     current: Array.from(document.querySelectorAll('#guide-steps li')).findIndex((l) => l.classList.contains('current')) }));
   check('learn', y.same && y.finished === 1 && y.current === 1,
     `${label}: with Learn open, ${menu ? 'menu event (⌘4)' : 'tab'} coming again does not set the guide up again (same figure, same step)`, JSON.stringify(y));
@@ -2279,68 +2279,68 @@ async function main() {
     const ctx = await browser.newContext({ acceptDownloads: true, locale: local });
     const p = await ctx.newPage();
     p.setDefaultTimeout(60000);
-    const iz = watch(p, label);
+    const trace = watch(p, label);
     try {
-      await body(p, address, iz);
+      await body(p, address, trace);
     } catch (e) {
       const first = String(e && e.message ? e.message : e).split('\n')[0];
-      check(criterionFlow, false, `${label} run stopped halfway: ${first}`, iz.errors.length ? 'console: ' + iz.errors.slice(0, 2).map((h) => h.slice(0, 200)).join(' | ') : undefined);
+      check(criterionFlow, false, `${label} run stopped halfway: ${first}`, trace.errors.length ? 'console: ' + trace.errors.slice(0, 2).map((h) => h.slice(0, 200)).join(' | ') : undefined);
     }
-    check(5, iz.errors.length === 0, `${label} run: no console error`, iz.errors.length ? `${iz.errors.length} errors, first: ` + iz.errors.slice(0, 3).map((h) => h.slice(0, 200)).join(' | ') : '0 errors');
-    agCheck(iz, localPrefix, label, 4);
+    check(5, trace.errors.length === 0, `${label} run: no console error`, trace.errors.length ? `${trace.errors.length} errors, first: ` + trace.errors.slice(0, 3).map((h) => h.slice(0, 200)).join(' | ') : '0 errors');
+    networkCheck(trace, localPrefix, label, 4);
     await ctx.close();
-    return iz;
+    return trace;
   }
   try {
     // ---- Run 1: local server (criteria 2, 3) ----
-    await run('server', '2/3', localRoot + 'index.html', localRoot, async (p, address, iz) => {
+    await run('server', '2/3', localRoot + 'index.html', localRoot, async (p, address, trace) => {
       await pdfFlow(p, address, 'server', 2, true);
       await projectsFlow(p);
       await setupHelpers(p);
       await ayFlowTwo(p, 'server');
       await ayBoxes(p, 'server');
       await ayBlankToStart(p, address, 'server');
-      await encryptedFlow(p, address, iz, 'server');
+      await encryptedFlow(p, address, trace, 'server');
       await uiChecks(p, address, 'server');
       await osStorageFlow(p, address, 'server');
       await epubFlow(p, address, 'server');
       await bdFlow(p, address, 'server');
-      await confirmFlow(p, address, iz, 'server');
+      await confirmFlow(p, address, trace, 'server');
       await releaseFlow(p, address, 'server');
-      await m1FixFlow(p, address, iz, 'server', true);
+      await m1FixFlow(p, address, trace, 'server', true);
       await m2EpubZipFlow(p, address, 'server');
       await m6TrCheck(p, address, 'server');
     });
     // ---- Run 1b: local server, with a fake __TAURI__ ----
-    await run('tauri-simulation', 'file', localRoot + 'index.html', localRoot, async (p, address, iz) => {
+    await run('tauri-simulation', 'file', localRoot + 'index.html', localRoot, async (p, address, trace) => {
       await m2TauriSimulation(p, address, 'tauri-simulation');
       await m6TauriI18n(p, address, 'tauri-simulation');
       await m3Printing(p, address, 'tauri-simulation');
-      await m3NoTauriI18n(p, address, iz, 'tauri-simulation');
+      await m3NoTauriI18n(p, address, trace, 'tauri-simulation');
       await m7LearnSmoke(p, address, 'tauri-simulation', true);
     });
     // ---- Run 1d: start-up error simulation, tr-TR ----
-    await run('startup-error', 'i18n', localRoot + 'index.html', localRoot, async (p, address, iz) => {
-      await m6StartupError(p, address, iz, 'startup-error');
+    await run('startup-error', 'i18n', localRoot + 'index.html', localRoot, async (p, address, trace) => {
+      await m6StartupError(p, address, trace, 'startup-error');
     });
     // ---- Run 1e: Learn guide, with the Tauri CSP header; tr-TR and en-US; reduced motion ----
-    await run('learn', 'learn', localRoot + 'index.html', localRoot, async (p, address, iz) => {
-      await m7LearnFlow(p, address, iz, 'learn', 'tr');
+    await run('learn', 'learn', localRoot + 'index.html', localRoot, async (p, address, trace) => {
+      await m7LearnFlow(p, address, trace, 'learn', 'tr');
     });
-    await run('learn en', 'learn', localRoot + 'index.html', localRoot, async (p, address, iz) => {
-      await m7LearnFlow(p, address, iz, 'learn en', 'en');
+    await run('learn en', 'learn', localRoot + 'index.html', localRoot, async (p, address, trace) => {
+      await m7LearnFlow(p, address, trace, 'learn en', 'en');
     }, 'en-US');
     await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced', 'tr-TR');
     await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced en', 'en-US');
     // ---- Run 1c: English interface, en-US browser ----
-    await run('en', 'i18n', localRoot + 'index.html', localRoot, async (p, address, iz) => {
-      await m6MostFlow(p, address, iz, 'en', true);
+    await run('en', 'i18n', localRoot + 'index.html', localRoot, async (p, address, trace) => {
+      await m6EnglishFlow(p, address, trace, 'en', true);
     }, 'en-US');
     // ---- Run 2: file:// (criterion 6) ----
-    const iz2 = await run('file://', 6, pathToFileURL(join(APP, 'index.html')).href, 'file://', async (p, address, iz) => {
+    const trace2 = await run('file://', 6, pathToFileURL(join(APP, 'index.html')).href, 'file://', async (p, address, trace) => {
       await pdfFlow(p, address, 'file://', 6, false);
-      await confirmFlow(p, address, iz, 'file://');
-      await m1FixFlow(p, address, iz, 'file://', false);
+      await confirmFlow(p, address, trace, 'file://');
+      await m1FixFlow(p, address, trace, 'file://', false);
       await epubFlow(p, address, 'file://');
       await bdFlow(p, address, 'file://');
       await epubPerformance(p, address, 'file://');
@@ -2349,10 +2349,10 @@ async function main() {
       await m7LearnSmoke(p, address, 'file://', false);
     });
     // ---- Run 2b: file://, English smoke ----
-    await run('en file://', 'i18n', pathToFileURL(join(APP, 'index.html')).href, 'file://', async (p, address, iz) => {
-      await m6MostFlow(p, address, iz, 'en file://', false);
+    await run('en file://', 'i18n', pathToFileURL(join(APP, 'index.html')).href, 'file://', async (p, address, trace) => {
+      await m6EnglishFlow(p, address, trace, 'en file://', false);
     }, 'en-US');
-    check(6, iz2.errors.length === 0, 'file:// run: no console error (criterion 6)');
+    check(6, trace2.errors.length === 0, 'file:// run: no console error (criterion 6)');
   } catch (e) {
     check('-', false, 'unexpected error', e && e.stack ? e.stack : String(e));
   } finally {

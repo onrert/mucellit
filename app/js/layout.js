@@ -125,7 +125,7 @@
     var blockWidth = BW * slotsPerSide;
     var doesNotFit = blockWidth > PW + 0.01 || BH > PH + 0.01;
     if (doesNotFit) {
-      warnings.push(t('layout.doesNotFit', { n: slotsPerSide, bw: BW, bh: BH, pw: PW, ph: PH }));
+      warnings.push(t('layout.does_not_fit', { n: slotsPerSide, bw: BW, bh: BH, pw: PW, ph: PH }));
     }
     if (BW - outer - binding <= 0 || BH - 2 * outer <= 0) {
       warnings.push(t('layout.no_content'));

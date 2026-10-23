@@ -78,7 +78,7 @@
           LB.push({ at: [G.XK0 - 8, (yb0 + yb1)/2, zt], text: t('learn.s.cover.w', { w: o.number(W) }), on: st.measureT >= 0 });
           LB.push({ at: [xm, yb0 - 8, zt], text: t('learn.s.cover.h', { h: o.number(H) }), on: st.measureT >= 0 }); }
         if (st.brd > .5){ LB.push({ at: [xb1, yb0 - k, zt + T], text: t('learn.s.cover.square', { k: o.number(k) }), on: st.brdT >= 0 });
-          LB.push({ at: [xb1 - 30, yb0 - k + Db, zt + T], text: t('learn.s.cover.jointGap', { f: o.number(FM) }), on: st.brdT >= 0 });
+          LB.push({ at: [xb1 - 30, yb0 - k + Db, zt + T], text: t('learn.s.cover.joint_gap', { f: o.number(FM) }), on: st.brdT >= 0 });
           LB.push({ at: [xb0 + 20, y2 + Db/2, BH + T], text: t('learn.s.cover.brd', { a: o.number(Db), b: o.number(Dh) }), on: st.brdT >= 0 }); }
         if (st.ser > .5) LB.push({ at: [xb1, ys0 + R/2, BH + T], text: t('learn.s.cover.strip', { a: o.number(R), b: o.number(Dh) }), on: st.serT >= 0 });
         if (st.container > .5) LB.push({ at: [xc1, yc0 + KG*.3, BH + 1], text: t('learn.s.cover.covering', { a: o.number(KG), b: o.number(KY) }), on: st.containerT >= 0 });

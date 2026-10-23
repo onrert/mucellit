@@ -84,17 +84,17 @@ test('after clear read() does not return the removed/old record (even when remov
   assert.equal(MC.storage.read().projects.length, 0, 'removeItem throws and still no old record comes back');
   // normal path
   const d2 = fakeStorage();
-  const KC2 = setup(d2);
-  KC2.storage.write(withBooksData(KC2, 'B'));
-  KC2.storage.clear();
-  assert.equal(KC2.storage.read().projects.length, 0);
+  const MC2 = setup(d2);
+  MC2.storage.write(withBooksData(MC2, 'B'));
+  MC2.storage.clear();
+  assert.equal(MC2.storage.read().projects.length, 0);
   // clear while the quota is full (memory is newest): the old persistent record does not come back
   const d3 = fakeStorage();
-  const KC3 = setup(d3);
-  KC3.storage.write(withBooksData(KC3, 'A'));
+  const MC3 = setup(d3);
+  MC3.storage.write(withBooksData(MC3, 'A'));
   d3.filled = true;
-  KC3.storage.write(withBooksData(KC3, 'B'));
+  MC3.storage.write(withBooksData(MC3, 'B'));
   d3.removeItem = () => { throw new Error('deleteFailed'); };
-  KC3.storage.clear();
-  assert.equal(KC3.storage.read().projects.length, 0);
+  MC3.storage.clear();
+  assert.equal(MC3.storage.read().projects.length, 0);
 });

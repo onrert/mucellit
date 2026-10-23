@@ -71,12 +71,12 @@
       var error = errorText(e);
       // Option E: could not open → Save + "print from Preview" note (the ones that opened stay open)
       return P.ask(t('preview.save_open_failed', { error: error })).then(function (save) {
-        if (!save || typeof P.saveAll !== 'function') return { text: t('preview.openFailed', { error: error }), kind: 'error' };
+        if (!save || typeof P.saveAll !== 'function') return { text: t('preview.open_failed', { error: error }), kind: 'error' };
         return P.saveAll(l, 'application/pdf').then(function (s) {
           var m = P.saveMessage(s);
           return { text: s.saved.length ? m.text + ' ' + t('preview.save_note') : m.text, kind: m.kind };
         });
-      }, function () { return { text: t('preview.openFailed', { error: error }), kind: 'error' }; });
+      }, function () { return { text: t('preview.open_failed', { error: error }), kind: 'error' }; });
     });
   }
 

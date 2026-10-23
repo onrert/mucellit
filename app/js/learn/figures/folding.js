@@ -139,7 +139,7 @@
           if (spine) items.push({ at: [fkXB, ...spine], text: phi > .3 ? t('learn.s.folding.spine') : t('learn.s.folding.fold_line'), on: st.creaseT >= 0 || st.lifT >= 0 });
           if (spine && phi < .3) items.push({ at: [fkXA + fkHH*.35, ...spine], text: `${PG} | 1`, on: true }); }
         if (sL){ const p = sL.pts[0]; items.push({ at: [fkXB, p[0], p[1]], text: phi > .6 ? t('learn.s.folding.inside', { n: NY }) : t('learn.s.folding.below', { n: NY }), on: false }); }
-        items.push({ at: [fo[0] + 140, fo[1] + 11, fo[2] + 4], text: t('learn.s.folding.boneFolder'), on: st.creaseT >= 0 });
+        items.push({ at: [fo[0] + 140, fo[1] + 11, fo[2] + 4], text: t('learn.s.folding.bone_folder'), on: st.creaseT >= 0 });
         if (plank) items.push({ at: [fkXB + 6, (plank.box[0][1] + plank.box[1][1])/2, plank.box[0][2] + 5], text: t('learn.s.folding.weight'), on: st.weightT >= 0 });
       }
       s += xrCallouts(items, [0, fkBW, 0, fkBD, 0, fkH]);

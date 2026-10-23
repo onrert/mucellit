@@ -87,7 +87,7 @@
         LB.push({ at: [(ST[1] + ST[2])/2, ...tr([y1, zb + S/2])], text: t('learn.s.endpapers.sewing'), on: false });
       } else {
         LB.push({ at: [G.XK0 + 30, ...tr([y1, zb + S/2])], text: t('learn.s.endpapers.spine'), on: false });
-        if (st.fold < 1) LB.push({ at: [G.XK1 - 20, ya + W*.5, BH + 1.2], text: t('learn.s.endpapers.isOpen', { a: o.number(2*W), b: o.number(O.H) }), on: st.foldT >= 0 });
+        if (st.fold < 1) LB.push({ at: [G.XK1 - 20, ya + W*.5, BH + 1.2], text: t('learn.s.endpapers.is_open', { a: o.number(2*W), b: o.number(O.H) }), on: st.foldT >= 0 });
         else if (st.top < 1) LB.push({ at: [G.XK1 - 20, ya + W*.4, BH + 4*TF], text: t('learn.s.endpapers.folded'), on: st.foldT >= 0 });
         if (st.strip > 0 && st.top < .5) LB.push({ at: [G.XK0 + 60, y1 - 2, zb + S], text: t('learn.s.endpapers.strip'), on: st.stripT >= 0 });
         if (st.strip2 > 0 && st.strip2 < 1) LB.push({ at: [G.XK0 + 60, y0 + 2, zU], text: t('learn.s.endpapers.strip'), on: true });

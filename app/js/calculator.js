@@ -63,10 +63,10 @@
       [t('calculator.result.leaves'), String(r.leaves), 'leaves', ''],
       [t('calculator.result.signature_count'), r.input.bindingType === 'sewn' ? String(r.signatureCount) : '—', 'signatureCount', ''],
       [t('calculator.result.spine'), mm(r.spineThickness), 'spineThickness', t('calculator.formula.spine_thickness')],
-      [t('calculator.result.jointGap'), mm(r.jointGap), 'jointGap', t(r.input.jointGap === 'auto' ? 'calculator.formula.joint_gap_auto' : 'calculator.formula.joint_gap_manual')],
+      [t('calculator.result.joint_gap'), mm(r.jointGap), 'jointGap', t(r.input.jointGap === 'auto' ? 'calculator.formula.joint_gap_auto' : 'calculator.formula.joint_gap_manual')],
       [t('calculator.result.board'), size(r.board), 'board', 'Db = W − f + k = ' + D.number(r.input.bookWidth) + ' − ' + D.number(f) + ' + ' + D.number(k) + ';  Dh = H + 2k'],
       [t('calculator.result.spine_strip'), size(r.spineStrip), 'spineStrip', sf],
-      [t('calculator.result.covering'), size(r.covering), 'covering', t('calculator.formula.covering', { fek: onlyS ? "' (f' = f + t = " + mm(r.coveringJointGap) + ')' : '', e: D.number(e), t: D.number(tk) })],
+      [t('calculator.result.covering'), size(r.covering), 'covering', t('calculator.formula.covering', { jointExtra: onlyS ? "' (f' = f + t = " + mm(r.coveringJointGap) + ')' : '', e: D.number(e), t: D.number(tk) })],
       [t('calculator.result.endpapers'), size(r.endpapers), 'endpapers', '2W × H'],
       [t('calculator.result.mull'), size(r.mull), 'mull', '(S + 50) × (H − 12)'],
       [t('calculator.result.headbands'), mm(r.headbands.length), 'headbands', t('calculator.formula.headbands')],
@@ -76,7 +76,7 @@
       table.appendChild(el('tr', {}, [el('th', { text: s[0] }), el('td', { class: 'value', 'data-result': s[2], text: s[1] }),
         el('td', { class: 'small formula', text: s[3] })]));
     });
-    if (r.jointGapUnsourced) warning.appendChild(el('div', { class: 'warning', 'data-warning': 'jointGap', text: t('calculator.warning.jointGap') }));
+    if (r.jointGapUnsourced) warning.appendChild(el('div', { class: 'warning', 'data-warning': 'jointGap', text: t('calculator.warning.joint_gap') }));
     if (r.curveLengthWarning) warning.appendChild(el('div', { class: 'warning', 'data-warning': 'curve', text: t('calculator.warning.curve') }));
   }
 

@@ -110,7 +110,7 @@
         var m = errorText(e);
         var detail = m.replace(/^[A-Z]+:\s*/, '');
         var p = { name: k.name, detail: detail };
-        if (/^NOTFOUND:/.test(m)) throw new Error(t('recent.notFound', p));
+        if (/^NOTFOUND:/.test(m)) throw new Error(t('recent.not_found', p));
         if (/^INVALID:/.test(m)) throw new Error(t('recent.invalid', p));
         if (/^ACCESS:/.test(m)) throw new Error(t('recent.access', p));
         if (/^NODISK:/.test(m)) throw new Error(t('recent.no_disk', p));
@@ -171,8 +171,8 @@
       var paths = s.saved.map(function (k) { return k.path; }).join(', ');
       part.push(number !== null ? t('save.saved_side', { paths: paths, n: number }) : t('save.saved', { paths: paths }));
     }
-    if (s.cancelled.length) part.push(t('save.notSaved', { names: s.cancelled.join(', ') }));
-    s.failed.forEach(function (h) { part.push(t('save.saveFailed', { name: h.name, error: h.message })); });
+    if (s.cancelled.length) part.push(t('save.not_saved', { names: s.cancelled.join(', ') }));
+    s.failed.forEach(function (h) { part.push(t('save.save_failed', { name: h.name, error: h.message })); });
     return { text: part.join(' '), kind: (s.cancelled.length || s.failed.length) ? 'error' : undefined };
   };
 
@@ -235,7 +235,7 @@
     'json-export': function () { click('json-export', 'projects'); },
     'json-import': function () { click('json-import-button', 'projects'); }
   };
-  var RECENT_PREFIX = 'last:';
+  var RECENT_PREFIX = 'recent:';
   var LANGUAGE_PREFIX = 'i18n:';
 
   /** Native menu item (src-tauri/src/menu.rs) → interface action. */
@@ -262,7 +262,7 @@
     T.event.listen('menu', function (on_event) { P.onMenu(on_event && on_event.payload); });
     T.event.listen('file-opened', function () { if (P.isReady) P.openPending(); });
     // The delayed write in Rust failed (src-tauri/src/backup.rs ERROR_EVENT).
-    T.event.listen('backup-writeFailed', function (on_event) { notify(t('backup.writeFailed', { error: String(on_event && on_event.payload) }), 'error'); });
+    T.event.listen('backup-write-failed', function (on_event) { notify(t('backup.write_failed', { error: String(on_event && on_event.payload) }), 'error'); });
   }
 
   // ---------------------------------------------------------------- automatic backup of the project data
@@ -273,7 +273,7 @@
     try { j = JSON.stringify(data); } catch (e) { return Promise.resolve(); }
     backupSeq += 1;
     return invoke('backup_data', { json: j, session: BACKUP_SESSION, order: backupSeq })
-      .catch(function (e) { notify(t('backup.writeFailed', { error: errorText(e) }), 'error'); });
+      .catch(function (e) { notify(t('backup.write_failed', { error: errorText(e) }), 'error'); });
   }
 
   /**

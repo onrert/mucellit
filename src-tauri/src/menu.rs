@@ -34,12 +34,12 @@ pub const FILE_ITEMS: [(&str, &str, Option<&str>); 6] = [
     ("json-import", "menu.json_import", None),
 ];
 
-/// The id prefix of a recent file item: "last:<uuid>".
-pub const RECENT_PREFIX: &str = "last:";
+/// The id prefix of a recent file item: "recent:<uuid>".
+pub const RECENT_PREFIX: &str = "recent:";
 /// The id prefix of a language item: "i18n:system" | "i18n:<code>" (JS `Mucellit.app.changeLanguage`).
 pub const LANGUAGE_PREFIX: &str = "i18n:";
 /// An item handled in Rust.
-pub const CLEAR_LAST: &str = "last-clear";
+pub const CLEAR_RECENT: &str = "recent-clear";
 
 /// Is it a menu item to pass to the webview?
 pub fn is_forwarded(id: &str) -> bool {
@@ -93,9 +93,9 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .build(app)?,
             );
         }
-        last = last
-            .separator()
-            .item(&MenuItemBuilder::with_id(CLEAR_LAST, text("menu.clear_last", &[])).build(app)?);
+        last = last.separator().item(
+            &MenuItemBuilder::with_id(CLEAR_RECENT, text("menu.clear_last", &[])).build(app)?,
+        );
     }
     let last = last.build()?;
 
@@ -191,7 +191,7 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
 
 pub fn on_event<R: Runtime>(app: &AppHandle<R>, on_event: MenuEvent) {
     let id = on_event.id().as_ref();
-    if id == CLEAR_LAST {
+    if id == CLEAR_RECENT {
         crate::files::clear_recent_files(app);
     } else if is_forwarded(id) {
         if id.starts_with(LANGUAGE_PREFIX) {
@@ -237,18 +237,18 @@ mod tests {
             "file-preview",
             "json-export",
             "json-import",
-            "last:7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f",
+            "recent:7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f",
         ] {
             assert!(is_forwarded(k), "{k}");
         }
         for k in [
-            "last:",
+            "recent:",
             "son:../../etc/passwd",
             "son:/etc/hosts",
-            "last:7F0C3A7E-1D2B-4C5D-8E9F-0A1B2C3D4E5F",
-            "last:7f0c3a7e1d2b4c5d8e9f0a1b2c3d4e5f",
+            "recent:7F0C3A7E-1D2B-4C5D-8E9F-0A1B2C3D4E5F",
+            "recent:7f0c3a7e1d2b4c5d8e9f0a1b2c3d4e5f",
             "son:7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f ",
-            "last-clear",
+            "recent-clear",
             "recent-empty",
             "file-open ",
         ] {
@@ -347,7 +347,7 @@ mod tests {
         }
         assert!(
             js.contains(&format!("'{RECENT_PREFIX}'")),
-            "platform-tauri.js last: prefix"
+            "platform-tauri.js recent: prefix"
         );
         let mut all: Vec<&str> = TABS.iter().map(|(_, _, k)| *k).collect();
         all.extend(FILE_ITEMS.iter().filter_map(|(_, _, k)| *k));

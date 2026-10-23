@@ -521,7 +521,7 @@ pub async fn save_file<R: Runtime>(
         return Ok(None);
     };
     let path = choice.into_path().map_err(|e| e.to_string())?;
-    fs::write(&path, bytes).map_err(|e| text("rust.writeFailed", &[("error", &e.to_string())]))?;
+    fs::write(&path, bytes).map_err(|e| text("rust.write_failed", &[("error", &e.to_string())]))?;
     if let (Some(d), Some(k)) = (folder_file, path.parent()) {
         let mut line = k.as_os_str().to_owned();
         line.push("\n");

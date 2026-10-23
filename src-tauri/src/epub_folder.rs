@@ -451,7 +451,7 @@ mod tests {
         permission(&large, 0o000);
         let head = std::time::Instant::now();
         let result = build_zip(&k);
-        let sure = head.elapsed();
+        let took = head.elapsed();
         permission(&large, 0o644);
         fs::remove_dir_all(&temp).unwrap();
         let error = result
@@ -461,7 +461,7 @@ mod tests {
             error.starts_with(&prefix_of("rust.package_large")),
             "size error without reading: {error}"
         );
-        assert!(sure.as_secs() < 5, "{sure:?}");
+        assert!(took.as_secs() < 5, "{took:?}");
     }
 
     /// O1: the file count limit applies WHILE SCANNING (before the whole tree is collected). An unreadable folder that

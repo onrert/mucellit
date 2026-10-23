@@ -28,7 +28,7 @@
   };
   // Warning texts in the language current when they are read.
   function ENCRYPTED_WARNING() { return t('impose.warning.encrypted'); }
-  function PASSWORD_WARNING() { return t('impose.warning.passwordProtected'); }
+  function PASSWORD_WARNING() { return t('impose.warning.password_protected'); }
   // depends on the environment (browser: "reload the page"; Mac app: tauri.warning_check)
   function UNCHECKED_WARNING() { return (MC.platform && MC.platform.text && MC.platform.text.checkWarning) || t('impose.warning.check'); }
   var counter = 0;
@@ -115,7 +115,7 @@
     D.encrypted = false; D.uncheckable = false; D.passwordProtected = true; D.pluginSizes = null;
     D.thumbs = {}; D.selected = {}; D.pages = [];
     $('source-info').removeAttribute('data-i18n');
-    $('source-info').textContent = t('impose.source.passwordProtected', { name: name });
+    $('source-info').textContent = t('impose.source.password_protected', { name: name });
     drawCards();
     update();
     O.notify(name + ': ' + PASSWORD_WARNING(), 'error');
@@ -133,7 +133,7 @@
     D.thumbs = {}; D.selected = {}; D.pages = [];
     MC.plugins.resetAll();
     $('source-info').removeAttribute('data-i18n');
-    $('source-info').textContent = t('impose.source.openFailed', { name: name });
+    $('source-info').textContent = t('impose.source.open_failed', { name: name });
     D.blocked = true;
     setOutputButtons(true);
     drawCards();
@@ -678,7 +678,7 @@
       }
       result.files.forEach(function (d, i) {
         setTimeout(function () {
-          O.download(d.name, d.bytes, 'application/pdf').catch(function (err) { O.notify(t('save.saveFailed', { name: d.name, error: err.message }), 'error'); });
+          O.download(d.name, d.bytes, 'application/pdf').catch(function (err) { O.notify(t('save.save_failed', { name: d.name, error: err.message }), 'error'); });
         }, i * 600);
       });
       await showOutputPreview(result.files[0].bytes);
