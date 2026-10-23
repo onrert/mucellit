@@ -164,14 +164,19 @@ test('storage(): every legacy key moves to its new key once, converted; legacy k
 
 test('storage() faulty cases: current key wins (legacy kept), failed write keeps the legacy key, broken JSON is copied raw', () => {
   const both = fakeStorage({ [OLD.projects]: legacyLocal, 'mucellit.projects': '{"version":2,"projects":[]}' });
-  assert.deepEqual(Migrate.storage(both, null), { projects: 'kept' });
+  const infos = [];
+  const realInfo = console.info;
+  console.info = (...a) => infos.push(a.join(' '));
+  try { assert.deepEqual(Migrate.storage(both, null), { projects: 'kept' }); } finally { console.info = realInfo; }
+  assert.equal(infos.length, 1, 'one info line for the kept legacy key');
   assert.equal(both.getItem('mucellit.projects'), '{"version":2,"projects":[]}', 'current data not overwritten');
   assert.equal(both.getItem(OLD.projects), legacyLocal, 'legacy data not deleted');
-  const backupKey = Migrate.LEGACY_BACKUP_PREFIX + OLD.projects;
-  assert.equal(both.getItem(backupKey), legacyLocal, 'the legacy data is also copied under the legacy backup key');
+  assert.equal(both.m.size, 2, 'no extra (backup) key is written');
   both.setItem(OLD.projects, '{"changed":1}');
-  assert.deepEqual(Migrate.storage(both, null), { projects: 'kept' });
-  assert.equal(both.getItem(backupKey), legacyLocal, 'the backup is written once (not overwritten on a later run)');
+  console.info = (...a) => infos.push(a.join(' '));
+  try { assert.deepEqual(Migrate.storage(both, null), { projects: 'kept' }); } finally { console.info = realInfo; }
+  assert.equal(infos.length, 1, 'the info line is written once, not on every run');
+  assert.equal(both.getItem(OLD.projects), '{"changed":1}', 'the legacy key is left untouched on later runs');
   assert.equal(both.getItem('mucellit.projects'), '{"version":2,"projects":[]}', 'current data still not overwritten');
   const full = fakeStorage({ [OLD.projects]: legacyLocal }, { failOn: 'mucellit.projects' });
   assert.deepEqual(Migrate.storage(full, null), {});

@@ -33,7 +33,7 @@
 
   function fontError(e) { var h = new Error(t('pdfwriter.embed_failed')); h.font = true; h.cause = e; return h; }
   /** An unexpected error is turned into a clear text (coded errors stay as they are). */
-  function turkishError(e) { if (e && e.code) return e; var h = new Error(t('pdfwriter.write_failed')); h.cause = e; return h; }
+  function localizedError(e) { if (e && e.code) return e; var h = new Error(t('pdfwriter.write_failed')); h.cause = e; return h; }
 
   async function write(pages, info, sources, subset) {
     var PDFLib = sources.PDFLib;
@@ -97,12 +97,12 @@
     try {
       return await write(pages, info, sources, true);
     } catch (e) {
-      if (!e || !e.font) throw turkishError(e);
+      if (!e || !e.font) throw localizedError(e);
       // fallback path for pdf-lib subset errors (e.g. #1396), only on a font error: embedding without subsetting
       if (sources.warnings) sources.warnings.push(t('pdfwriter.subset_warning'));
       try {
         return await write(pages, info, sources, false);
-      } catch (e2) { throw turkishError(e2 && e2.font ? e2.cause : e2); }
+      } catch (e2) { throw localizedError(e2 && e2.font ? e2.cause : e2); }
     }
   }
 

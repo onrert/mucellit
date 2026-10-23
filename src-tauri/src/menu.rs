@@ -72,20 +72,20 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .quit_with_text(text("menu.quit", &[("name", &name)]))
         .build()?;
 
-    let mut last = SubmenuBuilder::new(app, text("menu.recent_files", &[]));
+    let mut recent = SubmenuBuilder::new(app, text("menu.recent_files", &[]));
     let summaries = app
         .try_state::<FileState>()
         .map(|d| d.recent_summaries(app))
         .unwrap_or_default();
     if summaries.is_empty() {
-        last = last.item(
+        recent = recent.item(
             &MenuItemBuilder::with_id("recent-empty", text("menu.recent_empty", &[]))
                 .enabled(false)
                 .build(app)?,
         );
     } else {
         for o in &summaries {
-            last = last.item(
+            recent = recent.item(
                 &MenuItemBuilder::with_id(
                     format!("{RECENT_PREFIX}{}", o.id),
                     escape_label(&o.name),
@@ -93,11 +93,11 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .build(app)?,
             );
         }
-        last = last.separator().item(
-            &MenuItemBuilder::with_id(CLEAR_RECENT, text("menu.clear_last", &[])).build(app)?,
+        recent = recent.separator().item(
+            &MenuItemBuilder::with_id(CLEAR_RECENT, text("menu.clear_recent", &[])).build(app)?,
         );
     }
-    let last = last.build()?;
+    let recent = recent.build()?;
 
     let [open, save, print, preview, json_export, json_import] =
         FILE_ITEMS.map(|(id, key, shortcut)| {
@@ -109,7 +109,7 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         });
     let file = SubmenuBuilder::new(app, text("menu.file", &[]))
         .item(&open?)
-        .item(&last)
+        .item(&recent)
         .separator()
         .item(&save?)
         .separator()

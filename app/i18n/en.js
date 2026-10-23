@@ -506,7 +506,7 @@
   "menu.open": "Open…",
   "menu.recent_files": "Open Recent",
   "menu.recent_empty": "No Recent Items",
-  "menu.clear_last": "Clear Menu",
+  "menu.clear_recent": "Clear Menu",
   "menu.save": "Save Imposed PDF…",
   "menu.json_export": "Export JSON Backup…",
   "menu.json_import": "Import JSON Backup…",

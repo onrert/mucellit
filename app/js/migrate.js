@@ -78,7 +78,6 @@
   };
   var NEW_SESSION_KEYS = { learnPosition: 'mucellit.learn.position' };
   /** When the new key already exists, the legacy value is also copied once under this prefix + the legacy key. */
-  var LEGACY_BACKUP_PREFIX = 'mucellit.legacy-backup.';
 
   function isObject(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
   function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
@@ -166,16 +165,17 @@
 
   /**
    * Moves one legacy key. Returns 'moved', 'kept' (new key already there) or null (nothing to do / not possible).
-   * 'kept': the current data wins and is not overwritten; the legacy key is left as it is and its value is also copied
-   * once to LEGACY_BACKUP_PREFIX + legacy key, so nothing is lost even if the legacy key is removed later.
+   * 'kept': the current data wins and is not overwritten; the legacy key is left untouched (it is never removed in this
+   * case, so nothing is lost) and one line is written to the console per key.
    */
+  var informed = {};
   function moveKey(s, oldKey, newKey, convert) {
     var raw = get(s, oldKey);
     if (raw === null) return null;
     if (get(s, newKey) !== null) {
-      var backupKey = LEGACY_BACKUP_PREFIX + oldKey;
-      if (get(s, backupKey) === null) {
-        try { s.setItem(backupKey, raw); } catch (e) { /* storage full: the legacy key still holds the value */ }
+      if (!informed[oldKey]) {
+        informed[oldKey] = true;
+        try { console.info('Mucellit: the current data under "' + newKey + '" was kept; the legacy key "' + oldKey + '" was left as it is.'); } catch (e) { /* no console */ }
       }
       return 'kept';
     }
@@ -212,7 +212,6 @@
     LEGACY_SESSION_KEYS: LEGACY_SESSION_KEYS,
     NEW_KEYS: NEW_KEYS,
     NEW_SESSION_KEYS: NEW_SESSION_KEYS,
-    LEGACY_BACKUP_PREFIX: LEGACY_BACKUP_PREFIX,
     isLegacyProjects: isLegacyProjects,
     projects: projects,
     imposeSettings: imposeSettings,

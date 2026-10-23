@@ -114,3 +114,55 @@ test('Turkish scan has no false alarm on English text, the product name and the 
   assert.deepEqual(S.words('kitapGen ÜstBaşlık HTMLParser'), ['kitap', 'gen', 'ust', 'baslik', 'html', 'parser']);
   // turkish-data: end
 });
+
+test('Turkish scan: URLs, hash and base64 parts and English names are no false alarm, real Turkish sentences are still found', () => {
+  // the three false alarms of the second review, and the same shapes
+  for (const ok of [
+    'The Elle magazine printed it.',
+    'Elma Street is closed.',
+    '<script integrity="sha384-abcUygXyz" src="x.js"></script>',
+    'const h = "sha256-Uyg3Zmn9Elma1Elle2Bir3Ve4Ile5==";',
+    "const b64 = 'Uyg3ZmnElma1Elle2BirVe4IleOrnek5Kes6'; // base64 data",
+    'See https://example.com/elma/elle/uyg/kes?x=1 for details.',
+    'const hex = "0123456789abcdef0123456789abcdef"; // 32 hex digits'
+  ]) assert.deepEqual(reasons('app/js/a.js', ok), [], ok);
+  // turkish-data: begin (faulty test inputs: Turkish sentences and identifiers next to the shapes above)
+  for (const bad of [
+    'Bir kitap acin ve sayfalari secin.',
+    'Elma kagidi kesilir.',
+    '// elle yapistir',
+    'const tbElle = 1;',
+    'var elma = 1;',
+    'const kitapSayfaDuzenleyiciAyari = 1;',
+    '<script integrity="sha384-abcUygXyz" src="kitap.js"></script>',
+    'See https://example.com/x for the dosya listesi.'
+  ]) assert.ok(S.scanText('app/js/a.js', bad).length > 0, bad);
+  // turkish-data: end
+});
+
+// turkish-data: begin (faulty test inputs: Turkish comments next to the data of a block)
+test('Turkish scan faulty input: inside a block a comment at the end of a data line, the body of a multi-line comment and # comments of .sh files are scanned', () => {
+  const L = 'legacy' + '-names';
+  // a comment after a data line
+  assert.ok(reasons('src-tauri/src/a.rs', `// ${L}: begin\n    #[serde(alias = "kimlik")] // türkçe yorum\n// ${L}: end`).some((r) => /^2:/.test(r)), 'a trailing // comment (Rust)');
+  assert.ok(reasons('app/js/a.js', `// ${L}: begin\nvar k = 'kitapCilt.v1'; // eski anahtar\n// ${L}: end`).some((r) => /^2:/.test(r)), 'a trailing // comment (JS)');
+  assert.ok(reasons('app/js/a.js', `// ${L}: begin\nvar k = 'kitapCilt.v1'; /* eski anahtar */\n// ${L}: end`).some((r) => /^2:/.test(r)), 'a trailing /* */ comment');
+  assert.ok(reasons('tools/a.py', `# ${L}: begin\nk = 'kitapCilt.v1'  # eski anahtar\n# ${L}: end`).some((r) => /^2:/.test(r)), 'a trailing # comment (Python)');
+  assert.ok(reasons('README.md', `<!-- ${L}: begin -->\ndata <!-- eski anahtar -->\n<!-- ${L}: end -->`).some((r) => /^2:/.test(r)), 'a trailing HTML comment');
+  assert.deepEqual(reasons('src-tauri/src/a.rs', `// ${L}: begin\n    #[serde(alias = "kimlik")] // old key\n// ${L}: end`), [], 'an English trailing comment passes');
+  assert.deepEqual(reasons('app/js/a.js', `// ${L}: begin\nvar u = 'http://x.test/kimlik'; var k = 'kitapCilt.v1';\n// ${L}: end`), [], '// inside a string is no comment');
+  assert.deepEqual(reasons('src-tauri/src/a.rs', `// ${L}: begin\n    fn f<'a>(x: &'a str) -> &'a str { x } // old key\n// ${L}: end`), [], 'Rust lifetimes do not hide or break the scan');
+  assert.ok(reasons('src-tauri/src/a.rs', `// ${L}: begin\n    fn f<'a>(x: &'a str) { } // eski anahtar\n// ${L}: end`).some((r) => /^2:/.test(r)), 'a trailing comment after a Rust lifetime');
+  // the body of a multi-line comment without a leading *
+  assert.ok(reasons('app/js/a.js', `// ${L}: begin\n/*\n eski kayıt adları\n*/\nvar k = 1;\n// ${L}: end`).some((r) => /^3:/.test(r)), 'a multi-line comment body without *');
+  assert.ok(reasons('app/js/a.js', `// ${L}: begin\nvar k = 1; /* eski\n kayit adlari\n*/ var j = 2;\n// ${L}: end`).some((r) => /^3:/.test(r)), 'a multi-line comment started on a data line');
+  assert.deepEqual(reasons('app/js/a.js', `// ${L}: begin\n/*\n old key names\n*/\nvar k = 'şeker';\n// ${L}: end`), [], 'an English multi-line comment passes and the data after it stays exempt');
+  assert.ok(reasons('README.md', `<!-- ${L}: begin -->\n<!--\neski kayıt adları\n-->\n<!-- ${L}: end -->`).some((r) => /^3:/.test(r)), 'a multi-line HTML comment body');
+  // # comments of shell scripts
+  assert.ok(reasons('tools/build.sh', '# eski anahtar\necho hi').some((r) => /^1:/.test(r)), 'a # comment in a .sh file');
+  assert.ok(reasons('tools/build.sh', `# ${L}: begin\n# eski kayıt adları\necho kitapCilt\n# ${L}: end`).some((r) => /^2:/.test(r)), 'a # comment inside a block of a .sh file');
+  assert.ok(reasons('tools/build.sh', `# ${L}: begin\necho kitapCilt # eski anahtar\n# ${L}: end`).some((r) => /^2:/.test(r)), 'a trailing # comment in a .sh file');
+  assert.deepEqual(reasons('tools/build.sh', `# ${L}: begin\necho kitapCilt\n# ${L}: end`), [], 'data of a .sh block stays exempt');
+  assert.deepEqual(reasons('tools/build.sh', '#!/bin/sh\n# build the app\necho hi'), [], 'an English .sh file passes');
+});
+// turkish-data: end

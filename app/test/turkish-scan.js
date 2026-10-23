@@ -38,11 +38,59 @@ const WHOLE_FILE = new Set(['README.tr.md']);
 const FIXTURES = /^app\/test\/fixtures\//;
 const DICT_VALUES = new Set(['app/i18n/tr.js']);
 const BLOCKS = ['turkish-data', 'legacy-names'];
+const HASH_LANG = /\.(py|ya?ml|toml|sh|bash|zsh)$|(^|\/)\.git(ignore|attributes)$/;
+const HTML_LANG = /\.(html|xml|plist|xhtml|opf|md)$/;
 /** Is this line a comment line in the language of the file? (used inside allowlist blocks) */
 function isCommentLine(file, raw) {
-  if (/\.(py|ya?ml|toml)$|(^|\/)\.git(ignore|attributes)$/.test(file)) return /^\s*#/.test(raw);
-  if (/\.(html|xml|plist|xhtml|opf|md)$/.test(file)) return /^\s*<!--/.test(raw);
+  if (HASH_LANG.test(file)) return /^\s*#/.test(raw);
+  if (HTML_LANG.test(file)) return /^\s*<!--/.test(raw);
   return /^\s*(\/\/|\/\*|\*)/.test(raw);
+}
+/**
+ * The comment text of a line inside an allowlist block ('' when the line is data only): a whole comment line, the comment
+ * at the end of a data line (`data // comment`, `data # comment`, `data /* comment *\/`, `data <!-- comment -->`) and
+ * the body of a multi-line comment, also when its lines do not start with `*`. st = { open } keeps the multi-line state.
+ */
+function commentPart(file, raw, st) {
+  if (isCommentLine(file, raw) && !st.open) {
+    const c = HASH_LANG.test(file) ? null : HTML_LANG.test(file) ? ['<!--', '-->'] : ['/*', '*/'];
+    if (c && raw.includes(c[0]) && !raw.includes(c[1], raw.indexOf(c[0]) + c[0].length)) st.open = true;
+    return raw;
+  }
+  const hash = HASH_LANG.test(file), html = HTML_LANG.test(file), rust = /\.rs$/.test(file);
+  const [open, close] = html ? ['<!--', '-->'] : ['/*', '*/'];
+  let i = 0, out = '', q = null;
+  if (st.open) {
+    const j = raw.indexOf(close);
+    if (j < 0) return raw;
+    if (isCommentLine(file, raw)) { st.open = false; return raw; }
+    out += raw.slice(0, j) + ' ';
+    st.open = false;
+    i = j + close.length;
+  }
+  for (; i < raw.length; i++) {
+    const c = raw[i];
+    if (html) {
+      if (raw.startsWith(open, i)) {
+        const j = raw.indexOf(close, i + open.length);
+        if (j < 0) { st.open = true; return out + raw.slice(i); }
+        out += raw.slice(i, j) + ' ';
+        i = j + close.length - 1;
+      }
+      continue;
+    }
+    if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+    if (c === '"' || c === '`' || (c === "'" && (!rust || /^'(?:\\.|[^'\\])'/.test(raw.slice(i, i + 4))))) { q = c; continue; }
+    if (hash) { if (c === '#') return out + raw.slice(i); continue; }
+    if (raw.startsWith('//', i)) return out + raw.slice(i);
+    if (raw.startsWith('/*', i)) {
+      const j = raw.indexOf('*/', i + 2);
+      if (j < 0) { st.open = true; return out + raw.slice(i); }
+      out += raw.slice(i, j) + ' ';
+      i = j + 1;
+    }
+  }
+  return out;
 }
 const OK_MARK = 'turkish' + '-ok'; // built so that this line is not a marker itself
 const OK_ANY = new RegExp(OK_MARK + '\\b');
@@ -169,24 +217,52 @@ const UPPER_RUN = new RegExp('([' + UPPER + ']+)([' + UPPER + '][' + LOWER + '])
 // English contractions (we've, don't …) are dropped before the split, so that their endings are not read as words
 const CONTRACTION = new RegExp("([A-Za-z])['\u2019](?:v" + "e|s|t|re|ll|d|m)\\b", 'g');
 
-/** The words of a text: identifiers are split at case changes, digits and separators; English contractions dropped. */
-function words(text) {
+/** Hash and base64 parts (an `sha384-...` integrity value, a long token with digits) and URLs: not words. */
+const NOT_TEXT = [
+  /\bhttps?:\/\/\S+/g,
+  /\b(?:sha(?:1|224|256|384|512)|md5)[-:=]\S*/gi,
+  /\b(?=[A-Za-z0-9+/]{20,}(?![A-Za-z0-9+/_-]))(?=(?:[^0-9]*[0-9]){2})[A-Za-z0-9+/]+/g,
+  /\b[0-9a-fA-F]{16,}\b/g
+];
+
+/**
+ * The pieces of a text: identifiers are split at case changes, digits and separators; English contractions, URLs and
+ * hash/base64 parts dropped. Each piece: { w: folded word, parts: pieces of its token, title: the token is one
+ * Capitalised word (a name or the start of a sentence) }.
+ */
+function pieces(text) {
   const out = [];
-  const clean = text.replace(CONTRACTION, '$1');
+  let clean = text.replace(CONTRACTION, '$1');
+  for (const re of NOT_TEXT) clean = clean.replace(re, ' ');
   for (const w of clean.match(WORD_RE) || []) {
-    w.replace(LOWER_UPPER, '$1 $2').replace(UPPER_RUN, '$1 $2')
-      .split(' ').forEach((p) => { if (p) out.push(fold(p)); });
+    const ps = w.replace(LOWER_UPPER, '$1 $2').replace(UPPER_RUN, '$1 $2').split(' ').filter(Boolean);
+    const title = ps.length === 1 && /^[A-Z\u00c7\u011e\u0130\u00d6\u015e\u00dc][a-z\u00e7\u011f\u0131\u00f6\u015f\u00fc]+$/.test(ps[0]);
+    ps.forEach((p) => out.push({ w: fold(p), parts: ps.length, title }));
   }
   return out;
 }
+
+/** The words of a text (folded), see pieces(). */
+function words(text) { return pieces(text).map((p) => p.w); }
+
+const isTurkishWord = (w) => WORDS.has(w) || SUFFIX.test(w);
 
 /** Why this text counts as Turkish (a short reason), or null. */
 function turkishIn(text) {
   text = String(text).replace(BRAND, 'Mucellit').replace(AUTHOR, 'the author').replace(README_LINK, '[Turkish](README.tr.md)');
   const m = TURKISH_LETTER.exec(text);
   if (m) return 'letter "' + m[0] + '"';
-  for (const w of words(text)) {
-    if (WORDS.has(w)) return 'word "' + w + '"';
+  const ps = pieces(text);
+  for (let i = 0; i < ps.length; i++) {
+    const { w, title } = ps[i];
+    if (WORDS.has(w)) {
+      // a short Capitalised word standing alone ("Elle magazine", "Elma Street") is an English name unless a Turkish word is next to it
+      if (w.length <= 4 && title) {
+        const near = [ps[i - 1], ps[i + 1]].some((n) => n && n.w.length > 4 && isTurkishWord(n.w));
+        if (!near) continue;
+      }
+      return 'word "' + w + '"';
+    }
     if (SUFFIX.test(w)) return 'suffix "' + w + '"';
   }
   return null;
@@ -215,6 +291,7 @@ function scanText(file, text) {
   if (FIXTURES.test(file) && !/(^|\/)README[^/]*$/i.test(file)) return found;
   const dict = DICT_VALUES.has(file);
   let open = null; // [name, line] of the open block
+  const st = { open: false }; // inside a multi-line comment of a block
   String(text).split('\n').forEach((raw, i) => {
     const n = i + 1;
     for (const b of BLOCKS) {
@@ -226,13 +303,14 @@ function scanText(file, text) {
         else { open = null; return; }
       }
     }
-    // inside a block only data is exempt: comment lines are still scanned (a block must not hide Turkish comments)
-    if (open && !isCommentLine(file, raw)) return;
+    // inside a block only data is exempt: comments are still scanned (a block must not hide Turkish comments): whole
+    // comment lines, comments at the end of a data line and the lines of a multi-line comment
+    let line = raw;
+    if (open) { line = commentPart(file, raw, st); if (!line.trim()) return; } else st.open = false;
     if (OK_ANY.test(raw)) {
       if (!OK_REASON.test(raw)) add(n, OK_MARK + ' without a reason', raw);
       return;
     }
-    let line = raw;
     if (dict) {
       const key = /^\s*"([^"]*)"\s*:/.exec(raw);
       const r = key && turkishIn(key[1]);

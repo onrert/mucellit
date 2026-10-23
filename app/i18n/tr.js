@@ -449,7 +449,7 @@
   "menu.open": "Aç…",
   "menu.recent_files": "Son Açılanlar",
   "menu.recent_empty": "Son açılan yok",
-  "menu.clear_last": "Menüyü Temizle",
+  "menu.clear_recent": "Menüyü Temizle",
   "menu.save": "Dizilmiş PDF'i Kaydet…",
   "menu.json_export": "JSON Yedeğini Dışa Aktar…",
   "menu.json_import": "JSON Yedeğini İçe Aktar…",
