@@ -1,0 +1,41 @@
+{
+  "_aciklama": "JS (app/test/i18n.test.js) ve Rust (src-tauri/src/i18n.rs testleri) aynı vektörlerle sınanır. sistem_dili: Apple kuralı (tercih listesinde desteklenen ilk dil; bölge kodu eşleşir; yoksa en). doldur: parametreler tek geçişte (değer içindeki {x} yeniden doldurulmaz), parametre sırasından bağımsız.",
+  "sistem_dili": [
+    { "liste": ["tr-TR"], "beklenen": "tr" },
+    { "liste": ["de-DE", "tr-TR"], "beklenen": "tr" },
+    { "liste": ["de-DE", "fr-FR"], "beklenen": "en" },
+    { "liste": ["en-GB", "tr"], "beklenen": "en" },
+    { "liste": [], "beklenen": "en" },
+    { "liste": ["tr-TR", "en-US"], "beklenen": "tr" },
+    { "liste": ["en-US", "tr-TR"], "beklenen": "en" },
+    { "liste": ["TR"], "beklenen": "tr" },
+    { "liste": ["tr_TR"], "beklenen": "tr" },
+    { "liste": ["ja-JP", "de", "en-AU", "tr"], "beklenen": "en" },
+    { "liste": ["zh-Hans-CN", "tr-Latn-TR"], "beklenen": "tr" },
+    { "liste": ["", "tr"], "beklenen": "tr" },
+    { "liste": ["tur", "fr"], "beklenen": "en" },
+    { "liste": ["xx-tr", "tr-xx"], "beklenen": "tr" }
+  ],
+  "doldur": [
+    {
+      "dil": "tr", "anahtar": "son.disk_yok",
+      "p": [["ad", "{ayrinti}.pdf"], ["ayrinti", "KCDeneme"]],
+      "beklenen": "{ayrinti}.pdf açılamadı: bulunduğu disk (KCDeneme) takılı değil. Diski takıp yeniden deneyin; kayıt Son Açılanlar'da duruyor."
+    },
+    {
+      "dil": "tr", "anahtar": "son.disk_yok",
+      "p": [["ayrinti", "{ad}"], ["ad", "{ayrinti}"]],
+      "beklenen": "{ayrinti} açılamadı: bulunduğu disk ({ad}) takılı değil. Diski takıp yeniden deneyin; kayıt Son Açılanlar'da duruyor."
+    },
+    {
+      "dil": "tr", "anahtar": "son.disk_yok",
+      "p": [["ad", "a.pdf"]],
+      "beklenen": "a.pdf açılamadı: bulunduğu disk ({ayrinti}) takılı değil. Diski takıp yeniden deneyin; kayıt Son Açılanlar'da duruyor."
+    },
+    {
+      "dil": "tr", "anahtar": "rust.desteklenmeyen",
+      "p": [["ad", "$1 {ad} $&.txt"]],
+      "beklenen": "desteklenmeyen dosya: $1 {ad} $&.txt"
+    }
+  ]
+}

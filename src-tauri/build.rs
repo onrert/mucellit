@@ -4,7 +4,7 @@ use std::path::PathBuf;
 fn main() {
     sozlukleri_gom();
     // Uygulama komutları için allow-/deny- izinleri üretilir; capabilities/default.json yalnız kullanılanları
-    // açar (komut listesi lib.rs generate_handler! ile aynı olmalı; app/test/tauri-guvenlik.test.js denetler).
+    // açar (komut listesi lib.rs generate_handler! ile aynı olmalı; app/test/tauri-security.test.js denetler).
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "dosya_ac",
@@ -24,13 +24,13 @@ fn main() {
     .expect("tauri-build başarısız");
 }
 
-/// Arayüz sözlükleri: `../app/dil/<kod>.js` dosyalarının hepsi `OUT_DIR/sozlukler.rs` içinde
-/// `include_str!` ile gömülür (src/dil.rs). Yeni dil için Rust'ta kod değişmez.
+/// Arayüz sözlükleri: `../app/i18n/<kod>.js` dosyalarının hepsi `OUT_DIR/sozlukler.rs` içinde
+/// `include_str!` ile gömülür (src/i18n.rs). Yeni dil için Rust'ta kod değişmez.
 fn sozlukleri_gom() {
     let klasor = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("app")
-        .join("dil");
+        .join("i18n");
     println!("cargo:rerun-if-changed={}", klasor.display());
     let mut dosyalar: Vec<(String, PathBuf)> = std::fs::read_dir(&klasor)
         .unwrap_or_else(|e| panic!("sözlük klasörü okunamadı ({}): {e}", klasor.display()))
@@ -47,7 +47,7 @@ fn sozlukleri_gom() {
     dosyalar.sort();
     assert!(
         dosyalar.iter().any(|(k, _)| k == "en"),
-        "app/dil/en.js (ana sözlük) yok"
+        "app/i18n/en.js (ana sözlük) yok"
     );
     let mut kaynak = String::from("pub const SOZLUK_DOSYALARI: &[(&str, &str)] = &[\n");
     for (kod, yol) in &dosyalar {

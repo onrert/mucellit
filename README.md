@@ -4,7 +4,7 @@ Turn any PDF or EPUB into a book you can print, fold, sew and bind at home — f
 
 ### [Open Mücellit →](https://onrert.github.io/mucellit/)
 
-![Sheet preview: which pages land on each side of every sheet](docs/onizleme.png)
+![Sheet preview: which pages land on each side of every sheet](docs/preview.png)
 
 Mücellit is an old Turkish word for bookbinder. [Türkçe açıklama aşağıda.](#türkçe)
 
@@ -31,13 +31,13 @@ Your files never leave your computer: there is no account, nothing is uploaded, 
 
 ## For developers
 
-- **Run locally:** open `app/index.html` in Chrome or Edge, or run `node araclar/dist-hazirla.mjs --web` and
+- **Run locally:** open `app/index.html` in Chrome or Edge, or run `node tools/prepare-dist.mjs --web` and
   `python3 -m http.server --directory dist 8000`, then visit http://localhost:8000/. No build step, no internet needed.
 - **Tests:** `node --test app/test/` (Node.js 24+). End-to-end tests use Playwright: `node app/test/e2e.mjs` and
-  `node app/test/web-alt-yol.mjs` (add `--motor=webkit` for Safari's engine; set `KC_PLAYWRIGHT` to your
+  `node app/test/web-subpath.mjs` (add `--motor=webkit` for Safari's engine; set `KC_PLAYWRIGHT` to your
   `node_modules/playwright`).
 - **Code:** plain HTML, CSS and JavaScript in `app/`; libraries and fonts are bundled in `app/vendor/`; interface
-  texts are in `app/dil/`.
+  texts are in `app/i18n/`.
 - **Publishing:** every push to `main` runs the tests and deploys the site with GitHub Pages
   (`.github/workflows/pages.yml`).
 - **Desktop (experimental):** `src-tauri/` wraps the same app in a macOS window with Tauri 2 (`cargo tauri dev`).
@@ -57,7 +57,7 @@ Your files never leave your computer: there is no account, nothing is uploaded, 
 
 [MIT License](LICENSE) © 2026 Onur Mert Ertuğrul. Third-party libraries and fonts keep their own licenses: see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Learn guide's drawings are made with Colorfigures (MIT License,
-© 2026 April Zhu and Tolga Cohce; full text in `app/js/ogren/LICENSE`).
+© 2026 April Zhu and Tolga Cohce; full text in `app/js/learn/LICENSE`).
 
 ---
 
@@ -100,4 +100,4 @@ da Edge'de aç; birim testleri `node --test app/test/`.
 
 MIT ([LICENSE](LICENSE)), © 2026 Onur Mert Ertuğrul. Üçüncü taraf bileşenler:
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Öğren rehberinin çizimleri Colorfigures ile yapıldı (MIT, © 2026
-April Zhu ve Tolga Cohce; tam metin `app/js/ogren/LICENSE`).
+April Zhu ve Tolga Cohce; tam metin `app/js/learn/LICENSE`).

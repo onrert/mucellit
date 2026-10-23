@@ -6,9 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mücellit</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="css/stil.css">
-<!-- Öğren rehberinin stilleri (kapsamı .ogren-kok; Colorfigures motor stilleri .cf-kok altında, MIT: js/ogren/LICENSE) -->
-<link rel="stylesheet" href="css/ogren.css">
+<link rel="stylesheet" href="css/style.css">
+<!-- Öğren rehberinin stilleri (kapsamı .ogren-kok; Colorfigures motor stilleri .cf-kok altında, MIT: js/learn/LICENSE) -->
+<link rel="stylesheet" href="css/learn.css">
 </head>
 <body>
 <header>
@@ -104,7 +104,7 @@
       </label>
       <label class="secim" id="arka-ters-alan"><input type="checkbox" id="arka-ters"> <span data-dil="duzenle.arka_ters">Backs in reverse order</span></label>
       <p><button type="button" class="ana" id="disa-aktar" disabled data-dil="duzenle.indir">Download imposed PDF</button></p>
-      <!-- Mac uygulamasında yazdırma (platform.yazdir yoksa, ör. tarayıcıda, gizli kalır; duzenle.js açar) -->
+      <!-- Mac uygulamasında yazdırma (platform.yazdir yoksa, ör. tarayıcıda, gizli kalır; impose.js açar) -->
       <div class="satir" id="yazdir-alani" hidden>
         <button type="button" id="yazdir" disabled data-dil="duzenle.yazdir">Print…</button>
         <button type="button" id="onizlemede-ac" disabled data-dil="duzenle.onizlemede_ac">Open in Preview</button>
@@ -258,8 +258,8 @@
 </section>
 
 <!-- ============ ÖĞREN ============
-     Formalı dikiş + sert kapak rehberi (js/ogren/). Sekme ilk açıldığında kurulur; sekmeden çıkınca figür sökülür.
-     Çizimler Colorfigures motoru ve yöntemiyle (MIT; April Zhu, Tolga Cohce; tam metin js/ogren/LICENSE). -->
+     Formalı dikiş + sert kapak rehberi (js/learn/). Sekme ilk açıldığında kurulur; sekmeden çıkınca figür sökülür.
+     Çizimler Colorfigures motoru ve yöntemiyle (MIT; April Zhu, Tolga Cohce; tam metin js/learn/LICENSE). -->
 <section id="sekme-ogren" role="tabpanel" aria-labelledby="sekme-dugme-ogren" hidden>
 <div class="ogren-kok" id="og-kok">
   <div class="ust">
@@ -330,8 +330,8 @@
   </div>
 
   <p class="alt" data-dil="ogren.lisans">Drawings made with the Colorfigures method (MIT; April Zhu, Tolga Cohce). Full license text below.</p>
-  <!-- MIT koşulu uygulama içinde görünür (Mac'te kullanıcı js/ogren/LICENSE dosyasına erişemez). Metin
-       js/ogren/LICENSE ile birebir (app/test/ogren-duzeltme.test.js D7); hukuk metni çevrilmez (lang="en"). -->
+  <!-- MIT koşulu uygulama içinde görünür (Mac'te kullanıcı js/learn/LICENSE dosyasına erişemez). Metin
+       js/learn/LICENSE ile birebir (app/test/learn-fixes.test.js D7); hukuk metni çevrilmez (lang="en"). -->
   <details class="og-lisans" id="og-lisans">
     <summary data-dil="ogren.lisans_metni">Colorfigures license (MIT)</summary>
     <pre id="og-lisans-metin" lang="en" translate="no">MIT License
@@ -364,59 +364,59 @@ SOFTWARE.</pre>
 
 <div id="bildirim" role="status" aria-live="polite"></div>
 
-<!-- Arayüz dili: sözlükler önce, dil.js onları okur. Yeni dil: app/dil/<kod>.js + buraya bir satır.
+<!-- Arayüz dili: sözlükler önce, i18n.js onları okur. Yeni dil: app/i18n/<kod>.js + buraya bir satır.
      dil betikleri ~1,9 MB vendor'dan ÖNCE (ilk kare seçili dilde); Object.prototype'a dokunmazlar
-     (app/test/tauri-guvenlik.test.js dondurulmuş bağlamda sınar). -->
-<script src="dil/en.js"></script>
-<script src="dil/tr.js"></script>
-<script src="js/dil.js"></script>
-<!-- Kütüphaneler yerel kopya (app/vendor/, kaynak ve özetler KAYNAK.md'de): internet gerekmez. -->
+     (app/test/tauri-security.test.js dondurulmuş bağlamda sınar). -->
+<script src="i18n/en.js"></script>
+<script src="i18n/tr.js"></script>
+<script src="js/i18n.js"></script>
+<!-- Kütüphaneler yerel kopya (app/vendor/, kaynak ve özetler SOURCES.md'de): internet gerekmez. -->
 <script src="vendor/pdf-lib/pdf-lib.min.js"></script>
 <script src="vendor/pdfjs/pdf.min.js"></script>
 <script src="vendor/pdfjs/pdf.worker.min.js"></script>
-<!-- Object.prototype vendor kütüphanelerinden sonra dondurulur (bkz. js/dondur.js) -->
-<script src="js/dondur.js"></script>
+<!-- Object.prototype vendor kütüphanelerinden sonra dondurulur (bkz. js/freeze.js) -->
+<script src="js/freeze.js"></script>
 <!-- Uygulama: klasik script (file:// ile çift tıklayınca da çalışır) -->
 <!-- Platform katmanı: tarayıcı uygulaması; Tauri penceresinde platform-tauri.js farklı olanları ezer -->
 <script src="js/platform.js"></script>
 <script src="js/platform-tauri.js"></script>
-<script src="js/eklentiler/eklentiler.js"></script>
-<script src="js/dizilim.js"></script>
-<script src="js/hesap.js"></script>
-<script src="js/yerlesim.js"></script>
-<script src="js/surec-model.js"></script>
-<script src="js/depo.js"></script>
-<script src="js/cikti.js"></script>
-<script src="js/ortak.js"></script>
+<script src="js/plugins/plugins.js"></script>
+<script src="js/imposition.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/project-model.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/output.js"></script>
+<script src="js/common.js"></script>
 <!-- EPUB → PDF eklentisi (fontkit ve Literata yazı tipi ilk EPUB'da tembel yüklenir) -->
-<script src="js/eklentiler/epub/zip.js"></script>
-<script src="js/eklentiler/epub/hece.js"></script>
-<script src="js/eklentiler/epub/dizgi.js"></script>
-<script src="js/eklentiler/epub/epub-paket.js"></script>
-<script src="js/eklentiler/epub/xhtml-blok.js"></script>
-<script src="js/eklentiler/epub/pdf-yaz.js"></script>
-<script src="js/eklentiler/epub.js"></script>
-<script src="js/yazdirma.js"></script>
-<script src="js/duzenle.js"></script>
-<script src="js/surec.js"></script>
-<script src="js/hesapla.js"></script>
-<!-- Öğren rehberi (js/ogren/; Colorfigures parçaları MIT, js/ogren/LICENSE). Sıra: ölçü (hesap.js'i çağırır) →
-     motor → sayfa → figürler (ortak önce) → dersler → denetleyici; hepsi dondur.js'ten sonra, uygulama.js'ten önce
-     (app/test/tauri-guvenlik.test.js denetler). Tek ad alanı: KitapCilt.ogren. -->
-<script src="js/ogren/ogren-olcu.js"></script>
-<script src="js/ogren/cf-motor.js"></script>
-<script src="js/ogren/cf-sayfa.js"></script>
-<script src="js/ogren/sekil/ortak.js"></script>
-<script src="js/ogren/sekil/katlama.js"></script>
-<script src="js/ogren/sekil/dikis.js"></script>
-<script src="js/ogren/sekil/forza.js"></script>
-<script src="js/ogren/sekil/sirt.js"></script>
-<script src="js/ogren/sekil/kapak.js"></script>
-<script src="js/ogren/sekil/kaplama.js"></script>
-<script src="js/ogren/sekil/takma.js"></script>
-<script src="js/ogren/sekil/kitap.js"></script>
-<script src="js/ogren/ogren-dersler.js"></script>
-<script src="js/ogren/ogren.js"></script>
-<script src="js/uygulama.js"></script>
+<script src="js/plugins/epub/zip.js"></script>
+<script src="js/plugins/epub/hyphenation.js"></script>
+<script src="js/plugins/epub/typeset.js"></script>
+<script src="js/plugins/epub/epub-package.js"></script>
+<script src="js/plugins/epub/xhtml-blocks.js"></script>
+<script src="js/plugins/epub/pdf-writer.js"></script>
+<script src="js/plugins/epub.js"></script>
+<script src="js/printing.js"></script>
+<script src="js/impose.js"></script>
+<script src="js/projects.js"></script>
+<script src="js/calculator.js"></script>
+<!-- Öğren rehberi (js/learn/; Colorfigures parçaları MIT, js/learn/LICENSE). Sıra: ölçü (calc.js'i çağırır) →
+     motor → sayfa → figürler (ortak önce) → dersler → denetleyici; hepsi freeze.js'ten sonra, app.js'ten önce
+     (app/test/tauri-security.test.js denetler). Tek ad alanı: KitapCilt.ogren. -->
+<script src="js/learn/learn-measure.js"></script>
+<script src="js/learn/cf-engine.js"></script>
+<script src="js/learn/cf-page.js"></script>
+<script src="js/learn/figures/common.js"></script>
+<script src="js/learn/figures/folding.js"></script>
+<script src="js/learn/figures/sewing.js"></script>
+<script src="js/learn/figures/endpapers.js"></script>
+<script src="js/learn/figures/spine.js"></script>
+<script src="js/learn/figures/case.js"></script>
+<script src="js/learn/figures/covering.js"></script>
+<script src="js/learn/figures/casing-in.js"></script>
+<script src="js/learn/figures/book.js"></script>
+<script src="js/learn/learn-lessons.js"></script>
+<script src="js/learn/learn.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

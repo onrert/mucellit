@@ -12,7 +12,7 @@
  *
  * EPUB (EPUB → PDF), her iki koşuda: Türkçe metin, vektör/font, ölçü ve ölçek 1,
  *   formalı dışa aktarma, DRM, FXL, bozuk; file:// koşusunda uzun.epub < 60 s.
- *   EPUB fixture'ları test sırasında app/test/epub-uret.cjs ile üretilir.
+ *   EPUB fixture'ları test sırasında app/test/epub-build.cjs ile üretilir.
  *
  *: onay "hayır" (yerel confirm reddi ve Tauri dialog eklentisi gibi Promise döndüren
  *   confirm) → Süreç verisi değişmez; "evet" → işlem yapılır. Sayfaya dosya bırakma PDF'i açar, ızgara içi
@@ -27,12 +27,12 @@
  *   ekleri -imposed/-fronts, görünen metinde Türkçe karakter yok, eski Türkçe kayıt İngilizce adımlarla açılır), elle
  *   dil seçimi ve geri dönüş; Tauri benzetiminde dil_oku/dil_ayarla, Görünüm > Dil menü olayı ve Rust yedeğinden geri gelme.
  *   Her koşunun sonunda sözlükte eksik anahtar (KitapCilt.dil.eksikler) yok.
- * "açılış-hatası" koşusu (tr-TR): platform.hazir reddi, dil.js hatası ve bozuk tr sözlüğünde etiketler
+ * "açılış-hatası" koşusu (tr-TR): platform.hazir reddi, i18n.js hatası ve bozuk tr sözlüğünde etiketler
  *   boş kalmaz (seçili dil / statik İngilizce); Tauri benzetiminde sistem dili Rust'tan (dil_oku.sistem) ve Mac'e uygun
  *   saklama ipucu; en koşusunda değişen İngilizce metinler (Imposition, source p., couldn't …).
  * tauri-benzetimi koşusunda yazdırma (Yazdır… / Önizleme'de Aç düğmeleri, baskı öncesi not, tek PDF, iki PDF önler →
  *   çevir onayı → arkalar, yarıda kalma, meşgulken ⌘P/⌘S yok sayılır, menü ⌘P, Önizleme açılamazsa Kaydet + not);
- *   tarayıcı koşularında düğmeler gizli. Başlangıç işleri 0a–0i (ilk kare dili, dil.js yokken konsol, ondalık ayracı,
+ *   tarayıcı koşularında düğmeler gizli. Başlangıç işleri 0a–0i (ilk kare dili, i18n.js yokken konsol, ondalık ayracı,
  *   dil seçici ipucu ve yerleşimi) ilgili koşularda.
  * yerel sunucu src-tauri/tauri.conf.json'daki CSP'yi başlık olarak gönderir (bütün akışlar Tauri
  *   ile aynı CSP altında koşar; ihlal konsol hatası olarak KALDI sayılır); fetch('https://example.com') CSP ile
@@ -46,15 +46,15 @@
  *   dil değişimi (yeniden yükleme sonrası rehber yeni dilde, konum korunur); prefers-reduced-motion (45 adım animasyonsuz);
  *   CSP ihlali 0, global ad yalnız KitapCilt altında, eksik anahtar 0. file:// koşusunda duman; Tauri benzetiminde
  *   menü olayı "sekme-ogren" (Görünüm > Öğren ⌘4).
- * rehberin denetim arayüzü (KitapCilt.ogren.denetim) ürün kodunda yok; "öğren" koşuları ogren.js
- *   isteğini yakalayıp test kopyasını sunar (app/test/ogren-denetim.cjs, page.route). file:// ve Tauri benzetimi dumanı
+ * rehberin denetim arayüzü (KitapCilt.ogren.denetim) ürün kodunda yok; "öğren" koşuları learn.js
+ *   isteğini yakalayıp test kopyasını sunar (app/test/learn-probe.cjs, page.route). file:// ve Tauri benzetimi dumanı
  *   yalnız DOM'la (ürün kodu olduğu gibi) ve ürün kodunda denetim olmadığını sınar. Öğren açıkken sekme/menü yeniden
  *   basılınca rehber yeniden kurulmaz ("baştan sona" adım atlamaz); dil değişiminde ilerleme (tamam) korunur; lisans paneli.
  * Bayraklar / ortam:
  *   --motor=chromium|webkit   (öntanımlı chromium; webkit = WKWebView'e en yakın Playwright motoru)
  *   KC_PLAYWRIGHT             Playwright modül klasörü (ör. /yol/playwright/node_modules/playwright)
  *   PLAYWRIGHT_BROWSERS_PATH  yoksa /opt/pw-browsers (varsa), o da yoksa Playwright öntanımlısı
- *   KC_GORUNTU                önizleme ekran görüntüsünün yolu (öntanımlı docs/onizleme.png)
+ *   KC_GORUNTU                önizleme ekran görüntüsünün yolu (öntanımlı docs/preview.png)
  * Kütüphaneler app/vendor/ altında yerel.
  */
 import { createServer } from 'node:http';
@@ -75,7 +75,7 @@ if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync('/opt/pw-browsers')) pro
 const BURASI = dirname(fileURLToPath(import.meta.url));
 const UYGULAMA = resolve(BURASI, '..');
 const REPO = resolve(UYGULAMA, '..');
-const GORUNTU = process.env.KC_GORUNTU ? resolve(process.env.KC_GORUNTU) : join(REPO, 'docs', 'onizleme.png');
+const GORUNTU = process.env.KC_GORUNTU ? resolve(process.env.KC_GORUNTU) : join(REPO, 'docs', 'preview.png');
 const MOTOR = (process.argv.find((a) => a.startsWith('--motor=')) || '--motor=chromium').slice('--motor='.length);
 
 const sonuclar = [];
@@ -474,7 +474,7 @@ async function ayBosBasa(page, adres, etiket) {
 
 async function sifreliAkis(page, adres, iz, etiket) {
   const A = 'AD1';
-  const durumlar = ['sifreli-sahip-rc4.pdf', 'sifreli-sahip-aes.pdf'];
+  const durumlar = ['encrypted-owner-rc4.pdf', 'encrypted-owner-aes.pdf'];
   for (const ad of durumlar) {
     await page.goto(adres);
     await page.waitForSelector('html[data-hazir="evet"]', { timeout: 20000 });
@@ -493,7 +493,7 @@ async function sifreliAkis(page, adres, iz, etiket) {
   }
   // Parolalı (kullanıcı parolası) PDF: parola istemi (window.prompt) AÇILMAZ, önizleme açılmaz, uyarı görünür, indir kapalı
   {
-    const ad = 'sifreli-kullanici.pdf';
+    const ad = 'encrypted-user.pdf';
     await page.goto(adres);
     await page.waitForSelector('html[data-hazir="evet"]', { timeout: 20000 });
     await page.click('#sekme-dugme-duzenle');
@@ -660,7 +660,7 @@ async function osDepoAkisi(page, adres, etiket) {
 }
 
 // ------------------------------------------------------------------
-// EPUB → PDF. Fixture'lar epub-uret.cjs ile test sırasında üretilir.
+// EPUB → PDF. Fixture'lar epub-build.cjs ile test sırasında üretilir.
 // ------------------------------------------------------------------
 const EPUB_MIME = 'application/epub+zip';
 const E_MESAJ = {
@@ -734,7 +734,7 @@ async function epubSec(page, ad, bayt, zaman = 90000) {
 const bosluklu = (s) => s.replace(/\s+/g, ' ').trim();
 
 async function epubAkisi(page, adres, etiket) {
-  const U = require('./epub-uret.cjs');
+  const U = require('./epub-build.cjs');
   const tr = U.hazir.trMini();
 
   // ---- A7 kabul: IR'de sınıfla italik/kalın parçalar; gizli paragraf yok ----
@@ -842,7 +842,7 @@ const W1254 = { 'ğ': 0xf0, 'ı': 0xfd, 'İ': 0xdd, 'Ö': 0xd6, 'Ğ': 0xd0, 'Ü'
 function w1254(s) { return Buffer.from([...s].map((c) => (W1254[c] !== undefined ? W1254[c] : c.charCodeAt(0)))); }
 
 async function bdAkisi(page, adres, etiket) {
-  const U = require('./epub-uret.cjs');
+  const U = require('./epub-build.cjs');
   const paragraf = (n) => `<p>${U.paragrafMetni(U.rastgele(n), 60)}</p>`;
 
   // ---- O3: bozuk PNG'li EPUB dönüşür; U1'de 1 resim atlandı; yazı tipi uyarısı yok ----
@@ -939,7 +939,7 @@ async function bdAkisi(page, adres, etiket) {
 }
 
 async function epubPerformans(page, adres, etiket) {
-  const U = require('./epub-uret.cjs');
+  const U = require('./epub-build.cjs');
   const uzun = U.hazir.uzun();
   await tazeSayfa(page, adres);
   // önceki akıştan localStorage'da kalmış ölçü olmasın: A5, cilt payı ve dış kenar 0
@@ -1175,7 +1175,7 @@ async function m1DuzeltmeAkisi(page, adres, iz, etiket, cspSinamasi) {
 // böyle verir): tek üst klasör öneki atılır, içerik sıradan EPUB gibi işlenir. Her iki koşuda.
 // ------------------------------------------------------------------
 async function onekliEpubZip(U, epubBayt, onek, ekler) {
-  const Z = require('../js/eklentiler/epub/zip.js');
+  const Z = require('../js/plugins/epub/zip.js');
   const z = Z.oku(new Uint8Array(epubBayt));
   const g = [];
   for (const a of z.adlar()) g.push({ ad: onek + a, veri: Buffer.from(await z.ac(a)), yontem: 8 }); // WebKit: hepsi deflate
@@ -1183,7 +1183,7 @@ async function onekliEpubZip(U, epubBayt, onek, ekler) {
 }
 
 function klasorFixtureZip(U, onek) {
-  const kok = join(BURASI, 'fixtures', 'klasor-paket.epub');
+  const kok = join(BURASI, 'fixtures', 'folder-package.epub');
   const adlar = [];
   (function gez(d, on) {
     for (const g of readdirSync(d, { withFileTypes: true })) {
@@ -1196,7 +1196,7 @@ function klasorFixtureZip(U, onek) {
 }
 
 async function m2EpubZipAkisi(page, adres, etiket) {
-  const U = require('./epub-uret.cjs');
+  const U = require('./epub-build.cjs');
   await tazeSayfa(page, adres);
   await page.selectOption('#cilt-turu', 'formali');
   const tr = U.hazir.trMini();
@@ -1218,14 +1218,14 @@ async function m2EpubZipAkisi(page, adres, etiket) {
   kontrol('dosya', indirme.suggestedFilename() === 'tr-mini-dizilmis.pdf', `${etiket}: .epub.zip'ten dizilmiş çıktı adı tr-mini-dizilmis.pdf (".epub.zip" atıldı)`, indirme.suggestedFilename());
 
   // repo fixture'ı (sentetik klasör paketi) klasör ZIP'i olarak: dönüşür, metin PDF'te
-  const fz = klasorFixtureZip(U, 'klasor-paket.epub/');
+  const fz = klasorFixtureZip(U, 'folder-package.epub/');
   const metin = await page.evaluate(async ([d]) => {
-    const f = new File([new Uint8Array(d)], 'klasor-paket.epub.zip', { type: 'application/zip' });
+    const f = new File([new Uint8Array(d)], 'folder-package.epub.zip', { type: 'application/zip' });
     const pdf = await window.KitapCilt.epub.donustur(f, { kitapGen: 148, kitapYuk: 210, ciltPayi: 0, disKenar: 0 });
     return (await window.__e.incele(Array.from(pdf))).map((s) => s.ogeler.map((o) => o.str).join(' ')).join(' ');
   }, [Array.from(fz)]).then(bosluklu);
   kontrol('dosya', /KLASORPAKETI/.test(metin) && /Birinci Bölüm/.test(metin) && !metin.includes('�'),
-    `${etiket}: app/test/fixtures/klasor-paket.epub (klasör ZIP'i) dönüşür; iki bölümün metni PDF'te`,
+    `${etiket}: app/test/fixtures/folder-package.epub (klasör ZIP'i) dönüşür; iki bölümün metni PDF'te`,
     JSON.stringify({ isaret: /KLASORPAKETI/.test(metin), bolum: /Birinci Bölüm/.test(metin), fffd: metin.includes('�'), bas: metin.slice(0, 60) }));
 
   // kusurlu: iki üst klasör → önek atılmaz → E2 (container yok); kart 0, indirme kapalı
@@ -1245,7 +1245,7 @@ const SAHTE_TAURI = `(() => {
   const kayit = (window.__sahte = { cagri: [], kaydetYanit: null, kaydetSira: null, kaydetHata: null, kaydetKapi: null,
     yedek: sessionStorage.getItem('sahteYedek') || '{"surum":1,"kitaplar":[]}', dinleyici: {}, acYanit: null, tablo: {}, bekleyen: [] });
   const bayt = (b64) => { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
-  // Rust'ın initialization_script'i (dil::baslangic_betigi): sistem dili sayfa betiklerinden önce
+  // Rust'ın initialization_script'i (i18n::baslangic_betigi): sistem dili sayfa betiklerinden önce
   Object.defineProperty(window, '__KC_DIL__', { value: Object.freeze({ sistem: sessionStorage.getItem('sahteSistem') || 'tr' }) });
   window.__TAURI__ = {
     core: { invoke: async (komut, arg, secenek) => {
@@ -1449,7 +1449,7 @@ async function m2TauriBenzetimi(page, adres, etiket) {
 const TR_HARF = /[çğıöşüÇĞİÖŞÜ]/;
 // uygulama adı "Mücellit" çevrilmez (yalnız tam sözcük, sözcük sınırı; "Mücellitler" gibi uzantılı sözcük muaf değil)
 const trHarf = (m) => TR_HARF.test(String(m).replace(/\bMücellit\b/g, ''));
-const ESKI_KAYIT = join(FIXTURE, 'eski-kayit');
+const ESKI_KAYIT = join(FIXTURE, 'legacy');
 
 /** Görünen gövde metni (dil seçicideki "Türkçe" adı ve verilen kullanıcı metinleri hariç). */
 async function gorunenMetin(page, haric = []) {
@@ -1626,7 +1626,7 @@ async function m6EnAkisi(page, adres, iz, etiket, tam) {
     veri: JSON.parse(localStorage.getItem('kitapCilt.v1')).kitaplar.slice(-1)[0].adimlar[6] }));
   kontrol('dil', yeni.ilk === '1. Prep / PDF' && /^Sewn signatures \+ hardcover \(case binding\) · 0 \/ 14 steps done · created \d{4}-\d\d-\d\d$/.test(yeni.ozet) && yeni.veri.sablon === 'dikis' && yeni.veri.ad === 'Sewing',
     `${etiket}: yeni projede adımlar İngilizce, kayıtta şablon anahtarı`, JSON.stringify(yeni));
-  const eski = readFileSync(join(ESKI_KAYIT, 'localStorage-kitapCilt.v1.json'), 'utf8');
+  const eski = readFileSync(join(ESKI_KAYIT, 'local-storage-v1.json'), 'utf8');
   await page.evaluate((e) => { localStorage.setItem('kitapCilt.v1', e); localStorage.setItem('kitapCilt.seciliKitap', 'k-mzeski-1'); }, eski);
   await page.reload();
   await page.waitForSelector('html[data-hazir="evet"]');
@@ -1883,12 +1883,12 @@ async function yazdirmaGizli(page, etiket) {
 }
 
 /**
- * Tauri benzetiminde dil.js hata atarsa (yüklenemezse) platform-tauri.js fazladan
+ * Tauri benzetiminde i18n.js hata atarsa (yüklenemezse) platform-tauri.js fazladan
  * konsol hatası üretmez: konsoldaki tek hata benzetimin kendisi (KC-BENZETIM); arayüz statik İngilizce, başlatma hatası
  * İngilizce bildirilir. Benzetim hataları kontrolden sonra düşülür (koşu sonu "konsol hatası yok" denetimi için).
  */
 async function m3TauriDilYok(page, adres, iz, etiket) {
-  await page.route('**/js/dil.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'throw new Error("KC-BENZETIM dil.js");' }));
+  await page.route('**/js/i18n.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'throw new Error("KC-BENZETIM i18n.js");' }));
   const once = iz.hatalar.length;
   await page.goto(adres);
   await page.waitForFunction(() => /start/.test(document.getElementById('bildirim').textContent), null, { timeout: 20000 }).catch(() => {});
@@ -1898,20 +1898,20 @@ async function m3TauriDilYok(page, adres, iz, etiket) {
   const yeni = iz.hatalar.slice(once);
   const disarida = yeni.filter((h) => !/KC-BENZETIM/.test(h));
   kontrol('yazdir', b.ad === 'tauri' && disarida.length === 0 && yeni.length >= 1 && b.sekme === 'Imposition' && /^The app couldn't start: /.test(b.bildirim) && /this Mac/.test(b.saklama),
-    `${etiket}: dil.js yokken platform-tauri.js fazladan konsol hatası üretmez (yalnız benzetim hatası); arayüz statik İngilizce, Mac saklama ipucu İngilizce, başlatma hatası bildirildi`,
+    `${etiket}: i18n.js yokken platform-tauri.js fazladan konsol hatası üretmez (yalnız benzetim hatası); arayüz statik İngilizce, Mac saklama ipucu İngilizce, başlatma hatası bildirildi`,
     JSON.stringify({ ...b, konsol: yeni.map((h) => h.slice(0, 140)) }));
   iz.hatalar.splice(once); // benzetim (ve varsa kaldı sayılan) hataları koşu sonu denetiminden düşülür; kontrol yukarıda
-  await page.unroute('**/js/dil.js');
+  await page.unroute('**/js/i18n.js');
 }
 
 /**
- * Başlangıç hatası benzetimi. (a) platform.hazir reddedilir, (b) dil.js hata atar,
+ * Başlangıç hatası benzetimi. (a) platform.hazir reddedilir, (b) i18n.js hata atar,
  * (c) tr sözlüğü bozuk. Üçünde de etiketler boş değil: (a) seçili dilde (tr-TR → Türkçe), (b) statik İngilizce
  * (index.html), (c) İngilizce ve uygulama çalışır. Benzetim hataları (KC-BENZETIM) konsol denetiminden düşülür.
  */
 async function m6AcilisHatasi(page, adres, iz, etiket) {
-  const Dil = require('../js/dil.js');
-  const sozluk = (kod) => Dil.jsonAyikla(readFileSync(join(UYGULAMA, 'dil', kod + '.js'), 'utf8'));
+  const Dil = require('../js/i18n.js');
+  const sozluk = (kod) => Dil.jsonAyikla(readFileSync(join(UYGULAMA, 'i18n', kod + '.js'), 'utf8'));
   const EN = sozluk('en'), TR = sozluk('tr');
   const etiketler = () => page.evaluate(() => Array.from(document.querySelectorAll('[data-dil]')).map((e) => [e.getAttribute('data-dil'), e.textContent]));
   const farkli = (l, s) => l.filter(([a, m]) => !m || m !== s[a]);
@@ -1930,7 +1930,7 @@ async function m6AcilisHatasi(page, adres, iz, etiket) {
   await page.unroute('**/js/platform.js');
   benzetimDus(); // (a): benzetimde hazir oluşturulurken reddedildiği için tarayıcı "işlenmemiş red" de yazabilir
   // (b)
-  await page.route('**/js/dil.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'throw new Error("KC-BENZETIM dil.js");' }));
+  await page.route('**/js/i18n.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'throw new Error("KC-BENZETIM i18n.js");' }));
   await page.goto(adres);
   await page.waitForFunction(() => /start/.test(document.getElementById('bildirim').textContent), null, { timeout: 20000 }).catch(() => {});
   const lb = await etiketler();
@@ -1938,21 +1938,21 @@ async function m6AcilisHatasi(page, adres, iz, etiket) {
   const bHata = iz.hatalar.slice();
   const bDusulen = benzetimDus();
   kontrol('dil', lb.length >= 100 && farkli(lb, EN).length === 0 && b.lang === 'en' && b.aria === 'Language' && /^The app couldn't start: /.test(b.bildirim) && bDusulen >= 1,
-    `${etiket}: (b) dil.js hata attı: ${lb.length} etiket statik İngilizce (index.html), başlatma hatası İngilizce bildirildi`, JSON.stringify({ ...b, fark: farkli(lb, EN).slice(0, 3), konsol: bHata.slice(0, 3).map((h) => h.slice(0, 120)) }));
+    `${etiket}: (b) i18n.js hata attı: ${lb.length} etiket statik İngilizce (index.html), başlatma hatası İngilizce bildirildi`, JSON.stringify({ ...b, fark: farkli(lb, EN).slice(0, 3), konsol: bHata.slice(0, 3).map((h) => h.slice(0, 120)) }));
   // (b)'de başka hata (benzetimin dolaylı sonucu) varsa ayrıca görünür kalsın diye listelenir ve düşülür
   const dolayli = iz.hatalar.length;
   iz.hatalar = [];
-  kontrol('dil', dolayli <= 3, `${etiket}: (b) dil.js yokken benzetim dışı konsol hatası en çok birkaç dolaylı hata (${dolayli})`, JSON.stringify(bHata.map((h) => h.slice(0, 120))));
-  await page.unroute('**/js/dil.js');
+  kontrol('dil', dolayli <= 3, `${etiket}: (b) i18n.js yokken benzetim dışı konsol hatası en çok birkaç dolaylı hata (${dolayli})`, JSON.stringify(bHata.map((h) => h.slice(0, 120))));
+  await page.unroute('**/js/i18n.js');
   // (c)
-  await page.route('**/dil/tr.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'self.KitapCiltSozlukleri = (self.KitapCiltSozlukleri || []).concat([{ "_ad": "KC-BENZETIM bozuk" }]);' }));
+  await page.route('**/i18n/tr.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: 'self.KitapCiltSozlukleri = (self.KitapCiltSozlukleri || []).concat([{ "_ad": "KC-BENZETIM bozuk" }]);' }));
   await page.goto(adres);
   await page.waitForSelector('html[data-hazir="evet"]', { timeout: 20000 });
   const lc = await etiketler();
   const c = await page.evaluate(() => ({ lang: document.documentElement.lang, kod: window.KitapCilt.dil.kod(), diller: window.KitapCilt.dil.diller() }));
   kontrol('dil', lc.length >= 100 && farkli(lc, EN).length === 0 && c.lang === 'en' && c.kod === 'en' && JSON.stringify(c.diller) === '["en"]',
-    `${etiket}: (c) tr sözlüğü bozuk: dil.js çalışır, tr-TR kullanıcısı İngilizce görür, uygulama başlar`, JSON.stringify({ ...c, fark: farkli(lc, EN).slice(0, 3) }));
-  await page.unroute('**/dil/tr.js');
+    `${etiket}: (c) tr sözlüğü bozuk: i18n.js çalışır, tr-TR kullanıcısı İngilizce görür, uygulama başlar`, JSON.stringify({ ...c, fark: farkli(lc, EN).slice(0, 3) }));
+  await page.unroute('**/i18n/tr.js');
   // benzetimden sonra olağan açılış
   await page.goto(adres);
   await page.waitForSelector('html[data-hazir="evet"]', { timeout: 20000 });
@@ -1963,15 +1963,15 @@ async function m6AcilisHatasi(page, adres, iz, etiket) {
 // ------------------------------------------------------------------
 // Öğren rehberi
 // ------------------------------------------------------------------
-const OGREN_KLASOR = join(UYGULAMA, 'js', 'ogren');
-const { enjekte: ogrenDenetimEnjekte } = require('./ogren-denetim.cjs');
+const OGREN_KLASOR = join(UYGULAMA, 'js', 'learn');
+const { enjekte: ogrenDenetimEnjekte } = require('./learn-probe.cjs');
 /**
- * denetim arayüzü yalnız testte. ogren.js isteği yakalanır, ürün dosyası test enjeksiyonuyla sunulur
- * (app/test/ogren-denetim.cjs; kapanıştan önce KitapCilt.ogren.denetim eklenir). Ürün kodu diskte değişmez.
+ * denetim arayüzü yalnız testte. learn.js isteği yakalanır, ürün dosyası test enjeksiyonuyla sunulur
+ * (app/test/learn-probe.cjs; kapanıştan önce KitapCilt.ogren.denetim eklenir). Ürün kodu diskte değişmez.
  */
 async function ogrenDenetimKur(page) {
-  const kaynak = ogrenDenetimEnjekte(readFileSync(join(OGREN_KLASOR, 'ogren.js'), 'utf8'));
-  await page.route('**/js/ogren/ogren.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: kaynak }));
+  const kaynak = ogrenDenetimEnjekte(readFileSync(join(OGREN_KLASOR, 'learn.js'), 'utf8'));
+  await page.route('**/js/learn/learn.js', (r) => r.fulfill({ contentType: 'application/javascript; charset=utf-8', body: kaynak }));
 }
 const OGREN_LISANS = readFileSync(join(OGREN_KLASOR, 'LICENSE'), 'utf8').trim();
 /** Rehber betiklerinin üst düzey bildirdiği adlar (global ad denetimi adayları). */
@@ -2008,8 +2008,8 @@ async function hesaplaYaz(page, id, deger) {
 
 /** Öğren koşusu (sunucu, Tauri CSP başlığı). dil: 'tr' | 'en' (tarayıcı yerel ayarı). */
 async function m7OgrenAkisi(page, adres, iz, etiket, dil) {
-  const D = require('../js/dil.js');
-  const SOZ = D.jsonAyikla(readFileSync(join(UYGULAMA, 'dil', dil + '.js'), 'utf8'));
+  const D = require('../js/i18n.js');
+  const SOZ = D.jsonAyikla(readFileSync(join(UYGULAMA, 'i18n', dil + '.js'), 'utf8'));
   await page.addInitScript({ content: OGREN_IZ });
   await ogrenDenetimKur(page);
   await page.goto(adres);
@@ -2057,7 +2057,7 @@ async function m7OgrenAkisi(page, adres, iz, etiket, dil) {
     return { ...r, acik: p ? d.open && gorunur(p) && p.offsetHeight > 0 : null, metin: p ? p.textContent.trim() : '', lang: p ? p.lang : '', dipnot: document.querySelector('#og-kok [data-dil="ogren.lisans"]').textContent }; });
   await page.evaluate(() => { const d = document.getElementById('og-lisans'); if (d) d.open = false; });
   kontrol('ogren', lis.var && lis.ozet === SOZ['ogren.lisans_metni'] && lis.kapali && lis.acik && lis.metin === OGREN_LISANS && lis.lang === 'en' && lis.dipnot === SOZ['ogren.lisans'],
-    `${etiket}: Öğren'de "${SOZ['ogren.lisans_metni']}" paneli açılır, MIT tam metni js/ogren/LICENSE ile birebir`, JSON.stringify({ ...lis, metin: lis.metin.slice(0, 40) }));
+    `${etiket}: Öğren'de "${SOZ['ogren.lisans_metni']}" paneli açılır, MIT tam metni js/learn/LICENSE ile birebir`, JSON.stringify({ ...lis, metin: lis.metin.slice(0, 40) }));
   // ---- 10 aşama, 45 adım (4×)
   await page.selectOption('#og-hiz', '4');
   const ders = await page.evaluate(() => window.KitapCilt.ogren.denetim.dersler.map((d) => d.adimlar.length));
@@ -2165,7 +2165,7 @@ async function m7OgrenAkisi(page, adres, iz, etiket, dil) {
     `${etiket}: Öğren boyunca CSP ihlali 0 (Tauri CSP başlığı), eksik ogren.* anahtarı 0, hata bildirimi yok`, JSON.stringify(sonIz));
   // ---- dil değişimi: yeniden yüklemeden sonra Öğren sekmesi açık, rehber yeni dilde, aşama/adım korunur
   const obur = dil === 'tr' ? 'en' : 'tr';
-  const OBUR = D.jsonAyikla(readFileSync(join(UYGULAMA, 'dil', obur + '.js'), 'utf8'));
+  const OBUR = D.jsonAyikla(readFileSync(join(UYGULAMA, 'i18n', obur + '.js'), 'utf8'));
   await page.evaluate(() => window.KitapCilt.ogren.denetim.kur(2, 2));
   const onceTamam = (await ogrenDurum(page)).tamam;
   const onceIlerleme = await page.evaluate(() => document.getElementById('og-ilerleme-metin').textContent.match(/\d+/g).join('/'));

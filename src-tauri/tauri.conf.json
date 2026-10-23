@@ -5,8 +5,8 @@
   "identifier": "com.onurmert.kitapcilt",
   "build": {
     "frontendDist": "../dist",
-    "beforeDevCommand": "node araclar/dist-hazirla.mjs --sessiz",
-    "beforeBuildCommand": "node araclar/dist-hazirla.mjs --sessiz"
+    "beforeDevCommand": "node tools/prepare-dist.mjs --sessiz",
+    "beforeBuildCommand": "node tools/prepare-dist.mjs --sessiz"
   },
   "app": {
     "withGlobalTauri": true,

@@ -1,8 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Z = require('../js/eklentiler/epub/zip.js');
-const U = require('./epub-uret.cjs');
+const Z = require('../js/plugins/epub/zip.js');
+const U = require('./epub-build.cjs');
 
 async function hataKodu(fn) {
   try { await fn(); } catch (e) { return { kod: e.kod, mesaj: e.message }; }
@@ -243,11 +243,11 @@ test('zip (.epub.zip): önek büyük/küçük harf farkıyla container (meta-inf
   assert.equal(z.var('META-INF/container.xml'), true);
 });
 
-test('repo fixture: klasör paketi (app/test/fixtures/klasor-paket.epub) epub-oku-cli denetleyicisiyle; kusurlu girdiler kalır', async () => {
+test('repo fixture: klasör paketi (app/test/fixtures/folder-package.epub) epub-oku-cli denetleyicisiyle; kusurlu girdiler kalır', async () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const { denetle } = require('./epub-oku-cli.cjs');
-  const kok = path.join(__dirname, 'fixtures', 'klasor-paket.epub');
+  const { denetle } = require('./epub-read-cli.cjs');
+  const kok = path.join(__dirname, 'fixtures', 'folder-package.epub');
   const dosyalar = [];
   (function gez(d) {
     for (const g of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
@@ -266,7 +266,7 @@ test('repo fixture: klasör paketi (app/test/fixtures/klasor-paket.epub) epub-ok
   assert.ok(sikisik.uyarilar.some((u) => /sıkıştırılmış/.test(u)), JSON.stringify(sikisik));
   const sira = dosyalar.slice(1).concat(['mimetype']);
   assert.ok((await denetle(U.zipUret(sira.map((a) => girdi(a))))).uyarilar.some((u) => /ilk girdi/.test(u)));
-  const eksik = dosyalar.filter((a) => a !== 'OEBPS/bolum-2.xhtml');
+  const eksik = dosyalar.filter((a) => a !== 'OEBPS/chapter-2.xhtml');
   assert.ok((await denetle(U.zipUret(eksik.map((a) => girdi(a))))).uyarilar.some((u) => /manifest dosyası yok/.test(u)));
   await assert.rejects(denetle(U.zipUret(dosyalar.filter((a) => !a.startsWith('META-INF/')).map((a) => girdi(a)))), /container/);
   await assert.rejects(denetle(Buffer.alloc(0)), /./);
@@ -276,8 +276,8 @@ test('deflate açılamıyorsa (DecompressionStream yok) tarayıcıda Chrome/Edge
   const vm = require('node:vm');
   const fs = require('node:fs');
   const path = require('node:path');
-  const { dilKur } = require('./dil-yardimci.js');
-  const kaynak = fs.readFileSync(path.join(__dirname, '..', 'js', 'eklentiler', 'epub', 'zip.js'), 'utf8');
+  const { dilKur } = require('./i18n-helper.js');
+  const kaynak = fs.readFileSync(path.join(__dirname, '..', 'js', 'plugins', 'epub', 'zip.js'), 'utf8');
   const bayt = U.zipUret([{ ad: 'a.txt', veri: 'x'.repeat(100), yontem: 8 }]);
   for (const [platform, beklenen, olmayan] of [['tarayici', /Chrome\/Edge/, null], ['tauri', /macOS/, /Chrome|Edge|browser/i]]) {
     const ctx = {};

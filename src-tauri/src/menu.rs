@@ -6,8 +6,8 @@
 //! bütün etiketler (öntanımlı öğeler dahil: Hakkında, Gizle, Çık, Pencereyi Kapat, Geri Al …) sözlükten,
 //! şu anki dilde (`crate::dil`); Görünüm > Dil alt menüsü (`dil:<seçim>`, JS işler); dil değişince menü yeniden kurulur.
 
-use crate::dil::{self, metin};
-use crate::dosya::Durum;
+use crate::i18n::{self, metin};
+use crate::files::Durum;
 use tauri::menu::{
     CheckMenuItemBuilder, Menu, MenuEvent, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -50,7 +50,7 @@ pub fn iletilir_mi(kimlik: &str) -> bool {
         })
         || kimlik
             .strip_prefix(DIL_ONEK)
-            .is_some_and(|s| s == "sistem" || dil::destekli(s))
+            .is_some_and(|s| s == "sistem" || i18n::destekli(s))
 }
 
 /// Menü etiketi: muda macOS'ta tek `&`'yi (anımsatıcı) siler; dosya adındaki `&` görünsün diye ikilenir.
@@ -158,16 +158,16 @@ pub fn olustur<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 /// Görünüm > Dil: sistem dili ("Sistem Dili (X)", Title Case: menu.dil_sistem) + her sözlük (kendi adıyla); şu anki
 /// seçim işaretli.
 fn dil_menusu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Submenu<R>> {
-    let secim = dil::secim();
-    // seçicideki "Sistem dili (X)" ile aynı kaynak (dil::sistem_kodu; JS dil_oku.sistem ile alır)
+    let secim = i18n::secim();
+    // seçicideki "Sistem dili (X)" ile aynı kaynak (i18n::sistem_kodu; JS dil_oku.sistem ile alır)
     let mut m = SubmenuBuilder::new(app, metin("menu.dil", &[])).item(
-        &CheckMenuItemBuilder::with_id(format!("{DIL_ONEK}sistem"), dil::sistem_etiketi())
+        &CheckMenuItemBuilder::with_id(format!("{DIL_ONEK}sistem"), i18n::sistem_etiketi())
             .checked(secim.is_none())
             .build(app)?,
     );
-    for kod in dil::diller() {
+    for kod in i18n::diller() {
         m = m.item(
-            &CheckMenuItemBuilder::with_id(format!("{DIL_ONEK}{kod}"), etiket_kac(&dil::ad(&kod)))
+            &CheckMenuItemBuilder::with_id(format!("{DIL_ONEK}{kod}"), etiket_kac(&i18n::ad(&kod)))
                 .checked(secim.as_deref() == Some(kod.as_str()))
                 .build(app)?,
         );
@@ -186,7 +186,7 @@ pub fn yenile<R: Runtime>(app: &AppHandle<R>) {
 pub fn olay<R: Runtime>(app: &AppHandle<R>, olay: MenuEvent) {
     let kimlik = olay.id().as_ref();
     if kimlik == SON_TEMIZLE {
-        crate::dosya::son_acilanlari_temizle(app);
+        crate::files::son_acilanlari_temizle(app);
     } else if iletilir_mi(kimlik) {
         if kimlik.starts_with(DIL_ONEK) {
             // İşaretli öğe tıklanınca kendiliğinden değişir; JS vazgeçerse yanlış kalmasın diye menü şimdiki
@@ -278,28 +278,28 @@ mod testler {
     fn menu_anahtarlari_her_dilde() {
         let mut anahtarlar: Vec<&str> = SEKMELER.iter().map(|(_, a, _)| *a).collect();
         anahtarlar.extend(DOSYA_OGELERI.iter().map(|(_, a, _)| *a));
-        for kod in crate::dil::diller() {
+        for kod in crate::i18n::diller() {
             for a in &anahtarlar {
-                let m = crate::dil::metin_dilde(&kod, a, &[]);
+                let m = crate::i18n::metin_dilde(&kod, a, &[]);
                 assert_ne!(&m, a, "{kod}: {a} eksik");
             }
         }
         assert_eq!(
-            crate::dil::metin_dilde("en", "menu.pencereyi_kapat", &[]),
+            crate::i18n::metin_dilde("en", "menu.pencereyi_kapat", &[]),
             "Close Window"
         );
         assert_eq!(
-            crate::dil::metin_dilde("tr", "menu.pencereyi_kapat", &[]),
+            crate::i18n::metin_dilde("tr", "menu.pencereyi_kapat", &[]),
             "Pencereyi Kapat"
         );
         // AppKit toggleFullScreen: öğesini menü doğrulanırken kendi metniyle yeniden adlandırır; sözlük o
         // metinle aynı (MenuCommands.loctable "Enter Full Screen": en/tr), doğrulamadan önce/sonra ad değişmez.
         assert_eq!(
-            crate::dil::metin_dilde("en", "menu.tam_ekran", &[]),
+            crate::i18n::metin_dilde("en", "menu.tam_ekran", &[]),
             "Enter Full Screen"
         );
         assert_eq!(
-            crate::dil::metin_dilde("tr", "menu.tam_ekran", &[]),
+            crate::i18n::metin_dilde("tr", "menu.tam_ekran", &[]),
             "Tam Ekrana Geç"
         );
     }
@@ -316,8 +316,8 @@ mod testler {
                 "sekme kısayolları sırayla ⌘1-⌘4"
             );
         }
-        assert_eq!(crate::dil::metin_dilde("en", "sekme.ogren", &[]), "Learn");
-        assert_eq!(crate::dil::metin_dilde("tr", "sekme.ogren", &[]), "Öğren");
+        assert_eq!(crate::i18n::metin_dilde("en", "sekme.ogren", &[]), "Learn");
+        assert_eq!(crate::i18n::metin_dilde("tr", "sekme.ogren", &[]), "Öğren");
     }
 
     #[test]

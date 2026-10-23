@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Ana pencere, en küçük izin seti: menü/dosya olaylarını dinleme (platform-tauri.js event.listen), yerel onay penceresi (dialog ask/confirm/message hepsi message komutunu kullanır) ve uygulamanın kendi dosya/yedek komutları (src-tauri/src/dosya.rs, veri.rs, dil.rs, yazdir.rs; JS yol vermez, yalnız kimlik). core:default yok; fs eklentisi yok.",
+  "description": "Ana pencere, en küçük izin seti: menü/dosya olaylarını dinleme (platform-tauri.js event.listen), yerel onay penceresi (dialog ask/confirm/message hepsi message komutunu kullanır) ve uygulamanın kendi dosya/yedek komutları (src-tauri/src/files.rs, backup.rs, i18n.rs, print.rs; JS yol vermez, yalnız kimlik). core:default yok; fs eklentisi yok.",
   "windows": [
     "main"
   ],

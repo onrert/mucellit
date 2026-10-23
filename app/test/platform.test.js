@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { dilKur } = require('./dil-yardimci.js');
+const { dilKur } = require('./i18n-helper.js');
 
 const JS = path.join(__dirname, '..', 'js');
 const oku = (ad) => fs.readFileSync(path.join(JS, ad), 'utf8');
@@ -618,7 +618,7 @@ test('Mac uygulamasında tarayıcıya özgü metinler Mac metniyle (saklama ipuc
 });
 
 // ----------------------------------------------------------------
-test('dil.js yoksa (KC.dil yok) platform-tauri.js yüklenirken hata atmaz; metinler yüklü en sözlüğünden, o da yoksa anahtar', async () => {
+test('i18n.js yoksa (KC.dil yok) platform-tauri.js yüklenirken hata atmaz; metinler yüklü en sözlüğünden, o da yoksa anahtar', async () => {
   const ipucu = { nitelik: {}, textContent: 'statik', setAttribute(a, v) { this.nitelik[a] = v; } };
   const belge = { readyState: 'complete', getElementById: (id) => (id === 'saklama-ipucu' ? ipucu : null) };
   const calistir = (enSozluk) => {
@@ -628,7 +628,7 @@ test('dil.js yoksa (KC.dil yok) platform-tauri.js yüklenirken hata atmaz; metin
     const ctx = { __TAURI__: T, document: belge, setTimeout: () => 0, Blob };
     ctx.self = ctx;
     vm.createContext(ctx);
-    if (enSozluk) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'dil', 'en.js'), 'utf8'), ctx);
+    if (enSozluk) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'i18n', 'en.js'), 'utf8'), ctx);
     vm.runInContext(oku('platform.js'), ctx, { filename: 'platform.js' });
     vm.runInContext(oku('platform-tauri.js'), ctx, { filename: 'platform-tauri.js' }); // atarsa test KALDI
     return { P: ctx.KitapCilt.platform, cagri };

@@ -1,4 +1,4 @@
-//! Mücellit Mac uygulaması (Tauri 2). Web arayüzü `dist/` (app/'ten `araclar/dist-hazirla.mjs` ile).
+//! Mücellit Mac uygulaması (Tauri 2). Web arayüzü `dist/` (app/'ten `tools/prepare-dist.mjs` ile).
 //! pencere, dialog eklentisi (yerel onay pencereleri), yerel menü.
 //! yerel Aç/Kaydet (`dosya`), klasör paketi EPUB (`epub_klasor`), son açılanlar + yer imi
 //! (`son_acilanlar`), Süreç verisi otomatik yedeği (`veri`), Dock/Finder'dan açma (`RunEvent::Opened`).
@@ -7,13 +7,13 @@
 //! Güvenlik: ana pencere `tauri.conf.json`'daki ayarla (`create: false`) burada kurulur;
 //! uygulama dışı adrese gezinme ve yeni pencere (window.open, target=_blank) reddedilir. CSP conf'ta.
 
-pub mod dil;
-pub mod dosya;
-pub mod epub_klasor;
+pub mod i18n;
+pub mod files;
+pub mod epub_folder;
 mod menu;
-pub mod son_acilanlar;
-pub mod veri;
-pub mod yazdir;
+pub mod recent;
+pub mod backup;
+pub mod print;
 
 use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
 use tauri::{Runtime, Url};
@@ -58,25 +58,25 @@ pub fn yeni_pencere_karari<R: Runtime>(url: &Url) -> NewWindowResponse<R> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(dosya::Durum::default())
-        .manage(veri::Yedekci::default())
+        .manage(files::Durum::default())
+        .manage(backup::Yedekci::default())
         .invoke_handler(tauri::generate_handler![
-            dosya::dosya_ac,
-            dosya::dosya_oku,
-            dosya::dosya_kaydet,
-            dosya::son_acilanlar,
-            dosya::son_acilani_oku,
-            dosya::bekleyen_acilanlar,
-            veri::veri_yedekle,
-            veri::veri_oku,
-            dil::dil_oku,
-            dil::dil_ayarla,
-            yazdir::yazdir,
-            yazdir::onizlemede_ac,
+            files::dosya_ac,
+            files::dosya_oku,
+            files::dosya_kaydet,
+            files::son_acilanlar,
+            files::son_acilani_oku,
+            files::bekleyen_acilanlar,
+            backup::veri_yedekle,
+            backup::veri_oku,
+            i18n::dil_oku,
+            i18n::dil_ayarla,
+            print::yazdir,
+            print::onizlemede_ac,
         ])
         // Menü dili: yedeklenmiş elle seçim ya da sistem dili (JS açılınca dil_ayarla ile eşitler).
         .menu(|app| {
-            dil::baslat(app);
+            i18n::baslat(app);
             menu::olustur(app)
         })
         .on_menu_event(menu::olay)
@@ -90,14 +90,14 @@ pub fn run() {
                 .cloned()
                 .ok_or("tauri.conf.json: no main window")?;
             WebviewWindowBuilder::from_config(app.handle(), &ayar)?
-                // ilk kare menüyle aynı sistem dilinde (app/js/dil.js __KC_DIL__)
-                .initialization_script(dil::baslangic_betigi())
+                // ilk kare menüyle aynı sistem dilinde (app/js/i18n.js __KC_DIL__)
+                .initialization_script(i18n::baslangic_betigi())
                 .on_navigation(gezinme_karari)
                 .on_new_window(|url, _| yeni_pencere_karari(&url))
                 .build()?;
-            veri::isci_baslat(app.handle());
+            backup::isci_baslat(app.handle());
             // Önizleme önbelleği (eski çıktı, çökme artığı .gecici) açılışta temizlenir.
-            yazdir::acilista_temizle(app.handle());
+            print::acilista_temizle(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -111,11 +111,11 @@ pub fn run() {
                     .into_iter()
                     .filter_map(|u| u.to_file_path().ok())
                     .collect();
-                dosya::disaridan_acildi(app, yollar);
+                files::disaridan_acildi(app, yollar);
             }
             // ⌘Q / Dock'tan Çık / son pencere kapandı (tao: applicationWillTerminate → LoopDestroyed → Exit):
             // bekleyen Süreç yedeği beklemeden yazılır.
-            tauri::RunEvent::Exit => veri::kapanista_bosalt(app),
+            tauri::RunEvent::Exit => backup::kapanista_bosalt(app),
             _ => {}
         });
 }

@@ -1,0 +1,164 @@
+/*
+ * learn.css — Mücellit "Öğren" sekmesi: sayfa düzeni + Colorfigures motor stilleri.
+ * LİSANS NOTU (MIT): "motor" bölümü Colorfigures assets/core.js (CORE_CSS) ve scripts/build.py stillerinden uyarlandı
+ * (body yerine .cf-kok kökü). MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) ve Tolga Cohce
+ * (iso-figure). Tam metin: js/learn/LICENSE.
+ * Öğren prototipinden uyarlandı. Uygulamaya eklerken: bütün sayfa kuralları .ogren-kok
+ * altına alındı (uygulamanın button/select/h2/.kart/.ilerleme/table.sonuc kurallarıyla çakışmasın); :root
+ * değişkenleri ve body zemini .ogren-kok'a taşındı; rehber kendi kâğıt renginde kalır (koyu temada da; çizimler
+ * açık zemine göre). Motor bölümü (.cf-kok, #fig, #figF …) değişmedi.
+ */
+.ogren-kok{--paper:#f2efe7;--ink:#231e16;--muted:#6f6758;--rule:#ddd6c8;--card:#fbf8f0;--accent:#f4b829;--warn:#fff1bf;
+  color-scheme:light;background-color:var(--paper);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .42  0 0 0 0 .39  0 0 0 0 .33  .16 0 0 0 0'/></filter><rect width='100%' height='100%' filter='url(%23p)'/></svg>");
+  color:var(--ink);font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-x:clip;
+  border:1px solid var(--rule);border-radius:12px}
+.ogren-kok button,.ogren-kok select,.ogren-kok input{font:inherit;color:var(--ink)}
+.ogren-kok button:hover{border-color:var(--ink)}
+.ogren-kok .kucuk{font-size:12px;color:var(--muted)}
+.ogren-kok h2,.ogren-kok h3{color:var(--ink);text-transform:none;letter-spacing:normal}
+
+/* ---------- sayfa düzeni ---------- */
+.ogren-kok .ust{display:flex;justify-content:space-between;align-items:flex-end;gap:12px 24px;flex-wrap:wrap;padding:18px 24px 10px;border-bottom:1px solid var(--rule)}
+.ogren-kok .ust h2{font-size:18px;margin:0;letter-spacing:.01em}
+.ogren-kok .ust p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+.ogren-kok .ayarlar{display:flex;gap:14px;flex-wrap:wrap}
+.ogren-kok .ayarlar label{display:flex;flex-direction:column;gap:2px}
+.ogren-kok select,.ogren-kok input{width:auto;min-width:0;background:var(--card);border:1.5px solid var(--ink);border-radius:8px;padding:4px 8px}
+.ogren-kok .duzen{display:grid;grid-template-columns:220px minmax(0,1fr) 340px;gap:18px;padding:14px 22px;align-items:start}
+.ogren-kok .yan{position:sticky;top:12px}
+.ogren-kok .sag{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ogren-kok .yan h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px;color:var(--muted)}
+.ogren-kok .ilerleme{height:8px;border:1.5px solid var(--ink);border-radius:999px;overflow:hidden;background:var(--card)}
+.ogren-kok #og-ilerleme-cubuk{height:100%;width:0;background:var(--accent);transition:width .3s}
+.ogren-kok .asamalar{list-style:none;margin:8px 0 12px;padding:0;display:grid;gap:5px}
+.ogren-kok .asama{all:unset;box-sizing:border-box;display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;width:100%;padding:5px 8px;border:1.5px solid var(--rule);border-radius:10px;cursor:pointer;background:var(--card)}
+.ogren-kok .asama:hover{border-color:var(--ink)}
+.ogren-kok .asama:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.ogren-kok .asama .no{width:22px;height:22px;border:1.5px solid var(--ink);border-radius:999px;text-align:center;line-height:19px;font-size:11.5px;background:var(--paper)}
+.ogren-kok .asama .sy{font-size:11px;color:var(--muted)}
+.ogren-kok .asama.bitti .no{background:var(--accent)}
+.ogren-kok .asama.guncel{border-color:var(--ink);box-shadow:2px 2px 0 var(--ink)}
+.ogren-kok .asama[disabled]{cursor:default;opacity:.75}
+.ogren-kok button.buyuk,.ogren-kok .oynatici button,.ogren-kok .sayilar button{background:var(--paper);border:1.5px solid var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer}
+.ogren-kok button.buyuk{width:100%;font-weight:700}
+.ogren-kok button.buyuk[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.ogren-kok .oynatici button.birincil{background:var(--ink);color:var(--paper);font-weight:700}
+.ogren-kok .oynatici button[disabled],.ogren-kok button.buyuk[disabled]{opacity:.45;cursor:default}
+.ogren-kok .orta{min-width:0;display:flex;flex-direction:column;gap:14px}
+.ogren-kok .og-kart{background:var(--card);border:1.5px solid var(--ink);border-radius:14px;box-shadow:3px 3px 0 var(--ink);padding:14px 16px}
+.ogren-kok .og-kart h3{font-size:16px;margin:2px 0 6px}
+.ogren-kok .og-kart p{margin:0 0 8px}
+.ogren-kok .asama-ad{font-weight:700;margin-bottom:2px!important}
+.ogren-kok .adimlar{display:flex;flex-wrap:wrap;gap:4px 6px;list-style:none;margin:0 0 8px;padding:0;counter-reset:a}
+.ogren-kok .adimlar li{counter-increment:a;font-size:11.5px;border:1px solid var(--rule);border-radius:999px;padding:1px 9px;color:var(--muted)}
+.ogren-kok .adimlar li::before{content:counter(a) ". "}
+.ogren-kok .adimlar li.bitti{background:#e9f2dd;border-color:#9bbf86;color:var(--ink)}
+.ogren-kok .adimlar li.guncel{border-color:var(--ink);color:var(--ink);font-weight:700}
+.ogren-kok .adim-no{margin:6px 0 0!important;text-transform:uppercase;letter-spacing:.08em}
+.ogren-kok .kutu{border-radius:10px;padding:7px 10px;margin:0 0 8px;font-size:12.5px}
+.ogren-kok .kutu.arac{background:#eef3e6;border:1px solid #b9cfa6}
+.ogren-kok .kutu.dikkat{background:var(--warn);border:1px solid rgba(35,30,22,.3)}
+.ogren-kok .kutu strong{margin-right:6px}
+.ogren-kok .kutu[hidden]{display:none}
+.ogren-kok .oynatici{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.ogren-kok .og-kart.son h3{color:#3f6b52}
+.ogren-kok .sekil{min-width:0}
+.ogren-kok .sayilar details{background:var(--card);border:1.5px solid var(--ink);border-radius:14px;padding:10px 12px}
+.ogren-kok .sayilar summary{font-weight:700;cursor:pointer}
+.ogren-kok .hesapla-al{margin:10px 0 0}
+.ogren-kok #og-sayi-form{display:grid;gap:6px;margin:10px 0 6px}
+.ogren-kok #og-sayi-form label{display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:center;font-size:12px}
+.ogren-kok #og-sayi-form input{width:84px;text-align:right}
+.ogren-kok #og-sayi-form input[aria-invalid=true]{border-color:#c23b2a;background:#fde8e4}
+.ogren-kok #og-sayi-form button{justify-self:end}
+.ogren-kok .hata{color:#a3271a;font-size:12px;margin:4px 0}
+.ogren-kok .hata[hidden],.ogren-kok .kucuk[hidden]{display:none}
+.ogren-kok .sonuc{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+.ogren-kok .sonuc th{text-align:left;font-weight:400;color:var(--muted);padding:3px 6px 3px 0;border-top:1px solid var(--rule);border-bottom:0;vertical-align:baseline}
+.ogren-kok .sonuc td{text-align:right;padding:3px 0;border-top:1px solid var(--rule);border-bottom:0;font-variant-numeric:tabular-nums}
+.ogren-kok .alt{margin:0;padding:8px 24px 24px;color:var(--muted);font-size:11.5px}
+@media (max-width:1180px){.ogren-kok .duzen{grid-template-columns:minmax(0,1fr) 320px}.ogren-kok .yan{grid-column:1 / -1;position:static}
+  .ogren-kok .asamalar{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
+@media (max-width:760px){
+  .ogren-kok .ust{padding:12px 16px 8px}
+  .ogren-kok .duzen{grid-template-columns:minmax(0,1fr);padding:10px 16px;gap:12px}
+  .ogren-kok .yan{position:static}
+  .ogren-kok .sag{display:contents}
+  .ogren-kok .og-kart{order:2}.ogren-kok .orta{order:3}.ogren-kok .sayilar{order:4}
+  .ogren-kok .asamalar{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .ogren-kok .alt{padding:8px 16px 20px}
+}
+
+/* ---------- motor (Colorfigures CORE_CSS, kök .cf-kok) ---------- */
+.cf-kok{display:flex;flex-direction:column;align-items:center;width:100%}
+.cf-kok #fig{width:100%;max-width:760px;height:auto;display:block;margin:4px 0 8px;user-select:none;overflow:visible}
+.cf-kok #fig{cursor:grab;touch-action:pan-y} .cf-kok #fig.drag{cursor:grabbing} .cf-kok #fig [data-act]{cursor:pointer}
+.cf-kok .stage{position:relative;width:100%;max-width:760px}
+.cf-kok .actions{position:absolute;top:4px;left:0;display:flex;flex-direction:column;align-items:flex-start;gap:8px;z-index:2;max-width:220px}
+.cf-kok.nolabels svg .tag{display:none}
+/* (WebKit akıcılığı, cf-engine.js fark 8): #fig canlı ve filtresiz, #figF filtreli durgun kopya; geçiş yumuşak */
+.cf-kok #figF{position:absolute;left:0;top:0;margin:0;display:block;pointer-events:none;overflow:visible;transform-origin:0 0;opacity:1;visibility:visible;transition:opacity .22s ease,visibility 0s;will-change:opacity}
+/* canlı katman, filtreli katman tamamen belirdikten SONRA gizlenir (çapraz geçişte arka plan görünmez, açılma olmaz) */
+.cf-kok #art{opacity:0;transition:opacity 0s linear .24s}
+.cf-kok.cf-hareket #art{opacity:1;transition:none}
+/* sönme bitince gizli: opaklığı 0 olan filtreli katman bile WebKit'te her karede boyama yükü getiriyordu (gerçek Safari zincir 30 → 48 fps) */
+.cf-kok.cf-hareket #figF{opacity:0;visibility:hidden;transition:opacity .14s ease,visibility 0s linear .14s}
+.cf-kok.cf-anlik #art,.cf-kok.cf-anlik #figF{transition:none!important}
+@media (prefers-reduced-motion:reduce){.cf-kok #art,.cf-kok #figF,.cf-kok .toast,#og-ilerleme-cubuk{transition:none!important}.cf-kok .stat .v.bump{animation:none}}
+.cf-kok .stats{position:absolute;top:4px;right:0;display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:2;text-align:right}
+.cf-kok .stat .k{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.cf-kok .stat .v{font-size:30px;font-weight:800;line-height:1.05;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--ink)}
+.cf-kok .stat.small .v{font-size:18px}
+.cf-kok .stat .v.bump{animation:bump .35s ease-out}
+@keyframes bump{0%{transform:scale(1.18)}100%{transform:none}}
+.cf-kok .stepwrap{position:relative;display:flex;align-items:center;gap:8px}
+.cf-kok .act{font:inherit;color:var(--ink);background:var(--paper);border:1.5px solid var(--ink);border-radius:999px;padding:5px 14px;cursor:pointer;white-space:nowrap}
+.cf-kok .act:hover{background:color-mix(in srgb,var(--paper) 92%,var(--ink))}
+.cf-kok .act:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.cf-kok .act.yapildi{background:#e9f2dd}
+.cf-kok .act.sirada{box-shadow:2px 2px 0 var(--ink);font-weight:700}
+.cf-kok .controls{width:100%;max-width:760px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px 28px;border-top:1px solid var(--rule);padding-top:12px}
+.cf-kok .ctl{display:flex;flex-direction:column;gap:6px}
+.cf-kok .ctl label,.cf-kok .ctl .ctl-ad{color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.cf-kok input[type=range]{width:100%;accent-color:var(--ink);border:0;background:none;padding:0}
+.cf-kok .row{display:flex;gap:8px;flex-wrap:wrap}
+.cf-kok button{font:inherit;color:var(--ink);background:transparent;border:1.5px solid var(--ink);border-radius:999px;padding:5px 14px;cursor:pointer}
+.cf-kok button:hover{background:#0000000d}
+.cf-kok button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.cf-kok .vset{position:absolute;top:4px;right:0;z-index:2}
+.cf-kok .vrow{display:flex;gap:6px}
+.cf-kok .vset .act[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+@media (max-width:560px){
+  .cf-kok .actions{flex-direction:row;flex-wrap:wrap;gap:6px;position:static;max-width:none;margin:6px 0 4px}
+  .cf-kok .act{font-size:12px;padding:4px 11px;white-space:normal}
+  .cf-kok .stats{position:static;flex-direction:row;justify-content:flex-end;gap:18px;margin-bottom:4px}
+  .cf-kok .stat .v{font-size:20px!important}
+  .cf-kok .vset{position:static;margin:8px 0 2px!important}
+  #artF{filter:none!important}
+}
+@media (min-width:561px){.cf-kok .vset{top:4px!important}.cf-kok #stats{top:var(--vset-h,44px)!important}}
+@media (pointer:coarse){#artF{filter:none!important}}
+/* build.py: yakınlaştırma çipi */
+.zwrap{position:relative;width:100%}.zwrap.on{overflow:hidden}.zwrap #fig{transform-origin:0 0}
+.zchip{position:absolute;right:2px;bottom:6px;display:flex;align-items:center;gap:2px;font:600 11px ui-monospace,Menlo,monospace;
+ background:rgba(242,239,231,.88);border:1px solid rgba(35,30,22,.25);border-radius:999px;padding:2px;z-index:3;user-select:none}
+.cf-kok .zchip button{all:unset;cursor:pointer;min-width:22px;height:22px;line-height:22px;text-align:center;border-radius:999px;color:#231e16}
+.cf-kok .zchip button:hover{background:rgba(35,30,22,.08)}.cf-kok .zchip .zp{min-width:44px}
+/* build.py: figür üstü uyarı balonu */
+.cf-kok .toast{position:absolute;left:50%;top:6%;z-index:4;transform:translate(-50%,8px);opacity:0;pointer-events:none;display:flex;align-items:center;gap:8px;
+  width:max-content;max-width:min(86%,440px);white-space:normal;font:600 12.5px/1.35 ui-monospace,Menlo,monospace;letter-spacing:.01em;color:#231e16;background:#fff1bf;
+  border:1px solid rgba(35,30,22,.28);border-radius:8px;box-shadow:0 8px 22px rgba(35,30,22,.16);padding:7px 13px 7px 9px;transition:opacity .18s ease,transform .18s ease}
+.cf-kok .toast::before{content:"!";flex:none;width:17px;height:17px;border-radius:50%;background:#231e16;color:#fff1bf;font:800 11px/17px ui-monospace,Menlo,monospace;text-align:center}
+.cf-kok .toast.show{opacity:1;transform:translate(-50%,0)}
+/* build.py: telefonda etiket listesi */
+.lgd{display:none}@media (max-width:560px){.cf-kok:not(.nolabels) .lgd.has{display:grid}}
+.lgd{grid-template-columns:1fr 1fr;gap:2px 8px;margin:4px 0 12px;font:700 10.5px/1.25 ui-monospace,Menlo,monospace;letter-spacing:.03em;color:#231e16;width:100%}
+.cf-kok .lgd button{all:unset;display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px;border-radius:7px;-webkit-tap-highlight-color:transparent}
+.lgd b{flex:none;min-width:17px;height:17px;padding:0 3px;box-sizing:border-box;border-radius:999px;border:1.2px solid #231e16;background:#fff4d6;text-align:center;font:800 10px/15px ui-monospace,Menlo,monospace}
+.lgd .on b{background:var(--accent,#f4b829)}.lgd .sel{background:rgba(35,30,22,.09)}.lgd .sel b{background:#231e16;color:#fff4d6}
+/* Colorfigures MIT lisansı paneli (rehberin dipnotunun altında, kapalı başlar) */
+.ogren-kok .og-lisans{margin:0;padding:0 24px 24px;color:var(--muted);font-size:11.5px}
+.ogren-kok .og-lisans summary{cursor:pointer}
+.ogren-kok .og-lisans pre{margin:8px 0 0;white-space:pre-wrap;font:11px/1.45 ui-monospace,Menlo,monospace;max-width:80ch}
+@media (max-width:560px){ .ogren-kok .og-lisans{padding:0 16px 20px} }

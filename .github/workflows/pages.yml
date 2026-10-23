@@ -34,7 +34,7 @@ jobs:
 
       - name: Build the site (dist/)
         # app/ → dist/ without tests and *.ttf; adds LICENSE and THIRD_PARTY_NOTICES.md; fails if a license is missing
-        run: node araclar/dist-hazirla.mjs --web
+        run: node tools/prepare-dist.mjs --web
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

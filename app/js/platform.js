@@ -6,7 +6,7 @@
  *
  * Sözleşme (KitapCilt.platform):
  *   ad                     'tarayici' | 'tauri'
- *   hazir                  Promise<void>; uygulama.js başlatmayı bunu bekleyerek yapar
+ *   hazir                  Promise<void>; app.js başlatmayı bunu bekleyerek yapar
  *   dosyaSec({ girdi, uzantilar, mime })  Promise<File|null>
  *                          Tarayıcıda gizli girdiyi açar ve null döner: seçilen dosya girdinin kendi
  *                          `change` olayıyla gelir (e2e'deki setInputFiles da bu yolu kullanır).
@@ -15,7 +15,7 @@
  *                          Tarayıcıda her zaman true (indirme başlatıldı; sonucu bilinmez). Yerel Kaydet
  *                          penceresi (Tauri) false = vazgeçildi, { ad, yol } = yazıldı.
  *   yerelDosya             false; Tauri'de true: Aç/Kaydet yerel pencerelerle, kaydetme sonucu gerçek
- *                          (duzenle.js dizilmiş PDF'i sırayla kaydedip bildirimi sonuca göre yazar)
+ *                          (impose.js dizilmiş PDF'i sırayla kaydedip bildirimi sonuca göre yazar)
  *   sonAcilanlar()         Promise<[{ kimlik, ad, tur, tarih }]>; tarayıcıda boş (yer imi Tauri'de)
  *   sonAcilaniAc(kimlik)   Promise<File|null>; tarayıcıda null
  *   onayla(mesaj)          Promise<boolean>; ASLA senkron confirm sonucuna güvenilmez (bkz. aşağı)
@@ -79,9 +79,9 @@
     metin: {}
   };
   // Ortama göre değişen metinler, okunduğu andaki dilde (platform-tauri.js Mac metinleriyle ezer).
-  //   kutuphaneIpucu: uygulama.js kütüphane yüklenemedi bildiriminin sonu
-  //   saklamaUyari:   surec.js, saklama alanı kullanılamıyor/dolu uyarısı
-  //   denetimUyari:   duzenle.js, şifre/kısıt durumu denetlenemedi uyarısı
+  //   kutuphaneIpucu: app.js kütüphane yüklenemedi bildiriminin sonu
+  //   saklamaUyari:   projects.js, saklama alanı kullanılamıyor/dolu uyarısı
+  //   denetimUyari:   impose.js, şifre/kısıt durumu denetlenemedi uyarısı
   [['kutuphaneIpucu', 'uygulama.kutuphane_ipucu'], ['saklamaUyari', 'surec.uyari.saklama'], ['denetimUyari', 'duzenle.uyari.denetim']].forEach(function (m) {
     Object.defineProperty(KC.platform.metin, m[0], {
       get: function () { return D.t(m[1]); }, enumerable: true, configurable: true

@@ -14,13 +14,13 @@
  *   (dosya-acildi olayı + bekleyen_acilanlar).
  *   hazir      → sayfa betikleri yüklenince: localStorage boşsa Süreç verisi otomatik yedekten geri yüklenir
  *                (boş yedek geri yüklenmez, bildirim çıkmaz); her depo.yaz/temizle sonrası HEMEN veri_yedekle
- *                (oturum + artan sıra). Bekletme (1 sn) ve kapanışta yazma Rust'ta (src-tauri/src/veri.rs).
+ *                (oturum + artan sıra). Bekletme (1 sn) ve kapanışta yazma Rust'ta (src-tauri/src/backup.rs).
  * son açılan hataları ayrımlı (yalnız BULUNAMADI/GECERSIZ "çıkarıldı"); kısmi kayıtta dosya başı
  *   yüz sayısı; dizilmiş PDF hazırlanırken/kaydedilirken ⌘S yok sayılır (D10, düğme aria-busy).
  * metinler KitapCilt.dil'den (okundukları anda); açılışta dil_oku (Rust'ta yedeklenmiş elle seçim, localStorage
  *   boşsa geri gelir) ve dil_ayarla (menü dili JS ile aynı olsun); Görünüm > Dil menüsü (dil:<seçim>) → dilDegistir.
  * yazdir (Rust yazdir: PDFKit baskı penceresi, %100) ve onizlemedeAc (Rust onizlemede_ac); Dosya > Yazdır… ⌘P,
- *   Önizleme'de Aç ⌥⌘P (dosya-yazdir / dosya-onizleme → Düzenle'deki düğmeler; akış app/js/yazdirma.js).
+ *   Önizleme'de Aç ⌥⌘P (dosya-yazdir / dosya-onizleme → Düzenle'deki düğmeler; akış app/js/printing.js).
  * sistem dili Rust'tan (dil_oku.sistem: NSLocale + Apple kuralı; menüdeki "Sistem dili (X)" ile aynı
  *   kaynak; WKWebView navigator.languages tek dil verebilir). Tarayıcıya özgü metinler (saklama ipucu ve uyarısı,
  *   "sayfayı yenileyin") Mac metniyle; saklama ipucu betik yüklenir yüklenmez değişir.
@@ -33,7 +33,7 @@
   var P = KC.platform;
   var D = KC.dil;
   /**
-   * Metin (o anki dilde). dil.js yüklenemediyse (KC.dil yok) yüklenmiş en sözlüğünden düz metin, o da yoksa
+   * Metin (o anki dilde). i18n.js yüklenemediyse (KC.dil yok) yüklenmiş en sözlüğünden düz metin, o da yoksa
    * anahtar; böylece bu dosya yüklenirken hata atmaz (fazladan konsol hatası yok) ve Mac metinleri İngilizce kalır.
    */
   function t(a, p) {
@@ -258,7 +258,7 @@
   if (T.event && typeof T.event.listen === 'function') {
     T.event.listen('menu', function (olay) { P.menuOlayi(olay && olay.payload); });
     T.event.listen('dosya-acildi', function () { if (P.hazirOldu) P.bekleyenleriAc(); });
-    // Rust'taki gecikmeli yazım başarısız oldu (src-tauri/src/veri.rs HATA_OLAYI).
+    // Rust'taki gecikmeli yazım başarısız oldu (src-tauri/src/backup.rs HATA_OLAYI).
     T.event.listen('yedek-yazilamadi', function (olay) { bildir(t('yedek.yazilamadi', { hata: String(olay && olay.payload) }), 'hata'); });
   }
 
@@ -317,7 +317,7 @@
    * o geri gelir; sonra Rust'a güncel dil bildirilir (menü JS ile aynı dilde kurulsun). Hata başlatmayı durdurmaz.
    */
   function dilEsitle() {
-    if (!D) return Promise.resolve(); // dil altyapısı yok; başlatma hatası uygulama.js'te bildirilir
+    if (!D) return Promise.resolve(); // dil altyapısı yok; başlatma hatası app.js'te bildirilir
     return cagir('dil_oku').then(function (r) {
       if (r && D.destekli(r.sistem)) D.sistemKoduAyarla(r.sistem);
       if (!D.secimOku() && r && D.destekli(r.secim)) D.secimYaz(r.secim);
@@ -331,7 +331,7 @@
     });
   }
 
-  // Bütün klasik betikler (depo.js, duzenle.js …) yüklendikten sonra çalışır; uygulama.js baslat()'ı bunu
+  // Bütün klasik betikler (storage.js, impose.js …) yüklendikten sonra çalışır; app.js baslat()'ı bunu
   // bekleyerek çağırır. Yedek ya da dil okunamazsa başlatma durmaz.
   P.hazir = sayfaYuklendi().then(dilEsitle).then(function () {
     return cagir('veri_oku').then(function (json) { return geriYukle(json); }, function () { return false; });
