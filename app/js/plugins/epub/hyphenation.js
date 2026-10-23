@@ -18,86 +18,86 @@
  *   tiresizMi('Edirne’nin', 7)            → true
  * Baştaki/sondaki noktalama (ör. 'sabahı;') atlanır; indisler özgün kelimeye göredir.
  */
-(function (kok, fabrika) {
-  var m = fabrika();
+(function (root, factory) {
+  var m = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = m;
   } else {
-    kok.KitapCilt = kok.KitapCilt || {};
-    kok.KitapCilt.hece = m;
+    root.Mucellit = root.Mucellit || {};
+    root.Mucellit.hyphenation = m;
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var UNLULER = 'aeıioöuüâîûAEIİOÖUÜÂÎÛ';
-  var KESME = '\'’';
-  var HARF = /^\p{L}$/u;
+  var VOWELS = 'aeıioöuüâîûAEIİOÖUÜÂÎÛ';
+  var APOSTROPHE = '\'’';
+  var LETTER = /^\p{L}$/u;
 
-  function unluMu(c) { return UNLULER.indexOf(c) >= 0 || UNLULER.indexOf(c.toLocaleLowerCase('tr')) >= 0; }
-  function harfMi(c) { return HARF.test(c); }
+  function isVowel(c) { return VOWELS.indexOf(c) >= 0 || VOWELS.indexOf(c.toLocaleLowerCase('tr')) >= 0; }
+  function isLetter(c) { return LETTER.test(c); }
 
   /** Yalnız harflerden oluşan bir kelimenin hece sınırları (indis listesi, 0 ve uzunluk hariç). */
-  function sinirlar(kelime) {
+  function boundaries(word) {
     var u = [];
-    for (var i = 0; i < kelime.length; i++) if (unluMu(kelime.charAt(i))) u.push(i);
+    for (var i = 0; i < word.length; i++) if (isVowel(word.charAt(i))) u.push(i);
     var s = [];
     for (var k = 1; k < u.length; k++) {
-      var onceki = u[k - 1], sonraki = u[k];
-      var unsuz = sonraki - onceki - 1;
-      s.push(unsuz === 0 ? sonraki : sonraki - 1);
+      var previous = u[k - 1], next = u[k];
+      var consonant = next - previous - 1;
+      s.push(consonant === 0 ? next : next - 1);
     }
     return s;
   }
 
-  function hecele(kelime) {
-    var w = String(kelime || '');
+  function syllabify(word) {
+    var w = String(word || '');
     if (!w) return [];
-    var s = sinirlar(w);
-    var parcalar = [];
-    var bas = 0;
-    s.forEach(function (i) { parcalar.push(w.slice(bas, i)); bas = i; });
-    parcalar.push(w.slice(bas));
-    return parcalar;
+    var s = boundaries(w);
+    var parts = [];
+    var head = 0;
+    s.forEach(function (i) { parts.push(w.slice(head, i)); head = i; });
+    parts.push(w.slice(head));
+    return parts;
   }
 
   /**
    * Satır sonu bölme noktaları (artan). secenek: { enAzSol = 2, enAzSag = 2 } (harf sayısı).
    * Bir indis i, kelimenin [0,i) ve [i,uzunluk) diye bölünebileceğini söyler.
    */
-  function bolmeNoktalari(kelime, secenek) {
-    var w = String(kelime || '');
-    var enAzSol = secenek && secenek.enAzSol !== undefined ? secenek.enAzSol : 2;
-    var enAzSag = secenek && secenek.enAzSag !== undefined ? secenek.enAzSag : 2;
+  function breakPoints(word, options) {
+    var w = String(word || '');
+    var minLeft = options && options.minLeft !== undefined ? options.minLeft : 2;
+    var minRight = options && options.minRight !== undefined ? options.minRight : 2;
     // çekirdek: baştaki ve sondaki harf olmayan karakterler (noktalama, tırnak) dışarıda
-    var bas = 0, son = w.length;
-    while (bas < son && !harfMi(w.charAt(bas))) bas++;
-    while (son > bas && !harfMi(w.charAt(son - 1))) son--;
-    if (son - bas < enAzSol + enAzSag) return [];
-    var cekirdek = w.slice(bas, son);
-    var kesme = -1;
-    for (var i = 0; i < cekirdek.length; i++) {
-      var c = cekirdek.charAt(i);
-      if (KESME.indexOf(c) >= 0) {
-        if (kesme >= 0) return []; // iki kesme işareti: bölme
-        kesme = i;
-      } else if (!harfMi(c)) return []; // rakam, tire vb.
+    var head = 0, last = w.length;
+    while (head < last && !isLetter(w.charAt(head))) head++;
+    while (last > head && !isLetter(w.charAt(last - 1))) last--;
+    if (last - head < minLeft + minRight) return [];
+    var core = w.slice(head, last);
+    var apostrophe = -1;
+    for (var i = 0; i < core.length; i++) {
+      var c = core.charAt(i);
+      if (APOSTROPHE.indexOf(c) >= 0) {
+        if (apostrophe >= 0) return []; // iki kesme işareti: bölme
+        apostrophe = i;
+      } else if (!isLetter(c)) return []; // rakam, tire vb.
     }
-    var kok_ = kesme >= 0 ? cekirdek.slice(0, kesme) : cekirdek;
-    var ek = kesme >= 0 ? cekirdek.slice(kesme + 1) : '';
-    var noktalar = [];
-    sinirlar(kok_).forEach(function (i) {
+    var root_ = apostrophe >= 0 ? core.slice(0, apostrophe) : core;
+    var ek = apostrophe >= 0 ? core.slice(apostrophe + 1) : '';
+    var points = [];
+    boundaries(root_).forEach(function (i) {
       // sağ taraf kesme + ek ile birlikte satıra iner; harf sayısı kökün kalanı + ek
-      var solHarf = i, sagHarf = kok_.length - i + ek.length;
-      if (solHarf >= enAzSol && sagHarf >= enAzSag) noktalar.push(bas + i);
+      var leftLetter = i, rightLetter = root_.length - i + ek.length;
+      if (leftLetter >= minLeft && rightLetter >= minRight) points.push(head + i);
     });
-    if (kesme >= 0 && kok_.length >= enAzSol && ek.length >= enAzSag) noktalar.push(bas + kesme + 1);
-    return noktalar;
+    if (apostrophe >= 0 && root_.length >= minLeft && ek.length >= minRight) points.push(head + apostrophe + 1);
+    return points;
   }
 
   /** Bu bölme noktasında tire konmaz mı (kesme işaretinden hemen sonra)? */
-  function tiresizMi(kelime, indis) {
-    return indis > 0 && KESME.indexOf(String(kelime).charAt(indis - 1)) >= 0;
+  function isNoHyphen(word, index) {
+    return index > 0 && APOSTROPHE.indexOf(String(word).charAt(index - 1)) >= 0;
   }
 
-  return { hecele: hecele, bolmeNoktalari: bolmeNoktalari, tiresizMi: tiresizMi, unluMu: unluMu };
+  return { syllabify: syllabify, breakPoints: breakPoints, isNoHyphen: isNoHyphen, isVowel: isVowel };
 });

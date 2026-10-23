@@ -11,6 +11,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 fs.readdirSync(__dirname)
-  .filter((ad) => ad.endsWith('.test.js'))
+  .filter((name) => name.endsWith('.test.js'))
   .sort()
-  .forEach((ad) => require(path.join(__dirname, ad)));
+  .forEach((name) => require(path.join(__dirname, name)));

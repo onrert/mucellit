@@ -9,19 +9,19 @@
  * "az": figürün o kitapta karşılığı olmayan adımlar için (ör. 3 formalı kitapta zincir) açıklama anahtarının son eki.
  */
 'use strict';
-(function (kok) {
-  const KC = (kok.KitapCilt = kok.KitapCilt || {}).ogren = kok.KitapCilt.ogren || {};
-  KC.dersler = [
-    { id: 'katlama', sekil: 'katlama', adimlar: ['lif', 'diz', 'katla', 'kemik', 'pres'] },
-    { id: 'delme', sekil: 'dikis', adimlar: ['sablon', 'del', 'tumu'] },
-    { id: 'dikis', sekil: 'dikis', hazir: ['sablon', 'del', 'tumu'], adimlar: ['hazirla', 'ilk', 'ikinci', 'ucuncu', 'zincir', 'son'],
-      az: { ikinci: o => o.N < 2, ucuncu: o => o.N < 3, zincir: o => o.N < 4 } },
-    { id: 'forza', sekil: 'forza', adimlar: ['katla', 'tutkal', 'ust', 'alt'] },
-    { id: 'sirt', sekil: 'sirt', adimlar: ['pres', 'tutkal', 'kapital', 'mull'] },
-    { id: 'kapak', sekil: 'kapak', adimlar: ['olc', 'mukavva', 'serit', 'kaplama'] },
-    { id: 'kaplama', sekil: 'kaplama', adimlar: ['tutkal', 'yerlestir', 'kose', 'kivir', 'kapat'] },
-    { id: 'takma', sekil: 'takma', adimlar: ['kuru', 'alt', 'yerlestir', 'ust', 'kapat', 'mafsal'] },
-    { id: 'pres', sekil: 'takma', hazir: ['kuru', 'alt', 'yerlestir', 'ust', 'kapat', 'mafsal'], adimlar: ['mumlu', 'sis', 'pres', 'kurut'] },
-    { id: 'kitap', sekil: 'kitap', adimlar: ['ac', 'cevir', 'daha', 'kapat'] }
+(function (root) {
+  const MC = (root.Mucellit = root.Mucellit || {}).learn = root.Mucellit.learn || {};
+  MC.lessons = [
+    { id: 'folding', figures: 'folding', steps: ['grain', 'impose', 'fold', 'boneFolder', 'press'] },
+    { id: 'punching', figures: 'sewing', steps: ['template', 'del', 'all'] },
+    { id: 'sewing', figures: 'sewing', ready: ['template', 'del', 'all'], steps: ['prepare', 'first', 'second', 'third', 'chain', 'last'],
+      az: { second: o => o.N < 2, third: o => o.N < 3, chain: o => o.N < 4 } },
+    { id: 'endpapers', figures: 'endpapers', steps: ['fold', 'glue', 'top', 'bottom'] },
+    { id: 'spine', figures: 'spine', steps: ['press', 'glue', 'headbands', 'mull'] },
+    { id: 'cover', figures: 'cover', steps: ['measure', 'board', 'strip', 'covering'] },
+    { id: 'covering', figures: 'covering', steps: ['glue', 'place', 'corner', 'turnIn', 'close'] },
+    { id: 'casingIn', figures: 'casingIn', steps: ['dryFit', 'bottom', 'place', 'top', 'close', 'jointGap'] },
+    { id: 'press', figures: 'casingIn', ready: ['dryFit', 'bottom', 'place', 'top', 'close', 'jointGap'], steps: ['waxed', 'mist', 'press', 'dry'] },
+    { id: 'book', figures: 'book', steps: ['open', 'swap', 'more', 'close'] }
   ];
 })(typeof self !== 'undefined' ? self : this);

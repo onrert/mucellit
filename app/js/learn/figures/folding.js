@@ -15,11 +15,11 @@
  *   ağırlık tahtası. ÇİZİM: kâğıt şeritleri (y, z) kesitinde 2B ressam sıralaması (xSort); kemik ve tahta byDepth.
  */
 'use strict';
-(function (kok) {
-  const KC = kok.KitapCilt.ogren, { DARK, byDepth, f, pd, on, vis, tone, toneI, ease, ink, fill, face, box, boardTop, board, act, xrCallouts } = KC.cf;
-  KC.sekil.katlama = function (o) {
-    const { xSort, kText, kBoxOf, kRun, kBone, renk } = KC.ortak, O = o.olcu, t = o.t;
-    const fkPAPER = renk.kPAPER, fkMAT = renk.kMAT;
+(function (root) {
+  const MC = root.Mucellit.learn, { DARK, byDepth, f, pd, on, vis, tone, toneI, ease, ink, fill, face, box, boardTop, board, act, xrCallouts } = MC.cf;
+  MC.figures.folding = function (o) {
+    const { xSort, kText, kBoxOf, kRun, kBone, color } = MC.common, O = o.size, t = o.t;
+    const fkPAPER = color.kPAPER, fkMAT = color.kMAT;
     const NY = O.y, PG = 4 * NY, fkL = O.W, fkHH = O.H;
     const fkXA = 20, fkXB = fkXA + fkHH, fkYF = fkL + 52, fkG = 2.6, fkR0 = 1.4, fkBH = 4;
     const fkBW = fkHH + 40, fkBD = 2 * fkL + 103, fkH = fkL + 30;
@@ -27,10 +27,10 @@
     const NUM = i => [PG - 2 * i, 1 + 2 * i, PG - 1 - 2 * i, 2 + 2 * i];
     const fkAdd = (p, d, k) => [p[0] + d[0]*k, p[1] + d[1]*k, p[2] + d[2]*k];
     // yatırma (pres adımı): kesit noktası (y, z) kat çevresinde -90° döner ve masaya iner
-    const yatir = (st, zc) => { const a = -Math.PI/2 * st.yat; if (!a) return p => p;
-      const c = Math.cos(a), s = Math.sin(a), hy = fkYF, hz = zc, dz = (fkBH + .6 + fkR0 + (NY - 1)*fkG - hz) * st.yat, dy = (fkL*.5) * st.yat;
+    const lay = (st, zc) => { const a = -Math.PI/2 * st.lie; if (!a) return p => p;
+      const c = Math.cos(a), s = Math.sin(a), hy = fkYF, hz = zc, dz = (fkBH + .6 + fkR0 + (NY - 1)*fkG - hz) * st.lie, dy = (fkL*.5) * st.lie;
       return p => [hy + (p[0] - hy)*c - (p[1] - hz)*s + dy, hz + (p[0] - hy)*s + (p[1] - hz)*c + dz]; };
-    const yatirN = st => { const a = -Math.PI/2 * st.yat, c = Math.cos(a), s = Math.sin(a); return n => [n[0], n[1]*c - n[2]*s, n[1]*s + n[2]*c]; };
+    const layN = st => { const a = -Math.PI/2 * st.lie, c = Math.cos(a), s = Math.sin(a); return n => [n[0], n[1]*c - n[2]*s, n[1]*s + n[2]*c]; };
 
     function fkSheet(i, phi, zc, R){
       const r = fkR0 + (NY - 1 - i)*fkG, s = fkL - r*phi, n = Math.max(1, Math.ceil(phi / (Math.PI/18)));
@@ -60,7 +60,7 @@
     }
 
     function fkPaper(st, m, k){
-      const phi = st.phi, zc = fkZc(phi), items = [], all = [], R = yatir(st, zc), RN = yatirN(st);
+      const phi = st.phi, zc = fkZc(phi), items = [], all = [], R = lay(st, zc), RN = layN(st);
       for (let i = 0; i < NY; i++){
         const dz = st.dz[i]; if (dz == null) continue;
         const { pts, r } = fkSheet(i, phi, zc + dz, R), nSeg = pts.length - 1;
@@ -79,9 +79,9 @@
             const pr = fkPrint(fold, edge, half, outerSeen, num, i === 0 && outerSeen ? m.d : null, phi, r, RN), to = i < NY - 1 ? 1 - k : 1;
             if (to > .01) sv += to < 1 ? `<g opacity="${f(to)}">${pr}</g>` : pr;
             // lif çizgileri (1. kâğıdın üst yüzünde, uzun kenara paralel)
-            if (i === 0 && st.lif > 0 && outerSeen){ let g = ''; const e2 = [0, edge[0] - fold[0], edge[1] - fold[1]], L2 = Math.hypot(e2[1], e2[2]);
+            if (i === 0 && st.grain > 0 && outerSeen){ let g = ''; const e2 = [0, edge[0] - fold[0], edge[1] - fold[1]], L2 = Math.hypot(e2[1], e2[2]);
               for (let x = fkXA + 10; x < fkXB - 4; x += 12){ g += pd([[x, fold[0] + seen[1]*.5, fold[1] + seen[2]*.5], [x, fold[0] + e2[1]*.92 + seen[1]*.5, fold[1] + e2[2]*.92 + seen[2]*.5]], false); }
-              void L2; sv += `<g opacity="${f(.85*st.lif)}"><path d="${g}" fill="none" stroke="#8a6a3c" stroke-width="1" stroke-dasharray="7 4"/></g>`; }
+              void L2; sv += `<g opacity="${f(.85*st.grain)}"><path d="${g}" fill="none" stroke="#8a6a3c" stroke-width="1" stroke-dasharray="7 4"/></g>`; }
           }
           if (i === 0 && st.creased && phi > 1.2 && j === Math.floor(nSeg/2)) sv += ink(pd([[fkXA, a[0], a[1]], [fkXB, a[0], a[1]]], false), 1.4);
           items.push({ a, b, svg: op < 1 ? `<g opacity="${f(op)}">${sv}</g>` : sv });
@@ -115,75 +115,75 @@
       const fo = fkFolderPose(st, top), folder = kBone(...fo);
       // ağırlık tahtası (pres adımı): yatırılmış formanın üstüne iner
       let plank = null;
-      if (st.agirlik > 0 && paper.pts.length){ const b = kBoxOf(paper.pts), zt = b[1][2] + 60*(1 - ease(st.agirlik));
+      if (st.weight > 0 && paper.pts.length){ const b = kBoxOf(paper.pts), zt = b[1][2] + 60*(1 - ease(st.weight));
         const y0 = b[0][1] - 8, y1 = b[1][1] + 8, x0 = fkXA - 6, x1 = fkXB + 6;
-        const sv = box(x0, y0, zt, x1, y1, zt + 10, renk.kWOOD, toneI, 1.4) + box(x0 + 50, (y0 + y1)/2 - 25, zt + 10, x1 - 50, (y0 + y1)/2 + 25, zt + 34, DARK, toneI, 1.4);
+        const sv = box(x0, y0, zt, x1, y1, zt + 10, color.kWOOD, toneI, 1.4) + box(x0 + 50, (y0 + y1)/2 - 25, zt + 10, x1 - 50, (y0 + y1)/2 + 25, zt + 34, DARK, toneI, 1.4);
         plank = { box: [[x0, y0, zt], [x1, y1, zt + 34]], svg: sv }; }
       s += byDepth([
         paper.pts.length ? { box: kBoxOf(paper.pts), svg: paper.svg } : null,
         { box: folder.box, svg: act('folder', folder.svg) }, plank ]);
       // etiketler
-      const phi = st.phi, zc = paper.zc, R = yatir(st, zc), on = i => st.dz[i] != null;
+      const phi = st.phi, zc = paper.zc, R = lay(st, zc), on = i => st.dz[i] != null;
       const s0 = on(0) ? fkSheet(0, phi, zc + st.dz[0], R) : null, sL = on(NY - 1) && NY > 1 ? fkSheet(NY - 1, phi, zc + st.dz[NY - 1], R) : null;
       const items = [], mid = sh => { const p = sh.pts[sh.pts.length - 1], q = sh.pts[sh.pts.length - 2]; return [(p[0]*.35 + q[0]*.65), (p[1]*.35 + q[1]*.65)]; };
       const spine = s0 ? s0.pts[Math.floor(s0.pts.length/2)] : null;
       if (k > .6){
         for (let i = 0; i < Math.min(NY, 6); i++) if (on(i)){ const [y, z] = mid(fkSheet(i, phi, zc + st.dz[i], R)); const n = NUM(i);
-          items.push({ at: [fkXA + 20 + (fkHH - 40)*i/Math.max(1, NY - 1), y, z], text: t('ogren.s.katlama.kagit_n', { n: i + 1, a: n[0], b: n[1] }), on: i === 0 }); }
-        if (sL) items.push({ at: [fkXA + fkHH/2, ...sL.pts[Math.floor(sL.pts.length/2)]], text: t('ogren.s.katlama.orta', { a: PG/2, b: PG/2 + 1 }), on: false });
-        if (spine) items.push({ at: [fkXB, ...spine], text: phi > .3 ? t('ogren.s.katlama.sirt') : t('ogren.s.katlama.kat_cizgisi'), on: st.creaseT >= 0 });
+          items.push({ at: [fkXA + 20 + (fkHH - 40)*i/Math.max(1, NY - 1), y, z], text: t('learn.s.folding.paper_n', { n: i + 1, a: n[0], b: n[1] }), on: i === 0 }); }
+        if (sL) items.push({ at: [fkXA + fkHH/2, ...sL.pts[Math.floor(sL.pts.length/2)]], text: t('learn.s.folding.middle', { a: PG/2, b: PG/2 + 1 }), on: false });
+        if (spine) items.push({ at: [fkXB, ...spine], text: phi > .3 ? t('learn.s.folding.spine') : t('learn.s.folding.fold_line'), on: st.creaseT >= 0 });
       } else {
         if (s0){ const [y, z] = mid(s0);
-          items.push({ at: [fkXB - 30, y, z], text: NY > 1 ? t('ogren.s.katlama.dista') : t('ogren.s.katlama.kagit'), on: true });
-          if (st.lif > 0 && phi < .6) items.push({ at: [fkXA + 16, y, z], text: t('ogren.s.katlama.lif'), on: st.lifT >= 0 });
-          if (spine) items.push({ at: [fkXB, ...spine], text: phi > .3 ? t('ogren.s.katlama.sirt') : t('ogren.s.katlama.kat_cizgisi'), on: st.creaseT >= 0 || st.lifT >= 0 });
+          items.push({ at: [fkXB - 30, y, z], text: NY > 1 ? t('learn.s.folding.outside') : t('learn.s.folding.paper'), on: true });
+          if (st.grain > 0 && phi < .6) items.push({ at: [fkXA + 16, y, z], text: t('learn.s.folding.grain'), on: st.lifT >= 0 });
+          if (spine) items.push({ at: [fkXB, ...spine], text: phi > .3 ? t('learn.s.folding.spine') : t('learn.s.folding.fold_line'), on: st.creaseT >= 0 || st.lifT >= 0 });
           if (spine && phi < .3) items.push({ at: [fkXA + fkHH*.35, ...spine], text: `${PG} | 1`, on: true }); }
-        if (sL){ const p = sL.pts[0]; items.push({ at: [fkXB, p[0], p[1]], text: phi > .6 ? t('ogren.s.katlama.icte', { n: NY }) : t('ogren.s.katlama.altta', { n: NY }), on: false }); }
-        items.push({ at: [fo[0] + 140, fo[1] + 11, fo[2] + 4], text: t('ogren.s.katlama.kemik'), on: st.creaseT >= 0 });
-        if (plank) items.push({ at: [fkXB + 6, (plank.box[0][1] + plank.box[1][1])/2, plank.box[0][2] + 5], text: t('ogren.s.katlama.agirlik'), on: st.agirlikT >= 0 });
+        if (sL){ const p = sL.pts[0]; items.push({ at: [fkXB, p[0], p[1]], text: phi > .6 ? t('learn.s.folding.inside', { n: NY }) : t('learn.s.folding.below', { n: NY }), on: false }); }
+        items.push({ at: [fo[0] + 140, fo[1] + 11, fo[2] + 4], text: t('learn.s.folding.boneFolder'), on: st.creaseT >= 0 });
+        if (plank) items.push({ at: [fkXB + 6, (plank.box[0][1] + plank.box[1][1])/2, plank.box[0][2] + 5], text: t('learn.s.folding.weight'), on: st.weightT >= 0 });
       }
       s += xrCallouts(items, [0, fkBW, 0, fkBD, 0, fkH]);
       return s;
     }
 
     /* ---------- davranış ---------- */
-    const mesgul = (st, ui) => { if (st.anim2){ ui.flash(t('ogren.f.mesgul')); return true; } return false; };
-    const adim = {
-      lif: { eylem(st, ui){ if (mesgul(st, ui)) return false;
-          ui.flash(t('ogren.s.katlama.f_lif'), 2600); st.anim2 = true;
-          kRun(st, ui, 'lifT', 2.2, u => { st.lif = Math.min(1, u*3); st.phi = .42*Math.sin(Math.PI*Math.min(1, Math.max(0, (u - .25)/.75))); }, () => { st.phi = 0; st.anim2 = false; }); return true; },
-        son(st){ st.lif = 1; st.phi = 0; } },
-      diz: { eylem(st, ui){ if (mesgul(st, ui)) return false;
-          if (st.phi > .01) { ui.flash(t('ogren.s.katlama.f_once_ac')); return false; }
+    const busy = (st, ui) => { if (st.anim2){ ui.flash(t('learn.f.busy')); return true; } return false; };
+    const step = {
+      grain: { action(st, ui){ if (busy(st, ui)) return false;
+          ui.flash(t('learn.s.folding.f_lif'), 2600); st.anim2 = true;
+          kRun(st, ui, 'lifT', 2.2, u => { st.grain = Math.min(1, u*3); st.phi = .42*Math.sin(Math.PI*Math.min(1, Math.max(0, (u - .25)/.75))); }, () => { st.phi = 0; st.anim2 = false; }); return true; },
+        last(st){ st.grain = 1; st.phi = 0; } },
+      impose: { action(st, ui){ if (busy(st, ui)) return false;
+          if (st.phi > .01) { ui.flash(t('learn.s.folding.f_once_ac')); return false; }
           st.dz = new Array(NY).fill(null); st.anim2 = true;
-          ui.flash(t('ogren.s.katlama.f_diz', { p: PG }), 2600);
-          const T = (NY - 1)*.4 + .5, lif0 = st.lif;   // lif çizgileri dizerken söner (son() ile aynı son durum)
-          kRun(st, ui, 'dropT', T, u => { st.lif = Math.max(0, lif0*(1 - u*4)); const tt = u*T; for (let i = 0; i < NY; i++){ const t0 = (NY - 1 - i)*.4, w = (tt - t0)/.5; st.dz[i] = w < 0 ? null : w >= 1 ? 0 : 90*(1 - ease(w)); } },
-            () => { st.dz = new Array(NY).fill(0); st.lif = 0; st.anim2 = false; }); return true; },
-        son(st){ st.dz = new Array(NY).fill(0); st.lif = 0; } },
-      katla: { eylem(st, ui){ if (mesgul(st, ui)) return false;
-          if (st.dz.some(v => v == null)) { ui.flash(t('ogren.s.katlama.f_once_diz')); return false; }
-          if (st.phi > 1.5) { ui.flash(t('ogren.s.katlama.f_zaten_katli')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.katlama.f_katla'), 2400);
+          ui.flash(t('learn.s.folding.f_impose', { p: PG }), 2600);
+          const T = (NY - 1)*.4 + .5, lif0 = st.grain;   // lif çizgileri dizerken söner (son() ile aynı son durum)
+          kRun(st, ui, 'dropT', T, u => { st.grain = Math.max(0, lif0*(1 - u*4)); const tt = u*T; for (let i = 0; i < NY; i++){ const t0 = (NY - 1 - i)*.4, w = (tt - t0)/.5; st.dz[i] = w < 0 ? null : w >= 1 ? 0 : 90*(1 - ease(w)); } },
+            () => { st.dz = new Array(NY).fill(0); st.grain = 0; st.anim2 = false; }); return true; },
+        last(st){ st.dz = new Array(NY).fill(0); st.grain = 0; } },
+      fold: { action(st, ui){ if (busy(st, ui)) return false;
+          if (st.dz.some(v => v == null)) { ui.flash(t('learn.s.folding.f_impose_once')); return false; }
+          if (st.phi > 1.5) { ui.flash(t('learn.s.folding.f_already_folded')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.folding.f_fold'), 2400);
           kRun(st, ui, 'foldT', 1.7, u => { st.phi = ease(u)*Math.PI/2; }, () => { st.anim2 = false; }); return true; },
-        son(st){ st.phi = Math.PI/2; } },
-      kemik: { eylem(st, ui){ if (mesgul(st, ui)) return false;
-          if (st.phi < Math.PI/2 - .01) { ui.flash(t('ogren.s.katlama.f_once_katla')); return false; }
+        last(st){ st.phi = Math.PI/2; } },
+      boneFolder: { action(st, ui){ if (busy(st, ui)) return false;
+          if (st.phi < Math.PI/2 - .01) { ui.flash(t('learn.s.folding.f_fold_once')); return false; }
           st.anim2 = true; kRun(st, ui, 'creaseT', 4.1, u => { if (u*4.1 > 2.2) st.creased = true; }, () => { st.anim2 = false; st.creaseT = -1; }); return true; },
-        son(st){ st.creased = true; st.creaseT = -1; } },
-      pres: { eylem(st, ui){ if (mesgul(st, ui)) return false;
-          if (!st.creased) { ui.flash(t('ogren.s.katlama.f_once_kemik')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.katlama.f_pres', { n: O.N }), 2600);
-          kRun(st, ui, 'yatT', 1.2, u => { st.yat = ease(u); }, () => kRun(st, ui, 'agirlikT', 1, u => { st.agirlik = u; }, () => { st.anim2 = false; st.katli = O.N; })); return true; },
-        son(st){ st.yat = 1; st.agirlik = 1; st.katli = O.N; } }
+        last(st){ st.creased = true; st.creaseT = -1; } },
+      press: { action(st, ui){ if (busy(st, ui)) return false;
+          if (!st.creased) { ui.flash(t('learn.s.folding.f_once_bone_folder')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.folding.f_pres', { n: O.N }), 2600);
+          kRun(st, ui, 'yatT', 1.2, u => { st.lie = ease(u); }, () => kRun(st, ui, 'weightT', 1, u => { st.weight = u; }, () => { st.anim2 = false; st.folded = O.N; })); return true; },
+        last(st){ st.lie = 1; st.weight = 1; st.folded = O.N; } }
     };
-    const st0 = { phi: 0, dz: [0].concat(new Array(NY - 1).fill(null)), lif: 0, lifT: -1, dropT: -1, foldT: -1, creaseT: -1, creased: false, yat: 0, yatT: -1, agirlik: 0, agirlikT: -1, katli: 0, anim: 0, anim2: false };
+    const st0 = { phi: 0, dz: [0].concat(new Array(NY - 1).fill(null)), grain: 0, lifT: -1, dropT: -1, foldT: -1, creaseT: -1, creased: false, lie: 0, yatT: -1, weight: 0, weightT: -1, folded: 0, anim: 0, anim2: false };
     return {
-      adim,
+      step,
       cfg: {
-        title: t('ogren.katlama.ad'), credit: false, size: [fkBW, fkBD, fkH], state: st0, scene: fkScene,
-        stats: st => [{ label: t('ogren.s.katlama.st_sayfa'), value: st.dz.filter(v => v != null).length*4 }, { label: t('ogren.s.katlama.st_katli'), value: t('ogren.s.katlama.st_katli_v', { a: st.katli, n: O.N }), small: true }],
-        acts: { folder: () => { if (o.calistir) o.calistir('kemik'); } }
+        title: t('learn.folding.name'), credit: false, size: [fkBW, fkBD, fkH], state: st0, scene: fkScene,
+        stats: st => [{ label: t('learn.s.folding.st_page'), value: st.dz.filter(v => v != null).length*4 }, { label: t('learn.s.folding.st_folded'), value: t('learn.s.folding.st_folded_v', { a: st.folded, n: O.N }), small: true }],
+        acts: { folder: () => { if (o.run) o.run('boneFolder'); } }
       }
     };
   };

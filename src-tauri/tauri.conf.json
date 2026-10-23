@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Mücellit",
   "version": "1.0.0",
-  "identifier": "com.onurmert.kitapcilt",
+  "identifier": "com.onurmert.mucellit",
   "build": {
     "frontendDist": "../dist",
-    "beforeDevCommand": "node tools/prepare-dist.mjs --sessiz",
-    "beforeBuildCommand": "node tools/prepare-dist.mjs --sessiz"
+    "beforeDevCommand": "node tools/prepare-dist.mjs --quiet",
+    "beforeBuildCommand": "node tools/prepare-dist.mjs --quiet"
   },
   "app": {
     "withGlobalTauri": true,

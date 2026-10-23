@@ -3,10 +3,10 @@
  * Girdi: kaynak PDF bytes, düzenlenmiş sayfa listesi, ayarlar.
  * Hiçbir ağ isteği yapmaz; her şey bellekte.
  */
-(function (kok) {
+(function (root) {
   'use strict';
-  var KC = kok.KitapCilt = kok.KitapCilt || {};
-  function t(a, p) { return KC.dil.t(a, p); }
+  var MC = root.Mucellit = root.Mucellit || {};
+  function t(a, p) { return MC.i18n.t(a, p); }
 
   var MM = 72 / 25.4;
   function pt(mm) { return mm * MM; }
@@ -19,120 +19,120 @@
    * }
    * Döner: { dizilim, yerlesim, dosyalar: [{ ad, bytes, yuz }] } (yuz: o dosyadaki yüz/sayfa sayısı)
    */
-  async function uret(secenek) {
-    var PDFLib = kok.PDFLib;
-    if (!PDFLib) throw new Error(t('hata.pdflib'));
-    var ayar = secenek.ayar;
-    var sayfalar = secenek.sayfalar;
-    if (!sayfalar.length) throw new Error(t('cikti.sayfa_yok'));
+  async function build(options) {
+    var PDFLib = root.PDFLib;
+    if (!PDFLib) throw new Error(t('error.pdflib'));
+    var settings = options.settings;
+    var pages = options.pages;
+    if (!pages.length) throw new Error(t('output.no_pages'));
 
-    var dizilim = KC.dizilim.diz(ayar.ciltTuru, {
-      sayfaSayisi: sayfalar.length,
-      formaYaprak: ayar.formaYaprak,
-      sonFormaKucult: ayar.sonFormaKucult,
-      kaymaAcik: ayar.kayma,
-      kagitKalinlik: ayar.kagitKalinlik
+    var imposition = MC.imposition.impose(settings.bindingType, {
+      pageCount: pages.length,
+      sheetsPerSignature: settings.sheetsPerSignature,
+      shrinkLastSignature: settings.shrinkLastSignature,
+      creepEnabled: settings.creep,
+      paperThickness: settings.paperThickness
     });
-    var yer = KC.yerlesim.yerlesim(dizilim, ayar);
-    if (yer.sigmiyor) throw new Error(yer.uyarilar[0] || t('cikti.sigmiyor'));
+    var place = MC.layout.layout(imposition, settings);
+    if (place.doesNotFit) throw new Error(place.warnings[0] || t('output.doesNotFit'));
 
-    var kaynakDoc = null;
-    var kullanilan = {};
-    sayfalar.forEach(function (s) { if (s.tur === 'pdf') kullanilan[s.kaynak] = true; });
-    var indisler = Object.keys(kullanilan).map(Number).sort(function (a, b) { return a - b; });
+    var sourceDoc = null;
+    var used = {};
+    pages.forEach(function (s) { if (s.kind === 'pdf') used[s.source] = true; });
+    var indices = Object.keys(used).map(Number).sort(function (a, b) { return a - b; });
 
-    function yeniBelge() { return PDFLib.PDFDocument.create(); }
+    function newDocument() { return PDFLib.PDFDocument.create(); }
 
-    async function hazirla(doc) {
-      var harita = {};
-      if (indisler.length) {
-        if (!kaynakDoc) kaynakDoc = await PDFLib.PDFDocument.load(secenek.kaynakBytes, { ignoreEncryption: true });
-        var gomulecek = [], kutular = [], gomulecekIndis = [];
-        indisler.forEach(function (i) {
-          var sf = kaynakDoc.getPage(i);
-          var icerik = sf.node.Contents();
+    async function prepare(doc) {
+      var map = {};
+      if (indices.length) {
+        if (!sourceDoc) sourceDoc = await PDFLib.PDFDocument.load(options.sourceBytes, { ignoreEncryption: true });
+        var toEmbed = [], boxes = [], embedIndices = [];
+        indices.forEach(function (i) {
+          var sf = sourceDoc.getPage(i);
+          var content = sf.node.Contents();
           // /Contents'siz (ya da boş dizili) kaynak sayfa pdf-lib'de gömülemez ("missing Contents"): boş sayfa sayılır.
-          if (!icerik || (icerik instanceof PDFLib.PDFArray && icerik.size() === 0)) {
-            harita[i] = { bos: true };
+          if (!content || (content instanceof PDFLib.PDFArray && content.size() === 0)) {
+            map[i] = { blank: true };
             return;
           }
           // Gömme kutusu CropBox (yoksa MediaBox): kutu verilmezse MediaBox kökeni (0,0) değilse içerik kayar,
           // CropBox'ın dışındaki taşma payı da basılırdı. Önizleme (pdf.js) de CropBox'ı kullanır.
           var cb = sf.getCropBox();
-          gomulecek.push(sf);
-          kutular.push({ left: cb.x, bottom: cb.y, right: cb.x + cb.width, top: cb.y + cb.height });
-          gomulecekIndis.push(i);
+          toEmbed.push(sf);
+          boxes.push({ left: cb.x, bottom: cb.y, right: cb.x + cb.width, top: cb.y + cb.height });
+          embedIndices.push(i);
         });
-        var gom = gomulecek.length ? await doc.embedPages(gomulecek, kutular) : [];
-        gomulecekIndis.forEach(function (i, j) {
-          harita[i] = { gomulu: gom[j], aci: gomulecek[j].getRotation().angle || 0 };
+        var embedded = toEmbed.length ? await doc.embedPages(toEmbed, boxes) : [];
+        embedIndices.forEach(function (i, j) {
+          map[i] = { embedded: embedded[j], angle: toEmbed[j].getRotation().angle || 0 };
         });
       }
-      return harita;
+      return map;
     }
 
-    function yuzCiz(doc, harita, yuz) {
-      var sayfa = doc.addPage([pt(yer.kagit.gen), pt(yer.kagit.yuk)]);
-      yuz.yuvalar.forEach(function (yv) {
-        if (yv.bos) return;
-        var kayit = sayfalar[yv.sayfa - 1];
-        if (!kayit || kayit.tur !== 'pdf') return;
-        var g = harita[kayit.kaynak];
-        if (!g || g.bos) return;
-        var e = g.gomulu;
-        var aciSaat = ((g.aci + (kayit.dondur || 0) + (yuz.dondur180 ? 180 : 0)) % 360 + 360) % 360;
-        var genMm = e.width / MM, yukMm = e.height / MM;
-        var yerl = KC.yerlesim.sayfaYerlestir(yv.icerik, genMm, yukMm, aciSaat, ayar.olcek);
-        var w = pt(genMm * yerl.s), h = pt(yukMm * yerl.s);
-        var kok0 = KC.yerlesim.cizimKokeni(pt(yerl.merkezX), pt(yerl.merkezY), w, h, -aciSaat);
-        var k = yv.icerik;
-        sayfa.pushOperators(
+    function drawSide(doc, map, side) {
+      var page = doc.addPage([pt(place.paper.width), pt(place.paper.height)]);
+      side.slots.forEach(function (yv) {
+        if (yv.blank) return;
+        var record = pages[yv.page - 1];
+        if (!record || record.kind !== 'pdf') return;
+        var g = map[record.source];
+        if (!g || g.blank) return;
+        var e = g.embedded;
+        var angleCw = ((g.angle + (record.rotate || 0) + (side.rotate180 ? 180 : 0)) % 360 + 360) % 360;
+        var widthMm = e.width / MM, heightMm = e.height / MM;
+        var fit = MC.layout.fitPage(yv.content, widthMm, heightMm, angleCw, settings.scaling);
+        var w = pt(widthMm * fit.s), h = pt(heightMm * fit.s);
+        var origin0 = MC.layout.drawOrigin(pt(fit.centerX), pt(fit.centerY), w, h, -angleCw);
+        var k = yv.content;
+        page.pushOperators(
           PDFLib.pushGraphicsState(),
           PDFLib.rectangle(pt(k.x), pt(k.y), pt(k.w), pt(k.h)),
           PDFLib.clip(),
           PDFLib.endPath()
         );
-        sayfa.drawPage(e, { x: kok0.x, y: kok0.y, xScale: yerl.s, yScale: yerl.s, rotate: PDFLib.degrees(-aciSaat) });
-        sayfa.pushOperators(PDFLib.popGraphicsState());
+        page.drawPage(e, { x: origin0.x, y: origin0.y, xScale: fit.s, yScale: fit.s, rotate: PDFLib.degrees(-angleCw) });
+        page.pushOperators(PDFLib.popGraphicsState());
       });
-      var siyah = PDFLib.rgb(0, 0, 0);
-      yuz.cizgiler.forEach(function (c) {
-        sayfa.drawLine({
+      var black = PDFLib.rgb(0, 0, 0);
+      side.lines.forEach(function (c) {
+        page.drawLine({
           start: { x: pt(c.x1), y: pt(c.y1) }, end: { x: pt(c.x2), y: pt(c.y2) },
-          thickness: 0.4, color: siyah, dashArray: c.kesik ? [2, 2] : undefined
+          thickness: 0.4, color: black, dashArray: c.dashed ? [2, 2] : undefined
         });
       });
-      yuz.kareler.forEach(function (kr) {
-        KC.yerlesim.isaretParcalari(kr).forEach(function (pr) {
-          sayfa.drawRectangle({ x: pt(pr.x), y: pt(pr.y), width: pt(pr.w), height: pt(pr.h), color: siyah });
+      side.squares.forEach(function (kr) {
+        MC.layout.markParts(kr).forEach(function (pr) {
+          page.drawRectangle({ x: pt(pr.x), y: pt(pr.y), width: pt(pr.w), height: pt(pr.h), color: black });
         });
       });
     }
 
     // Dosya adı ekleri ve PDF başlığı arayüz dilinde (en: -imposed, -fronts, -backs; tr: -dizilmis, -onler, -arkalar).
-    var taban = (secenek.dosyaAdi || t('cikti.ad.kitap')).replace(/\.[^.]+$/, '');
-    var dosyalar = [];
-    if (ayar.ciktiModu === 'ikili') {
-      var onDoc = await yeniBelge(), arkaDoc = await yeniBelge();
-      var hOn = await hazirla(onDoc), hArka = await hazirla(arkaDoc);
-      var onler = yer.yuzler.filter(function (y) { return y.yuz === 'on'; });
-      var arkalar = yer.yuzler.filter(function (y) { return y.yuz === 'arka'; });
-      if (ayar.arkaTers) arkalar = arkalar.slice().reverse();
-      onler.forEach(function (y) { yuzCiz(onDoc, hOn, y); });
-      arkalar.forEach(function (y) { yuzCiz(arkaDoc, hArka, y); });
-      onDoc.setTitle(t('cikti.baslik.onler', { ad: taban }));
-      arkaDoc.setTitle(t('cikti.baslik.arkalar', { ad: taban }));
-      dosyalar.push({ ad: taban + t('cikti.ek.onler') + '.pdf', bytes: await onDoc.save(), yuz: onler.length });
-      dosyalar.push({ ad: taban + t('cikti.ek.arkalar') + (ayar.arkaTers ? t('cikti.ek.ters') : '') + '.pdf', bytes: await arkaDoc.save(), yuz: arkalar.length });
+    var base = (options.fileName || t('output.name.book')).replace(/\.[^.]+$/, '');
+    var files = [];
+    if (settings.outputMode === 'pair') {
+      var frontDoc = await newDocument(), backDoc = await newDocument();
+      var hFront = await prepare(frontDoc), hBack = await prepare(backDoc);
+      var fronts = place.sides.filter(function (y) { return y.side === 'front'; });
+      var backs = place.sides.filter(function (y) { return y.side === 'back'; });
+      if (settings.backsReversed) backs = backs.slice().reverse();
+      fronts.forEach(function (y) { drawSide(frontDoc, hFront, y); });
+      backs.forEach(function (y) { drawSide(backDoc, hBack, y); });
+      frontDoc.setTitle(t('output.title.fronts', { name: base }));
+      backDoc.setTitle(t('output.title.backs', { name: base }));
+      files.push({ name: base + t('output.ek.fronts') + '.pdf', bytes: await frontDoc.save(), side: fronts.length });
+      files.push({ name: base + t('output.ek.backs') + (settings.backsReversed ? t('output.ek.reversed') : '') + '.pdf', bytes: await backDoc.save(), side: backs.length });
     } else {
-      var doc = await yeniBelge();
-      var h = await hazirla(doc);
-      yer.yuzler.forEach(function (y) { yuzCiz(doc, h, y); });
-      doc.setTitle(t('cikti.baslik.dizilmis', { ad: taban }));
-      dosyalar.push({ ad: taban + t('cikti.ek.dizilmis') + '.pdf', bytes: await doc.save(), yuz: yer.yuzler.length });
+      var doc = await newDocument();
+      var h = await prepare(doc);
+      place.sides.forEach(function (y) { drawSide(doc, h, y); });
+      doc.setTitle(t('output.title.imposed', { name: base }));
+      files.push({ name: base + t('output.ek.imposed') + '.pdf', bytes: await doc.save(), side: place.sides.length });
     }
-    return { dizilim: dizilim, yerlesim: yer, dosyalar: dosyalar };
+    return { imposition: imposition, layout: place, files: files };
   }
 
-  KC.cikti = { uret: uret, MM: MM };
+  MC.output = { build: build, MM: MM };
 })(typeof self !== 'undefined' ? self : this);

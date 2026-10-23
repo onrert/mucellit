@@ -13,118 +13,118 @@
  * Gömülemeyen (bozuk) resim atlanır ve sayac.atlananResim'e eklenir; yeri boş kalır.
  * Kullanıcıya kütüphanenin ham (İngilizce) hata metni gösterilmez; özgün hata .cause'dadır.
  */
-(function (kok, fabrika) {
-  var m = fabrika();
+(function (root, factory) {
+  var m = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = m;
   } else {
-    kok.KitapCilt = kok.KitapCilt || {};
-    kok.KitapCilt.pdfYaz = m;
+    root.Mucellit = root.Mucellit || {};
+    root.Mucellit.writePdf = m;
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var STILLER = ['R', 'I', 'B', 'BI'];
+  var STYLES = ['R', 'I', 'B', 'BI'];
 
-  var kok = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
-  function Dil() { return (kok && kok.KitapCilt && kok.KitapCilt.dil) || require('../../i18n.js'); }
-  function t(a, p) { return Dil().t(a, p); }
+  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('../../i18n.js'); }
+  function t(a, p) { return I18n().t(a, p); }
 
-  function yaziTipiHatasi(e) { var h = new Error(t('pdfyaz.gomulemedi')); h.yaziTipi = true; h.cause = e; return h; }
+  function fontError(e) { var h = new Error(t('pdfwriter.embedFailed')); h.font = true; h.cause = e; return h; }
   /** Beklenmeyen hata anlaşılır metne çevrilir (kodlu hatalar olduğu gibi). */
-  function turkceHata(e) { if (e && e.kod) return e; var h = new Error(t('pdfyaz.yazilamadi')); h.cause = e; return h; }
+  function turkishError(e) { if (e && e.code) return e; var h = new Error(t('pdfwriter.writeFailed')); h.cause = e; return h; }
 
-  async function yaz(sayfalar, bilgi, kaynaklar, altKume) {
-    var PDFLib = kaynaklar.PDFLib;
+  async function write(pages, info, sources, subset) {
+    var PDFLib = sources.PDFLib;
     var doc = await PDFLib.PDFDocument.create();
-    doc.registerFontkit(kaynaklar.fontkit);
-    var kullanilan = {};
-    sayfalar.forEach(function (s) { s.ogeler.forEach(function (o) { if (o.tur === 'metin') kullanilan[o.stil] = true; }); });
-    var fontlar = {};
-    for (var i = 0; i < STILLER.length; i++) {
-      var st = STILLER[i];
-      if (!kullanilan[st]) continue;
+    doc.registerFontkit(sources.fontkit);
+    var used = {};
+    pages.forEach(function (s) { s.elements.forEach(function (o) { if (o.kind === 'text') used[o.style] = true; }); });
+    var fonts = {};
+    for (var i = 0; i < STYLES.length; i++) {
+      var st = STYLES[i];
+      if (!used[st]) continue;
       try {
-        fontlar[st] = await doc.embedFont(kaynaklar.fontlar[st], { subset: altKume, features: { liga: false } });
-      } catch (e) { throw yaziTipiHatasi(e); }
+        fonts[st] = await doc.embedFont(sources.fonts[st], { subset: subset, features: { liga: false } });
+      } catch (e) { throw fontError(e); }
     }
-    var resimler = {};
-    var atlanan = 0;
-    async function resim(anahtar) {
-      if (anahtar in resimler) return resimler[anahtar];
-      var r = kaynaklar.resimler && kaynaklar.resimler[anahtar];
+    var thumbs = {};
+    var skipped = 0;
+    async function image(key) {
+      if (key in thumbs) return thumbs[key];
+      var r = sources.thumbs && sources.thumbs[key];
       var img = null;
       if (r) {
         try {
-          img = r.tur === 'jpg' ? await doc.embedJpg(r.bytes) : await doc.embedPng(r.bytes);
+          img = r.kind === 'jpg' ? await doc.embedJpg(r.bytes) : await doc.embedPng(r.bytes);
           await img.embed();
-        } catch (e) { img = null; atlanan += 1; } // bozuk resim: atlanır, sayılır
+        } catch (e) { img = null; skipped += 1; } // bozuk resim: atlanır, sayılır
       }
-      resimler[anahtar] = img;
+      thumbs[key] = img;
       return img;
     }
-    for (var n = 0; n < sayfalar.length; n++) {
-      var s = sayfalar[n];
-      var sayfa = doc.addPage([bilgi.genPt, bilgi.yukPt]);
-      for (var j = 0; j < s.ogeler.length; j++) {
-        var o = s.ogeler[j];
-        if (o.tur === 'metin') {
-          var yazi = String(o.metin).replace(/[\r\n]/g, ' ');
-          if (!yazi) continue;
-          sayfa.drawText(o.bosluk ? yazi + ' ' : yazi, { x: o.x, y: o.y, size: o.boy, font: fontlar[o.stil] || fontlar.R });
-        } else if (o.tur === 'resim') {
-          var img = await resim(o.anahtar);
-          if (img) sayfa.drawImage(img, { x: o.x, y: o.y, width: o.w, height: o.h });
+    for (var n = 0; n < pages.length; n++) {
+      var s = pages[n];
+      var page = doc.addPage([info.genPt, info.heightPt]);
+      for (var j = 0; j < s.elements.length; j++) {
+        var o = s.elements[j];
+        if (o.kind === 'text') {
+          var text = String(o.text).replace(/[\r\n]/g, ' ');
+          if (!text) continue;
+          page.drawText(o.space ? text + ' ' : text, { x: o.x, y: o.y, size: o.fontSize, font: fonts[o.style] || fonts.R });
+        } else if (o.kind === 'image') {
+          var img = await image(o.key);
+          if (img) page.drawImage(img, { x: o.x, y: o.y, width: o.w, height: o.h });
         }
       }
     }
     // yazı tipi alt kümesi burada (kaydetmeden önce) gömülür: hata kaynağı ayrılabilsin
-    for (var k in fontlar) {
-      try { await fontlar[k].embed(); } catch (e) { throw yaziTipiHatasi(e); }
+    for (var k in fonts) {
+      try { await fonts[k].embed(); } catch (e) { throw fontError(e); }
     }
-    if (bilgi.baslik) doc.setTitle(bilgi.baslik);
-    if (bilgi.yazar) doc.setAuthor(bilgi.yazar);
-    if (bilgi.dil) doc.setLanguage(bilgi.dil);
+    if (info.title) doc.setTitle(info.title);
+    if (info.writes) doc.setAuthor(info.writes);
+    if (info.i18n) doc.setLanguage(info.i18n);
     doc.setProducer('Mücellit EPUB');
     doc.setCreator('Mücellit');
-    var bayt = await doc.save();
-    if (atlanan && kaynaklar.sayac) kaynaklar.sayac.atlananResim = (kaynaklar.sayac.atlananResim || 0) + atlanan;
-    return bayt;
+    var bytes = await doc.save();
+    if (skipped && sources.counter) sources.counter.skippedImage = (sources.counter.skippedImage || 0) + skipped;
+    return bytes;
   }
 
-  async function pdfYaz(sayfalar, bilgi, kaynaklar) {
+  async function writePdf(pages, info, sources) {
     try {
-      return await yaz(sayfalar, bilgi, kaynaklar, true);
+      return await write(pages, info, sources, true);
     } catch (e) {
-      if (!e || !e.yaziTipi) throw turkceHata(e);
+      if (!e || !e.font) throw turkishError(e);
       // pdf-lib alt küme hataları (ör. #1396) için yedek yol, yalnız yazı tipi hatasında: alt kümesiz gömme
-      if (kaynaklar.uyarilar) kaynaklar.uyarilar.push(t('pdfyaz.alt_kume_uyari'));
+      if (sources.warnings) sources.warnings.push(t('pdfwriter.subset_warning'));
       try {
-        return await yaz(sayfalar, bilgi, kaynaklar, false);
-      } catch (e2) { throw turkceHata(e2 && e2.yaziTipi ? e2.cause : e2); }
+        return await write(pages, info, sources, false);
+      } catch (e2) { throw turkishError(e2 && e2.font ? e2.cause : e2); }
     }
   }
 
   /** Yazı tipinde glifi olmayan karakterleri '?' yapar (U+FFFD / boş glif çıkmasın); değiştirilen karakter sayısı. */
-  function kapsamDuzelt(bloklar, varMi) {
-    var sayi = 0;
-    var onbellek = {};
-    function duzelt(s) {
-      var cikti = '';
+  function fixScope(blocks, has) {
+    var number = 0;
+    var cache = {};
+    function fix(s) {
+      var output = '';
       for (var ch of s) {
         var cp = ch.codePointAt(0);
         var var_ = cp === 0x20 || cp === 0xa0 || cp === 0xad;
-        if (!var_) { if (!(cp in onbellek)) onbellek[cp] = !!varMi(cp); var_ = onbellek[cp]; }
-        if (var_) cikti += ch; else { cikti += '?'; sayi += 1; }
+        if (!var_) { if (!(cp in cache)) cache[cp] = !!has(cp); var_ = cache[cp]; }
+        if (var_) output += ch; else { output += '?'; number += 1; }
       }
-      return cikti;
+      return output;
     }
-    bloklar.forEach(function (b) {
-      (b.parcalar || []).forEach(function (p) { if (!p.kir && p.metin) p.metin = duzelt(p.metin); });
-      if (b.onEk) b.onEk = duzelt(b.onEk);
+    blocks.forEach(function (b) {
+      (b.parts || []).forEach(function (p) { if (!p.lineBreak && p.text) p.text = fix(p.text); });
+      if (b.prefix) b.prefix = fix(b.prefix);
     });
-    return sayi;
+    return number;
   }
 
-  return { pdfYaz: pdfYaz, kapsamDuzelt: kapsamDuzelt };
+  return { writePdf: writePdf, fixScope: fixScope };
 });

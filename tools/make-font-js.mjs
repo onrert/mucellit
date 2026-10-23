@@ -16,41 +16,41 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const argv = process.argv.slice(2);
-const denetle = argv.includes('--denetle');
-const kokIndis = argv.indexOf('--kok');
-const KOK = kokIndis >= 0 ? resolve(argv[kokIndis + 1] || '.') : resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DIZIN = join(KOK, 'app', 'vendor', 'literata');
+const verify = argv.includes('--verify');
+const rootIndex = argv.indexOf('--root');
+const ROOT = rootIndex >= 0 ? resolve(argv[rootIndex + 1] || '.') : resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DIR = join(ROOT, 'app', 'vendor', 'literata');
 
 // stil anahtarı → TTF adı (anahtar, pdf-writer.js ve epub.js'te aynı)
-const STILLER = [
+const STYLES = [
   ['regular', 'Literata-Regular.ttf'],
   ['italic', 'Literata-Italic.ttf'],
   ['bold', 'Literata-Bold.ttf'],
   ['bolditalic', 'Literata-BoldItalic.ttf']
 ];
 
-function icerikUret(stil, ttfAd, ttf) {
+function makeContent(style, ttfAd, ttf) {
   return '/* ' + ttfAd + ' (SIL OFL 1.1, bkz. OFL.txt) base64 hali. tools/make-font-js.mjs üretir; elle düzenlemeyin. */\n' +
-    '(self.KitapCilt = self.KitapCilt || {}); (KitapCilt.yaziTipleri = KitapCilt.yaziTipleri || {})[\'' + stil + '\'] = \'' +
+    '(self.Mucellit = self.Mucellit || {}); (Mucellit.fonts = Mucellit.fonts || {})[\'' + style + '\'] = \'' +
     Buffer.from(ttf).toString('base64') + '\';\n';
 }
 
-let hata = 0;
-for (const [stil, ttfAd] of STILLER) {
-  const ttfYol = join(DIZIN, ttfAd);
-  const jsYol = join(DIZIN, 'literata-' + stil + '.js');
-  if (!existsSync(ttfYol)) { console.log(`HATA ${ttfAd} yok (${ttfYol})`); hata += 1; continue; }
-  const ttf = readFileSync(ttfYol);
-  if (ttf.length < 1024 || ttf.readUInt32BE(0) !== 0x00010000) { console.log(`HATA ${ttfAd} TrueType değil ya da kırpık (${ttf.length} bayt)`); hata += 1; continue; }
-  const beklenen = Buffer.from(icerikUret(stil, ttfAd, ttf), 'utf8');
-  if (denetle) {
-    if (!existsSync(jsYol)) { console.log(`KALDI ${jsYol} yok`); hata += 1; continue; }
-    const var_ = readFileSync(jsYol);
-    if (Buffer.compare(var_, beklenen) !== 0) { console.log(`KALDI literata-${stil}.js ${ttfAd} ile uyuşmuyor (${var_.length} ≠ ${beklenen.length} bayt ya da içerik farklı)`); hata += 1; }
-    else console.log(`GEÇTİ literata-${stil}.js ${beklenen.length} bayt, ${ttfAd} ile birebir`);
+let error = 0;
+for (const [style, ttfAd] of STYLES) {
+  const ttfPath = join(DIR, ttfAd);
+  const jsPath = join(DIR, 'literata-' + style + '.js');
+  if (!existsSync(ttfPath)) { console.log(`HATA ${ttfAd} yok (${ttfPath})`); error += 1; continue; }
+  const ttf = readFileSync(ttfPath);
+  if (ttf.length < 1024 || ttf.readUInt32BE(0) !== 0x00010000) { console.log(`HATA ${ttfAd} TrueType değil ya da kırpık (${ttf.length} bytes)`); error += 1; continue; }
+  const expected = Buffer.from(makeContent(style, ttfAd, ttf), 'utf8');
+  if (verify) {
+    if (!existsSync(jsPath)) { console.log(`FAIL ${jsPath} none`); error += 1; continue; }
+    const var_ = readFileSync(jsPath);
+    if (Buffer.compare(var_, expected) !== 0) { console.log(`FAIL literata-${style}.js ${ttfAd} ile uyuşmuyor (${var_.length} ≠ ${expected.length} bayt ya da içerik farklı)`); error += 1; }
+    else console.log(`GEÇTİ literata-${style}.js ${expected.length} bayt, ${ttfAd} ile birebir`);
   } else {
-    writeFileSync(jsYol, beklenen);
-    console.log(`yazıldı literata-${stil}.js (${beklenen.length} bayt)`);
+    writeFileSync(jsPath, expected);
+    console.log(`yazıldı literata-${style}.js (${expected.length} bytes)`);
   }
 }
-process.exit(hata ? 1 : 0);
+process.exit(error ? 1 : 0);

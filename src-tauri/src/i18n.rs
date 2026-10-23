@@ -24,40 +24,40 @@ use std::sync::{OnceLock, RwLock};
 use tauri::{AppHandle, Manager, Runtime};
 
 // `pub const SOZLUK_DOSYALARI: &[(&str, &str)]` — (kod, dosya metni); build.rs üretir.
-include!(concat!(env!("OUT_DIR"), "/sozlukler.rs"));
+include!(concat!(env!("OUT_DIR"), "/dictionaries.rs"));
 
 /// Ana (öntanımlı, eksik anahtarda düşülen) dil.
-pub const ANA: &str = "en";
+pub const MAIN: &str = "en";
 /// Elle seçimin yedeği (`app_data_dir` içinde): "en" | "tr" …; yoksa sistem dili.
-pub const SECIM_DOSYASI: &str = "dil.txt";
-const ISARET: &str = "/*JSON*/";
+pub const CHOICE_FILE: &str = "language.txt";
+const MARKER: &str = "/*JSON*/";
 
 /// Sözlük dosyası metninden JSON gövdesini (iki işaret arası) ayrıştırır.
-pub fn json_ayikla(metin: &str) -> Result<Map<String, Value>, String> {
-    let a = metin
-        .find(ISARET)
-        .ok_or_else(|| format!("dictionary: missing {ISARET} marker"))?;
-    let b = metin
-        .rfind(ISARET)
+pub fn extract_json(text: &str) -> Result<Map<String, Value>, String> {
+    let a = text
+        .find(MARKER)
+        .ok_or_else(|| format!("dictionary: missing {MARKER} marker"))?;
+    let b = text
+        .rfind(MARKER)
         .filter(|b| *b > a)
         .ok_or("dictionary: missing closing marker")?;
     // Geliştirici hatası (sözlük dosyası bozuk); kullanıcıya gitmez, testler yakalar.
-    match serde_json::from_str::<Value>(&metin[a + ISARET.len()..b]) {
+    match serde_json::from_str::<Value>(&text[a + MARKER.len()..b]) {
         Ok(Value::Object(m)) => Ok(m),
         Ok(_) => Err("dictionary: body must be a JSON object".into()),
         Err(e) => Err(format!("dictionary: invalid JSON: {e}")),
     }
 }
 
-fn sozlukler() -> &'static BTreeMap<String, Map<String, Value>> {
+fn dictionaries() -> &'static BTreeMap<String, Map<String, Value>> {
     static S: OnceLock<BTreeMap<String, Map<String, Value>>> = OnceLock::new();
     S.get_or_init(|| {
-        SOZLUK_DOSYALARI
+        DICTIONARY_FILES
             .iter()
-            .filter_map(|(kod, metin)| match json_ayikla(metin) {
-                Ok(m) => Some((kod.to_string(), m)),
+            .filter_map(|(code, text)| match extract_json(text) {
+                Ok(m) => Some((code.to_string(), m)),
                 Err(e) => {
-                    eprintln!("sözlük okunamadı ({kod}): {e}");
+                    eprintln!("sözlük okunamadı ({code}): {e}");
                     None
                 }
             })
@@ -66,140 +66,139 @@ fn sozlukler() -> &'static BTreeMap<String, Map<String, Value>> {
 }
 
 /// Desteklenen diller (en önce).
-pub fn diller() -> Vec<String> {
-    let mut l: Vec<String> = sozlukler().keys().cloned().collect();
-    l.sort_by_key(|k| (k != ANA, k.clone()));
+pub fn languages() -> Vec<String> {
+    let mut l: Vec<String> = dictionaries().keys().cloned().collect();
+    l.sort_by_key(|k| (k != MAIN, k.clone()));
     l
 }
 
-pub fn destekli(kod: &str) -> bool {
-    sozlukler().contains_key(kod)
+pub fn is_supported(code: &str) -> bool {
+    dictionaries().contains_key(code)
 }
 
 /// Dilin kendi adı (`_ad`: "English", "Türkçe").
-pub fn ad(kod: &str) -> String {
-    sozlukler()
-        .get(kod)
-        .and_then(|s| s.get("_ad"))
+pub fn name(code: &str) -> String {
+    dictionaries()
+        .get(code)
+        .and_then(|s| s.get("_name"))
         .and_then(Value::as_str)
-        .unwrap_or(kod)
+        .unwrap_or(code)
         .to_string()
 }
 
 /// Seçili dil ve elle seçim (None = sistem dili).
-struct Durum {
-    kod: String,
-    secim: Option<String>,
+struct LanguageState {
+    code: String,
+    choice: Option<String>,
 }
 
-fn durum() -> &'static RwLock<Durum> {
-    static D: OnceLock<RwLock<Durum>> = OnceLock::new();
+fn state() -> &'static RwLock<LanguageState> {
+    static D: OnceLock<RwLock<LanguageState>> = OnceLock::new();
     D.get_or_init(|| {
-        RwLock::new(Durum {
-            kod: ANA.into(),
-            secim: None,
+        RwLock::new(LanguageState {
+            code: MAIN.into(),
+            choice: None,
         })
     })
 }
 
 /// Şu anki dil.
-pub fn kod() -> String {
-    durum()
+pub fn code() -> String {
+    state()
         .read()
-        .map(|d| d.kod.clone())
-        .unwrap_or_else(|_| ANA.into())
+        .map(|d| d.code.clone())
+        .unwrap_or_else(|_| MAIN.into())
 }
 
 /// Şu anki elle seçim ("sistem" ise None).
-pub fn secim() -> Option<String> {
-    durum().read().ok().and_then(|d| d.secim.clone())
+pub fn choice() -> Option<String> {
+    state().read().ok().and_then(|d| d.choice.clone())
 }
 
 /// Dili ve seçimi ayarlar (desteklenmeyen kod → en). Değiştiyse true.
-pub fn ayarla(kod: &str, secim: Option<&str>) -> bool {
-    let kod = if destekli(kod) { kod } else { ANA };
-    let secim = secim.filter(|s| destekli(s)).map(str::to_string);
-    let Ok(mut d) = durum().write() else {
+pub fn set(code: &str, choice: Option<&str>) -> bool {
+    let code = if is_supported(code) { code } else { MAIN };
+    let choice = choice.filter(|s| is_supported(s)).map(str::to_string);
+    let Ok(mut d) = state().write() else {
         return false;
     };
-    let degisti = d.kod != kod || d.secim != secim;
-    d.kod = kod.to_string();
-    d.secim = secim;
-    degisti
+    let changed = d.code != code || d.choice != choice;
+    d.code = code.to_string();
+    d.choice = choice;
+    changed
 }
 
-fn ham<'a>(kod: &str, anahtar: &str) -> Option<&'a Value> {
-    if anahtar.starts_with('_') {
+fn raw<'a>(code: &str, key: &str) -> Option<&'a Value> {
+    if key.starts_with('_') {
         return None;
     }
-    sozlukler().get(kod).and_then(|s| s.get(anahtar))
+    dictionaries().get(code).and_then(|s| s.get(key))
 }
 
 /// Metin (verilen dilde): eksikse en'e, o da yoksa anahtara düşer. Parametre `{ad}` biçiminde; tekil/çoğul
 /// nesnede `n` parametresi 1 ise "one", değilse "other".
-pub fn metin_dilde(kod: &str, anahtar: &str, p: &[(&str, &str)]) -> String {
-    let deger = ham(kod, anahtar).or_else(|| ham(ANA, anahtar));
-    let ham_metin = match deger {
+pub fn text_in(code: &str, key: &str, p: &[(&str, &str)]) -> String {
+    let value = raw(code, key).or_else(|| raw(MAIN, key));
+    let ham_metin = match value {
         Some(Value::String(s)) => s.as_str(),
         Some(Value::Object(m)) => {
             let bir = p.iter().any(|(a, d)| *a == "n" && *d == "1");
             m.get(if bir { "one" } else { "other" })
                 .or_else(|| m.get("other"))
                 .and_then(Value::as_str)
-                .unwrap_or(anahtar)
+                .unwrap_or(key)
         }
-        _ => anahtar,
+        _ => key,
     };
-    doldur(ham_metin, p)
+    fill(ham_metin, p)
 }
 
 /// `{ad}` parametrelerini TEK geçişte doldurur: yerine konan değer yeniden taranmaz (değer içindeki `{x}` aynen
 /// kalır), parametre sırası önemsizdir; bilinmeyen parametre `{ad}` olarak kalır (JS `doldur` ile aynı).
-pub fn doldur(metin: &str, p: &[(&str, &str)]) -> String {
-    let mut s = String::with_capacity(metin.len());
-    let mut kalan = metin;
-    while let Some(ac) = kalan.find('{') {
-        s.push_str(&kalan[..ac]);
-        let sonra = &kalan[ac + 1..];
-        let ad_uz = sonra
+pub fn fill(text: &str, p: &[(&str, &str)]) -> String {
+    let mut s = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        s.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let ad_uz = after
             .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or(sonra.len());
-        let ad = &sonra[..ad_uz];
-        let deger = (!ad.is_empty() && sonra[ad_uz..].starts_with('}'))
-            .then(|| p.iter().find(|(a, _)| *a == ad).map(|(_, d)| *d))
+            .unwrap_or(after.len());
+        let name = &after[..ad_uz];
+        let value = (!name.is_empty() && after[ad_uz..].starts_with('}'))
+            .then(|| p.iter().find(|(a, _)| *a == name).map(|(_, d)| *d))
             .flatten();
-        match deger {
+        match value {
             Some(d) => {
                 s.push_str(d);
-                kalan = &sonra[ad_uz + 1..];
+                rest = &after[ad_uz + 1..];
             }
             None => {
                 s.push('{');
-                kalan = sonra;
+                rest = after;
             }
         }
     }
-    s.push_str(kalan);
+    s.push_str(rest);
     s
 }
 
 /// Metin (şu anki dilde).
-pub fn metin(anahtar: &str, p: &[(&str, &str)]) -> String {
-    metin_dilde(&kod(), anahtar, p)
+pub fn text(key: &str, p: &[(&str, &str)]) -> String {
+    text_in(&code(), key, p)
 }
 
 /// Testlerde dilden bağımsız karşılaştırma: metnin ilk parametreye (`{`) kadarki sabit başı (şu anki dilde).
 #[cfg(test)]
-pub fn kalip(anahtar: &str) -> String {
-    let m = metin(anahtar, &[]);
+pub fn prefix_of(key: &str) -> String {
+    let m = text(key, &[]);
     m.split('{').next().unwrap_or("").to_string()
 }
 
 /// Tercih edilen dil listesinden arayüz dili, Apple kuralı: birincil alt etiketi (bölge/yazı kodu atılır)
 /// desteklenen İLK dil; hiçbiri yoksa en (JS `sistemDili` ile aynı kural, ortak vektörler).
-pub fn sistem_dili(liste: &[String]) -> String {
-    liste
-        .iter()
+pub fn system_language(list: &[String]) -> String {
+    list.iter()
         .filter(|s| !s.is_empty())
         .map(|s| {
             s.to_lowercase()
@@ -208,39 +207,39 @@ pub fn sistem_dili(liste: &[String]) -> String {
                 .unwrap_or("")
                 .to_string()
         })
-        .find(|k| destekli(k))
-        .unwrap_or_else(|| ANA.into())
+        .find(|k| is_supported(k))
+        .unwrap_or_else(|| MAIN.into())
 }
 
 /// Bu Mac'in sistem dili (menü, `dil_oku` ve açılış aynı kaynaktan).
-pub fn sistem_kodu() -> String {
-    sistem_dili(&sistem_tercihleri())
+pub fn system_code() -> String {
+    system_language(&system_preferences())
 }
 
 /// sayfa betiklerinden önce çalışan ön betik (`WebviewWindowBuilder::initialization_script`): JS `i18n.js`
 /// ilk karede de menüyle aynı sistem dilini kullanır (WKWebView `navigator.languages` tek dil verebilir; eskiden
 /// açılışta önce tarayıcı dili, `dil_oku` dönünce Rust'ın dili görünüyordu). Değer JSON olarak kaçışlanır; nesne
 /// dondurulur ve yeniden tanımlanamaz.
-pub fn baslangic_betigi_kod(kod: &str) -> String {
-    let deger = serde_json::json!({ "sistem": kod });
+pub fn init_script_for(code: &str) -> String {
+    let value = serde_json::json!({ "system": code });
     format!(
-        "Object.defineProperty(window,'__KC_DIL__',{{value:Object.freeze({deger}),writable:false,configurable:false}});"
+        "Object.defineProperty(window,'__MC_LANG__',{{value:Object.freeze({value}),writable:false,configurable:false}});"
     )
 }
 
 /// Bu Mac'in sistem diliyle ön betik (pencere kurulurken bir kez; JS `dil_oku` yine eşitler).
-pub fn baslangic_betigi() -> String {
-    baslangic_betigi_kod(&sistem_kodu())
+pub fn init_script() -> String {
+    init_script_for(&system_code())
 }
 
 /// Görünüm > Dil menüsündeki "Sistem Dili (X)" öğesinin etiketi (şu anki dilde).
-pub fn sistem_etiketi() -> String {
-    metin("menu.dil_sistem", &[("ad", &ad(&sistem_kodu()))])
+pub fn system_label() -> String {
+    text("menu.i18n_system", &[("name", &name(&system_code()))])
 }
 
 /// İşletim sisteminin tercih ettiği diller (macOS: `NSLocale.preferredLanguages`, uygulamaya özel dil ayarı
 /// dahil; başka platform: `LANG`).
-pub fn sistem_tercihleri() -> Vec<String> {
+pub fn system_preferences() -> Vec<String> {
     #[cfg(target_os = "macos")]
     {
         objc2_foundation::NSLocale::preferredLanguages()
@@ -255,222 +254,220 @@ pub fn sistem_tercihleri() -> Vec<String> {
 }
 
 /// Yedeklenmiş elle seçim (yoksa, boşsa ya da desteklenmiyorsa None).
-pub fn secim_oku(dosya: &Path) -> Option<String> {
-    let s = fs::read_to_string(dosya).ok()?;
+pub fn read_choice(file: &Path) -> Option<String> {
+    let s = fs::read_to_string(file).ok()?;
     let s = s.trim();
-    destekli(s).then(|| s.to_string())
+    is_supported(s).then(|| s.to_string())
 }
 
 /// Elle seçimi yedekler; None (sistem) dosyayı siler.
-pub fn secim_yaz(dosya: &Path, secim: Option<&str>) -> io::Result<()> {
-    match secim {
-        Some(s) => crate::recent::atomik_yaz(dosya, format!("{s}\n").as_bytes()),
-        None => match fs::remove_file(dosya) {
+pub fn write_choice(file: &Path, choice: Option<&str>) -> io::Result<()> {
+    match choice {
+        Some(s) => crate::recent::write_atomic(file, format!("{s}\n").as_bytes()),
+        None => match fs::remove_file(file) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         },
     }
 }
 
-fn secim_dosyasi<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
-    app.path()
-        .app_data_dir()
-        .ok()
-        .map(|d| d.join(SECIM_DOSYASI))
+fn choice_file<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join(CHOICE_FILE))
 }
 
 /// Açılışta (menü kurulmadan önce): yedeklenmiş elle seçim, yoksa sistem dili.
-pub fn baslat<R: Runtime>(app: &AppHandle<R>) {
-    let secim = secim_dosyasi(app).as_deref().and_then(secim_oku);
-    let kod = secim.clone().unwrap_or_else(sistem_kodu);
-    ayarla(&kod, secim.as_deref());
+pub fn start<R: Runtime>(app: &AppHandle<R>) {
+    let choice = choice_file(app).as_deref().and_then(read_choice);
+    let code = choice.clone().unwrap_or_else(system_code);
+    set(&code, choice.as_deref());
 }
 
 /// JS'e verilen dil bilgisi.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Bilgi {
-    pub kod: String,
+pub struct LanguageInfo {
+    pub code: String,
     /// "sistem" | dil kodu
-    pub secim: String,
+    pub choice: String,
     /// Sistem dili (Apple kuralı; menüdeki "Sistem dili (X)" ile aynı kaynak). JS "sistem" seçiminde bunu kullanır.
-    pub sistem: String,
+    pub system: String,
 }
 
 /// Dil bilgisi; `secim`: yedeklenmiş elle seçim (None = sistem).
-pub fn bilgi(secim: Option<String>) -> Bilgi {
-    Bilgi {
-        kod: kod(),
-        secim: secim.unwrap_or_else(|| "sistem".into()),
-        sistem: sistem_kodu(),
+pub fn language_info(choice: Option<String>) -> LanguageInfo {
+    LanguageInfo {
+        code: code(),
+        choice: choice.unwrap_or_else(|| "system".into()),
+        system: system_code(),
     }
 }
 
 /// Rust'taki dil, yedeklenmiş elle seçim ve sistem dili.
 #[tauri::command]
-pub fn dil_oku<R: Runtime>(app: AppHandle<R>) -> Bilgi {
-    let secim = secim_dosyasi(&app).as_deref().and_then(secim_oku);
-    bilgi(secim)
+pub fn read_language<R: Runtime>(app: AppHandle<R>) -> LanguageInfo {
+    let choice = choice_file(&app).as_deref().and_then(read_choice);
+    language_info(choice)
 }
 
 /// JS'in kararı: `kod` görünen dil, `secim` "sistem" ya da elle seçilen dil. Seçim yedeklenir, dil
 /// değiştiyse menü yeniden kurulur.
 #[tauri::command]
-pub fn dil_ayarla<R: Runtime>(app: AppHandle<R>, kod: String, secim: String) -> Result<(), String> {
-    if !destekli(&kod) {
-        return Err(metin("rust.dil_desteklenmiyor", &[("kod", &kod)]));
+pub fn set_language<R: Runtime>(
+    app: AppHandle<R>,
+    code: String,
+    choice: String,
+) -> Result<(), String> {
+    if !is_supported(&code) {
+        return Err(text("rust.i18n_unsupported", &[("code", &code)]));
     }
-    let elle = match secim.as_str() {
-        "sistem" => None,
-        s if destekli(s) => Some(s),
-        s => return Err(metin("rust.dil_desteklenmiyor", &[("kod", s)])),
+    let manual = match choice.as_str() {
+        "system" => None,
+        s if is_supported(s) => Some(s),
+        s => return Err(text("rust.i18n_unsupported", &[("code", s)])),
     };
-    if let Some(d) = secim_dosyasi(&app) {
-        if secim_oku(&d).as_deref() != elle {
-            secim_yaz(&d, elle)
-                .map_err(|e| metin("rust.dil_yazilamadi", &[("hata", &e.to_string())]))?;
+    if let Some(d) = choice_file(&app) {
+        if read_choice(&d).as_deref() != manual {
+            write_choice(&d, manual)
+                .map_err(|e| text("rust.i18n_write_failed", &[("error", &e.to_string())]))?;
         }
     }
-    if ayarla(&kod, elle) {
-        crate::menu::yenile(&app);
+    if set(&code, manual) {
+        crate::menu::refresh(&app);
     }
     Ok(())
 }
 
 #[cfg(test)]
-mod testler {
+mod tests {
     use super::*;
 
     /// ön betik sistem dilini JSON kaçışıyla taşır (kusurlu kod da betiği bozmaz).
     #[test]
-    fn baslangic_betigi_sistem_dilini_kacislayarak_tasir() {
+    fn init_script_carries_system_language_escaped() {
         assert_eq!(
-            baslangic_betigi_kod("tr"),
-            "Object.defineProperty(window,'__KC_DIL__',{value:Object.freeze({\"sistem\":\"tr\"}),writable:false,configurable:false});"
+            init_script_for("tr"),
+            "Object.defineProperty(window,'__MC_LANG__',{value:Object.freeze({\"system\":\"tr\"}),writable:false,configurable:false});"
         );
-        let kotu = baslangic_betigi_kod("x\"});alert(1);//</script>");
+        let bad = init_script_for("x\"});alert(1);//</script>");
         assert!(
-            kotu.contains(r#""sistem":"x\"});alert(1);//</script>""#),
-            "{kotu}"
+            bad.contains(r#""system":"x\"});alert(1);//</script>""#),
+            "{bad}"
         );
-        assert_eq!(baslangic_betigi(), baslangic_betigi_kod(&sistem_kodu()));
-        assert!(destekli(&sistem_kodu()));
+        assert_eq!(init_script(), init_script_for(&system_code()));
+        assert!(is_supported(&system_code()));
     }
 
     #[test]
-    fn sozlukler_gomuldu_en_once_tr_var() {
-        let d = diller();
+    fn dictionaries_embedded_en_first_tr_present() {
+        let d = languages();
         assert_eq!(d.first().map(String::as_str), Some("en"), "{d:?}");
         assert!(d.iter().any(|k| k == "tr"), "{d:?}");
-        assert_eq!(ad("en"), "English");
-        assert_eq!(ad("tr"), "Türkçe");
+        assert_eq!(name("en"), "English");
+        assert_eq!(name("tr"), "Türkçe");
         // derlemede gömülen dosya sayısı = app/i18n/*.js sayısı (yeni dil kendiliğinden gelir)
-        let klasor = Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/i18n");
-        let n = fs::read_dir(klasor)
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/i18n");
+        let n = fs::read_dir(folder)
             .unwrap()
             .filter(|g| {
                 g.as_ref()
                     .is_ok_and(|g| g.file_name().to_string_lossy().ends_with(".js"))
             })
             .count();
-        assert_eq!(SOZLUK_DOSYALARI.len(), n);
-        assert_eq!(sozlukler().len(), n, "her sözlük ayrıştırıldı");
+        assert_eq!(DICTIONARY_FILES.len(), n);
+        assert_eq!(dictionaries().len(), n, "her sözlük ayrıştırıldı");
     }
 
     #[test]
-    fn metin_parametre_cogul_ve_eksik_anahtar() {
-        assert_eq!(metin_dilde("tr", "menu.dosya", &[]), "Dosya");
-        assert_eq!(metin_dilde("en", "menu.dosya", &[]), "File");
+    fn text_parameters_plurals_and_missing_keys() {
+        assert_eq!(text_in("tr", "menu.file", &[]), "Dosya");
+        assert_eq!(text_in("en", "menu.file", &[]), "File");
         assert_eq!(
-            metin_dilde("en", "rust.desteklenmeyen", &[("ad", "a.txt")]),
+            text_in("en", "rust.unsupported", &[("name", "a.txt")]),
             "unsupported file: a.txt"
         );
         assert_eq!(
-            metin_dilde("tr", "rust.desteklenmeyen", &[("ad", "a.txt")]),
+            text_in("tr", "rust.unsupported", &[("name", "a.txt")]),
             "desteklenmeyen dosya: a.txt"
         );
         // eksik anahtar: bilinmeyen dil → en; hiçbir dilde yok → anahtar
-        assert_eq!(metin_dilde("xx", "menu.dosya", &[]), "File");
+        assert_eq!(text_in("xx", "menu.file", &[]), "File");
+        assert_eq!(text_in("tr", "none.such.key", &[]), "none.such.key");
         assert_eq!(
-            metin_dilde("tr", "yok.boyle.anahtar", &[]),
-            "yok.boyle.anahtar"
-        );
-        assert_eq!(
-            metin_dilde("tr", "_ad", &[]),
-            "_ad",
+            text_in("tr", "_name", &[]),
+            "_name",
             "üst veri metin değildir"
         );
         // tekil/çoğul (en'de nesne, tr'de tek biçim)
         assert_eq!(
-            metin_dilde("en", "duzenle.secildi", &[("n", "1")]),
+            text_in("en", "impose.selected", &[("n", "1")]),
             "1 page selected."
         );
         assert_eq!(
-            metin_dilde("en", "duzenle.secildi", &[("n", "3")]),
+            text_in("en", "impose.selected", &[("n", "3")]),
             "3 pages selected."
         );
         assert_eq!(
-            metin_dilde("tr", "duzenle.secildi", &[("n", "3")]),
+            text_in("tr", "impose.selected", &[("n", "3")]),
             "3 sayfa seçildi."
         );
     }
 
     #[test]
-    fn sistem_dili_apple_kurali() {
+    fn system_language_apple_rule() {
         let l = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(sistem_dili(&l(&["tr-TR", "en-US"])), "tr");
-        assert_eq!(sistem_dili(&l(&["TR"])), "tr");
-        assert_eq!(sistem_dili(&l(&["tr_TR"])), "tr");
-        assert_eq!(sistem_dili(&l(&["en-GB", "tr-TR"])), "en");
+        assert_eq!(system_language(&l(&["tr-TR", "en-US"])), "tr");
+        assert_eq!(system_language(&l(&["TR"])), "tr");
+        assert_eq!(system_language(&l(&["tr_TR"])), "tr");
+        assert_eq!(system_language(&l(&["en-GB", "tr-TR"])), "en");
         assert_eq!(
-            sistem_dili(&l(&["de-DE", "tr-TR"])),
+            system_language(&l(&["de-DE", "tr-TR"])),
             "tr",
             "Apple kuralı: listede desteklenen ilk dil"
         );
-        assert_eq!(sistem_dili(&l(&["de-DE", "fr-FR"])), "en");
-        assert_eq!(sistem_dili(&l(&[])), "en");
-        assert_eq!(sistem_dili(&l(&["", "tr"])), "tr", "boş girdi atlanır");
-        assert_eq!(sistem_dili(&l(&["tur"])), "en");
+        assert_eq!(system_language(&l(&["de-DE", "fr-FR"])), "en");
+        assert_eq!(system_language(&l(&[])), "en");
+        assert_eq!(system_language(&l(&["", "tr"])), "tr", "boş girdi atlanır");
+        assert_eq!(system_language(&l(&["kind"])), "en");
     }
 
     #[test]
-    fn secim_dosyasi_gidis_donus_ve_kusurlu_girdi() {
-        let d = std::env::temp_dir().join(format!("kc-dil-{}", uuid::Uuid::new_v4()));
-        let y = d.join(SECIM_DOSYASI);
-        assert_eq!(secim_oku(&y), None, "dosya yok");
-        secim_yaz(&y, Some("tr")).unwrap();
-        assert_eq!(secim_oku(&y).as_deref(), Some("tr"));
-        for kotu in ["", "xx", "../tr", "tr tr", "TR"] {
-            fs::write(&y, kotu).unwrap();
-            assert_eq!(secim_oku(&y), None, "{kotu:?}");
+    fn choice_file_round_trip_and_faulty_input() {
+        let d = std::env::temp_dir().join(format!("mc-i18n-{}", uuid::Uuid::new_v4()));
+        let y = d.join(CHOICE_FILE);
+        assert_eq!(read_choice(&y), None, "dosya yok");
+        write_choice(&y, Some("tr")).unwrap();
+        assert_eq!(read_choice(&y).as_deref(), Some("tr"));
+        for bad in ["", "xx", "../tr", "tr tr", "TR"] {
+            fs::write(&y, bad).unwrap();
+            assert_eq!(read_choice(&y), None, "{bad:?}");
         }
         fs::write(&y, " en \n").unwrap();
-        assert_eq!(secim_oku(&y).as_deref(), Some("en"), "boşluk kırpılır");
-        secim_yaz(&y, None).unwrap();
+        assert_eq!(read_choice(&y).as_deref(), Some("en"), "boşluk kırpılır");
+        write_choice(&y, None).unwrap();
         assert!(!y.exists(), "sistem seçimi dosyayı siler");
-        secim_yaz(&y, None).unwrap();
+        write_choice(&y, None).unwrap();
         fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
-    fn json_ayikla_kusurlu_sozluk() {
-        assert!(json_ayikla("{}").is_err(), "işaret yok");
-        assert!(json_ayikla("/*JSON*/{}").is_err(), "kapanış yok");
-        assert!(json_ayikla("/*JSON*/[1]/*JSON*/").is_err(), "nesne değil");
+    fn extract_json_faulty_dictionary() {
+        assert!(extract_json("{}").is_err(), "işaret yok");
+        assert!(extract_json("/*JSON*/{}").is_err(), "kapanış yok");
+        assert!(extract_json("/*JSON*/[1]/*JSON*/").is_err(), "nesne değil");
         assert!(
-            json_ayikla("/*JSON*/{\"a\":}/*JSON*/").is_err(),
+            extract_json("/*JSON*/{\"a\":}/*JSON*/").is_err(),
             "bozuk JSON"
         );
         assert_eq!(
-            json_ayikla("x(/*JSON*/{\"a\":\"b\"}/*JSON*/);").unwrap()["a"],
+            extract_json("x(/*JSON*/{\"a\":\"b\"}/*JSON*/);").unwrap()["a"],
             "b"
         );
     }
 
     /// JS ile ortak vektörler (app/test/fixtures/i18n-vectors.json; i18n.test.js aynı dosyayı sınar).
-    fn vektorler() -> Value {
+    fn vectors() -> Value {
         serde_json::from_str(include_str!("../../app/test/fixtures/i18n-vectors.json")).unwrap()
     }
-    fn metinler(x: &Value) -> Vec<String> {
+    fn texts(x: &Value) -> Vec<String> {
         x.as_array()
             .unwrap()
             .iter()
@@ -479,57 +476,53 @@ mod testler {
     }
 
     #[test]
-    fn ortak_vektorler_apple_kurali() {
-        let v = vektorler();
-        let sistem = v["sistem_dili"].as_array().unwrap();
-        assert!(sistem.len() >= 5);
-        let hatali: Vec<String> = sistem
+    fn shared_vectors_apple_rule() {
+        let v = vectors();
+        let system = v["system_language"].as_array().unwrap();
+        assert!(system.len() >= 5);
+        let failed: Vec<String> = system
             .iter()
             .filter_map(|o| {
-                let liste = metinler(&o["liste"]);
-                let b = sistem_dili(&liste);
-                (b != o["beklenen"].as_str().unwrap())
-                    .then(|| format!("{liste:?} → {b} (beklenen {})", o["beklenen"]))
+                let list = texts(&o["list"]);
+                let b = system_language(&list);
+                (b != o["expected"].as_str().unwrap())
+                    .then(|| format!("{list:?} → {b} (expected {})", o["expected"]))
             })
             .collect();
-        assert!(hatali.is_empty(), "{hatali:#?}");
+        assert!(failed.is_empty(), "{failed:#?}");
     }
 
     #[test]
-    fn ortak_vektorler_tek_gecisli_doldurma() {
-        let v = vektorler();
-        let doldur = v["doldur"].as_array().unwrap();
-        assert!(!doldur.is_empty());
-        let mut hatali = Vec::new();
-        for o in doldur {
-            let p: Vec<Vec<String>> = o["p"].as_array().unwrap().iter().map(metinler).collect();
+    fn shared_vectors_single_pass_fill() {
+        let v = vectors();
+        let fill = v["fill"].as_array().unwrap();
+        assert!(!fill.is_empty());
+        let mut failed = Vec::new();
+        for o in fill {
+            let p: Vec<Vec<String>> = o["p"].as_array().unwrap().iter().map(texts).collect();
             let p: Vec<(&str, &str)> = p.iter().map(|c| (c[0].as_str(), c[1].as_str())).collect();
-            let m = metin_dilde(
-                o["dil"].as_str().unwrap(),
-                o["anahtar"].as_str().unwrap(),
-                &p,
-            );
-            if m != o["beklenen"].as_str().unwrap() {
-                hatali.push(format!("{p:?} → {m}"));
+            let m = text_in(o["i18n"].as_str().unwrap(), o["key"].as_str().unwrap(), &p);
+            if m != o["expected"].as_str().unwrap() {
+                failed.push(format!("{p:?} → {m}"));
             }
         }
-        assert!(hatali.is_empty(), "{hatali:#?}");
+        assert!(failed.is_empty(), "{failed:#?}");
     }
 
     /// menüdeki "Sistem dili (X)" ve JS'e giden sistem dili aynı kaynaktan (`sistem_kodu`).
     #[test]
-    fn sistem_dili_menu_ve_js_ayni_kaynak() {
-        let b = bilgi(None);
-        assert_eq!(b.secim, "sistem");
-        assert_eq!(b.sistem, sistem_kodu());
-        assert!(destekli(&b.sistem));
+    fn system_language_menu_and_js_share_source() {
+        let b = language_info(None);
+        assert_eq!(b.choice, "system");
+        assert_eq!(b.system, system_code());
+        assert!(is_supported(&b.system));
         assert_eq!(
-            sistem_etiketi(),
-            metin("menu.dil_sistem", &[("ad", &ad(&b.sistem))])
+            system_label(),
+            text("menu.i18n_system", &[("name", &name(&b.system))])
         );
-        assert_eq!(bilgi(Some("tr".into())).secim, "tr");
+        assert_eq!(language_info(Some("tr".into())).choice, "tr");
         assert_eq!(
-            metin_dilde("en", "menu.dil_sistem", &[("ad", "English")]),
+            text_in("en", "menu.i18n_system", &[("name", "English")]),
             "System Language (English)",
             "menü Title Case"
         );
@@ -537,8 +530,8 @@ mod testler {
 
     /// Rust kaynaklarında `metin("…")` / `metin_dilde(_, "…")` ile kullanılan her anahtar her sözlükte var.
     #[test]
-    fn rust_anahtarlari_her_sozlukte_var() {
-        let kaynaklar = [
+    fn rust_keys_exist_in_every_dictionary() {
+        let sources = [
             include_str!("i18n.rs"),
             include_str!("files.rs"),
             include_str!("menu.rs"),
@@ -547,28 +540,25 @@ mod testler {
             include_str!("epub_folder.rs"),
             include_str!("lib.rs"),
         ];
-        let mut anahtarlar = std::collections::BTreeSet::new();
-        for k in kaynaklar {
+        let mut keys = std::collections::BTreeSet::new();
+        for k in sources {
             // test modülünden önceki kısım (cfg(test) işlevler, ör. `kalip`, dahil)
-            let govde = k
-                .split("#[cfg(test)]\nmod testler")
+            let body = k
+                .split("#[cfg(test)]\nmod tests")
                 .next()
                 .unwrap()
-                .split("#[cfg(test)]\npub(crate) mod testler")
+                .split("#[cfg(test)]\npub(crate) mod tests")
                 .next()
                 .unwrap();
-            for parca in govde.split("metin(\"").skip(1) {
-                anahtarlar.insert(parca.split('"').next().unwrap().to_string());
+            for part in body.split("text(\"").skip(1) {
+                keys.insert(part.split('"').next().unwrap().to_string());
             }
         }
-        assert!(
-            anahtarlar.len() > 30,
-            "anahtar taraması çalışıyor: {anahtarlar:?}"
-        );
-        for kod in diller() {
-            let s = &sozlukler()[&kod];
-            let eksik: Vec<_> = anahtarlar.iter().filter(|a| !s.contains_key(*a)).collect();
-            assert!(eksik.is_empty(), "{kod} sözlüğünde eksik: {eksik:?}");
+        assert!(keys.len() > 30, "key taraması çalışıyor: {keys:?}");
+        for code in languages() {
+            let s = &dictionaries()[&code];
+            let missing: Vec<_> = keys.iter().filter(|a| !s.contains_key(*a)).collect();
+            assert!(missing.is_empty(), "{code} sözlüğünde eksik: {missing:?}");
         }
     }
 }

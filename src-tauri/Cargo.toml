@@ -1,5 +1,5 @@
 [package]
-name = "kitap-cilt"
+name = "mucellit"
 version = "1.0.0"
 description = "Mücellit: kitap ciltleme aracı (Mac uygulaması)"
 edition = "2021"
@@ -7,7 +7,7 @@ rust-version = "1.85"
 publish = false
 
 [lib]
-name = "kitap_cilt_lib"
+name = "mucellit_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

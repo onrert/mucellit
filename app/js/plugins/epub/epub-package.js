@@ -9,125 +9,125 @@
  * (IDPF gizleme: EPUB 3.3 §4.4.5; Adobe gizleme "ns.adobe.com/pdf/enc#RC"). rights.xml tek başına DRM değildir.
  * Algoritma tanımlayıcıları şemasız (alan adı + yol) karşılaştırılır.
  */
-(function (kok) {
+(function (root) {
   'use strict';
-  var KC = kok.KitapCilt = kok.KitapCilt || {};
-  function t(a, p) { return KC.dil.t(a, p); }
+  var MC = root.Mucellit = root.Mucellit || {};
+  function t(a, p) { return MC.i18n.t(a, p); }
 
   // Kullanıcı metinleri okundukları anda o anki dilde (sözlükte epub.E1 …).
-  var MESAJ = {};
+  var MESSAGE = {};
   ['E1', 'E2', 'E3', 'E4', 'E5'].forEach(function (k) {
-    Object.defineProperty(MESAJ, k, { get: function () { return t('epub.' + k); }, enumerable: true });
+    Object.defineProperty(MESSAGE, k, { get: function () { return t('epub.' + k); }, enumerable: true });
   });
   // yazı tipi gizleme algoritmaları (DRM değil)
-  var GIZLEME = [/(^|\/\/)www\.idpf\.org\/2008\/embedding$/, /(^|\/\/)ns\.adobe\.com\/pdf\/enc#RC$/];
+  var HIDING = [/(^|\/\/)www\.idpf\.org\/2008\/embedding$/, /(^|\/\/)ns\.adobe\.com\/pdf\/enc#RC$/];
 
   /** ayrinti: [anahtar, parametreler] (sözlükte epub.ayrinti.<anahtar>). */
-  function hata(kod, ayrinti) {
-    var e = new Error(MESAJ[kod]);
-    e.kod = kod;
-    if (ayrinti) e.ayrinti = t('epub.ayrinti.' + ayrinti[0], ayrinti[1]);
+  function error(code, detail) {
+    var e = new Error(MESSAGE[code]);
+    e.code = code;
+    if (detail) e.detail = t('epub.detail.' + detail[0], detail[1]);
     return e;
   }
 
-  function xml(metin) {
-    var d = new DOMParser().parseFromString(metin, 'application/xml');
+  function xml(text) {
+    var d = new DOMParser().parseFromString(text, 'application/xml');
     if (d.getElementsByTagName('parsererror').length) return null;
     return d;
   }
-  function hepsi(d, ad) { return Array.prototype.slice.call(d.getElementsByTagNameNS('*', ad)); }
-  function ilkMetin(d, ad) {
-    var e = hepsi(d, ad)[0];
+  function all(d, name) { return Array.prototype.slice.call(d.getElementsByTagNameNS('*', name)); }
+  function ilkMetin(d, name) {
+    var e = all(d, name)[0];
     return e ? String(e.textContent || '').replace(/\s+/g, ' ').trim() : '';
   }
 
-  async function drmDenetle(zip) {
-    if (!zip.var('META-INF/encryption.xml')) return;
-    var d = xml(await zip.metin('META-INF/encryption.xml'));
-    if (!d) throw hata('E3', ['encryption_okunamadi']);
-    hepsi(d, 'EncryptedData').forEach(function (ed) {
-      var yontem = hepsi(ed, 'EncryptionMethod')[0];
-      var alg = yontem ? String(yontem.getAttribute('Algorithm') || '').trim() : '';
-      var gizleme = GIZLEME.some(function (r) { return r.test(alg); });
-      if (!gizleme) throw hata('E3', ['sifreleme', { alg: alg || t('epub.ayrinti.algoritma_yok') }]);
+  async function checkDrm(zip) {
+    if (!zip.has('META-INF/encryption.xml')) return;
+    var d = xml(await zip.text('META-INF/encryption.xml'));
+    if (!d) throw error('E3', ['encryption_unreadable']);
+    all(d, 'EncryptedData').forEach(function (ed) {
+      var method = all(ed, 'EncryptionMethod')[0];
+      var alg = method ? String(method.getAttribute('Algorithm') || '').trim() : '';
+      var hiding = HIDING.some(function (r) { return r.test(alg); });
+      if (!hiding) throw error('E3', ['encryption', { alg: alg || t('epub.detail.no_algorithm') }]);
     });
   }
 
-  async function fxlDenetle(zip, opf) {
-    var duzen = hepsi(opf, 'meta').filter(function (m) {
+  async function checkFxl(zip, opf) {
+    var layout = all(opf, 'meta').filter(function (m) {
       return m.getAttribute('property') === 'rendition:layout';
     }).map(function (m) { return String(m.textContent || '').trim(); });
-    if (duzen.indexOf('pre-paginated') >= 0) throw hata('E4');
+    if (layout.indexOf('pre-paginated') >= 0) throw error('E4');
     // eski Kindle işareti: <meta name="fixed-layout" content="true">
-    var kindle = hepsi(opf, 'meta').some(function (m) {
+    var kindle = all(opf, 'meta').some(function (m) {
       return m.getAttribute('name') === 'fixed-layout' && String(m.getAttribute('content')).trim() === 'true';
     });
-    if (kindle) throw hata('E4');
+    if (kindle) throw error('E4');
     // eski Apple işareti: META-INF/com.apple.ibooks.display-options.xml içinde fixed-layout = true
     var elma = 'META-INF/com.apple.ibooks.display-options.xml';
-    if (zip.var(elma)) {
-      var d = xml(await zip.metin(elma));
-      if (d && hepsi(d, 'option').some(function (o) { return o.getAttribute('name') === 'fixed-layout' && String(o.textContent).trim() === 'true'; })) throw hata('E4');
+    if (zip.has(elma)) {
+      var d = xml(await zip.text(elma));
+      if (d && all(d, 'option').some(function (o) { return o.getAttribute('name') === 'fixed-layout' && String(o.textContent).trim() === 'true'; })) throw error('E4');
     }
   }
 
-  async function paketOku(zip) {
-    var Z = KC.epubZip;
-    var uyarilar = [];
-    if (!zip.var('mimetype')) uyarilar.push(t('epub.uyari.mimetype_yok'));
-    else if ((await zip.metin('mimetype')).trim() !== 'application/epub+zip') uyarilar.push(t('epub.uyari.mimetype_yanlis'));
-    if (!zip.var('META-INF/container.xml')) throw hata('E2');
-    await drmDenetle(zip);
-    var kap = xml(await zip.metin('META-INF/container.xml'));
-    if (!kap) throw hata('E2', ['container_ayristirilamadi']);
-    var kokler = hepsi(kap, 'rootfile');
-    var kokDosya = kokler.filter(function (r) { return (r.getAttribute('media-type') || '') === 'application/oebps-package+xml'; })[0] || kokler[0];
-    var opfYolu = kokDosya ? Z.normal(kokDosya.getAttribute('full-path') || '') : '';
-    if (!opfYolu || !zip.var(opfYolu)) throw hata('E1', ['opf_yok', { yol: String(opfYolu) }]);
-    var opf = xml(await zip.metin(opfYolu));
-    if (!opf) throw hata('E1', ['opf_ayristirilamadi']);
-    var paket = hepsi(opf, 'package')[0];
-    var surum = paket ? String(paket.getAttribute('version') || '') : '';
-    await fxlDenetle(zip, opf);
+  async function readPackage(zip) {
+    var Z = MC.epubZip;
+    var warnings = [];
+    if (!zip.has('mimetype')) warnings.push(t('epub.warning.no_mimetype'));
+    else if ((await zip.text('mimetype')).trim() !== 'application/epub+zip') warnings.push(t('epub.warning.mimetype_wrong'));
+    if (!zip.has('META-INF/container.xml')) throw error('E2');
+    await checkDrm(zip);
+    var container = xml(await zip.text('META-INF/container.xml'));
+    if (!container) throw error('E2', ['container_parse_failed']);
+    var roots = all(container, 'rootfile');
+    var rootFile = roots.filter(function (r) { return (r.getAttribute('media-type') || '') === 'application/oebps-package+xml'; })[0] || roots[0];
+    var opfPath = rootFile ? Z.normal(rootFile.getAttribute('full-path') || '') : '';
+    if (!opfPath || !zip.has(opfPath)) throw error('E1', ['no_opf', { path: String(opfPath) }]);
+    var opf = xml(await zip.text(opfPath));
+    if (!opf) throw error('E1', ['opf_parse_failed']);
+    var pkg = all(opf, 'package')[0];
+    var version = pkg ? String(pkg.getAttribute('version') || '') : '';
+    await checkFxl(zip, opf);
 
     var manifest = {};
-    var kapakYolu = null;
-    hepsi(opf, 'item').forEach(function (it) {
+    var coverPath = null;
+    all(opf, 'item').forEach(function (it) {
       var id = it.getAttribute('id');
-      var yol = Z.yolCoz(opfYolu, it.getAttribute('href') || '');
-      var ozellik = String(it.getAttribute('properties') || '').split(/\s+/);
-      manifest[id] = { yol: yol, tur: String(it.getAttribute('media-type') || ''), ozellik: ozellik };
-      if (ozellik.indexOf('cover-image') >= 0) kapakYolu = yol;
+      var path = Z.parsePath(opfPath, it.getAttribute('href') || '');
+      var property = String(it.getAttribute('properties') || '').split(/\s+/);
+      manifest[id] = { path: path, kind: String(it.getAttribute('media-type') || ''), property: property };
+      if (property.indexOf('cover-image') >= 0) coverPath = path;
     });
-    if (!kapakYolu) {
+    if (!coverPath) {
       // EPUB 2: <meta name="cover" content="manifest-id">
-      var km = hepsi(opf, 'meta').filter(function (m) { return m.getAttribute('name') === 'cover'; })[0];
+      var km = all(opf, 'meta').filter(function (m) { return m.getAttribute('name') === 'cover'; })[0];
       var kid = km && km.getAttribute('content');
-      if (kid && manifest[kid]) kapakYolu = manifest[kid].yol;
+      if (kid && manifest[kid]) coverPath = manifest[kid].path;
     }
 
-    var ana = [], ek = [], atlanan = 0, tekFxl = 0;
-    hepsi(opf, 'itemref').forEach(function (ir) {
+    var main = [], ek = [], skipped = 0, tekFxl = 0;
+    all(opf, 'itemref').forEach(function (ir) {
       var m = manifest[ir.getAttribute('idref')];
-      if (!m) { atlanan += 1; return; }
-      var html = /xhtml|html/.test(m.tur) || /\.x?html?$/i.test(m.yol);
-      if (!html || !zip.var(m.yol)) { atlanan += 1; return; }
+      if (!m) { skipped += 1; return; }
+      var html = /xhtml|html/.test(m.kind) || /\.x?html?$/i.test(m.path);
+      if (!html || !zip.has(m.path)) { skipped += 1; return; }
       var oz = String(ir.getAttribute('properties') || '');
       if (/rendition:layout-pre-paginated/.test(oz)) tekFxl += 1;
       var linear = String(ir.getAttribute('linear') || 'yes').trim() !== 'no';
-      (linear ? ana : ek).push({ yol: m.yol, linear: linear, ozellik: oz });
+      (linear ? main : ek).push({ path: m.path, linear: linear, property: oz });
     });
-    if (atlanan) uyarilar.push(t('epub.uyari.spine_atlandi', { n: atlanan }));
-    if (tekFxl) uyarilar.push(t('epub.uyari.fxl_akiskan', { n: tekFxl }));
+    if (skipped) warnings.push(t('epub.warning.spine_skipped', { n: skipped }));
+    if (tekFxl) warnings.push(t('epub.warning.fxl_reflowable', { n: tekFxl }));
     // linear="no" öğeler (ör. sonnotlar) ana akıştan sonra eklenir
-    var spine = ana.concat(ek);
-    if (!spine.length) throw hata('E5');
+    var spine = main.concat(ek);
+    if (!spine.length) throw error('E5');
     return {
-      surum: surum, opfYolu: opfYolu,
-      baslik: ilkMetin(opf, 'title'), yazar: ilkMetin(opf, 'creator'), dil: ilkMetin(opf, 'language'),
-      spine: spine, manifest: manifest, kapakYolu: kapakYolu, uyarilar: uyarilar
+      version: version, opfPath: opfPath,
+      title: ilkMetin(opf, 'title'), writes: ilkMetin(opf, 'creator'), i18n: ilkMetin(opf, 'language'),
+      spine: spine, manifest: manifest, coverPath: coverPath, warnings: warnings
     };
   }
 
-  KC.epubPaket = { paketOku: paketOku, MESAJ: MESAJ };
+  MC.epubPackage = { readPackage: readPackage, MESSAGE: MESSAGE };
 })(typeof self !== 'undefined' ? self : this);

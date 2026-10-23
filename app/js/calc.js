@@ -6,87 +6,87 @@
  *  - kitap yaprağı: kitaptaki tek bir yaprak (2 sayfa: ön + arka).
  *  - baskı kağıdı: yazıcıdan geçen fiziksel kağıt.
  */
-(function (kok, fabrika) {
-  var m = fabrika();
+(function (root, factory) {
+  var m = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = m;
   } else {
-    kok.KitapCilt = kok.KitapCilt || {};
-    kok.KitapCilt.hesap = m;
+    root.Mucellit = root.Mucellit || {};
+    root.Mucellit.calc = m;
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var kok = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
-  function Dil() { return (kok && kok.KitapCilt && kok.KitapCilt.dil) || require('./i18n.js'); }
-  function t(a, p) { return Dil().t(a, p); }
+  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('./i18n.js'); }
+  function t(a, p) { return I18n().t(a, p); }
   /** Alan adı (hata metinleri için): sözlükte "hesap.ad.<anahtar>". */
-  function ad(anahtar) { return t('hesap.ad.' + anahtar); }
+  function name(key) { return t('calc.name.' + key); }
 
-  var VARSAYILAN = {
-    ciltTuru: 'formali',   // 'formali' | 'tek1' | 'tek2'
-    formaYaprak: 4,
-    sonFormaKucult: false,
-    kagitKalinlik: 0.1,    // mm, tek kitap yaprağı
-    forzaPayi: 0,          // mm, sırta eklenecek forza/ön-arka kağıt payı
-    kitapGen: 148,
-    kitapYuk: 210,
-    mukavvaKalinlik: 2,    // t, mm
-    sirtTipi: 'duz',       // 'duz' | 'yuvarlak'
-    sirtKurali: 'ikiT',    // 'ikiT': sırt şeridi S + 2t | 'yalnizS': S (mafsal t kadar artar)
-    egriBoyu: undefined,   // yuvarlak sırtta ölçülen sırt eğri boyu (mm); boşsa S + 2t
-    tasma: 3,              // k, mm: mukavvanın kitap bloğundan taşması (baş, kuyruk, ön)
-    mafsal: 'otomatik',    // f: 'otomatik' (mukavva kalınlığına göre) ya da elle mm
-    kivirma: 15,           // e, mm: kaplamanın her kenardan içe kıvrılan payı
-    yedekKagit: 0          // test baskısı / fire için ek baskı kağıdı
+  var DEFAULTS = {
+    bindingType: 'sewn',   // 'formali' | 'tek1' | 'tek2'
+    sheetsPerSignature: 4,
+    shrinkLastSignature: false,
+    paperThickness: 0.1,    // mm, tek kitap yaprağı
+    endpaperAllowance: 0,          // mm, sırta eklenecek forza/ön-arka kağıt payı
+    bookWidth: 148,
+    bookHeight: 210,
+    boardThickness: 2,    // t, mm
+    spineShape: 'flat',       // 'duz' | 'yuvarlak'
+    spineRule: 'twoT',    // 'ikiT': sırt şeridi S + 2t | 'yalnizS': S (mafsal t kadar artar)
+    curveLength: undefined,   // yuvarlak sırtta ölçülen sırt eğri boyu (mm); boşsa S + 2t
+    square: 3,              // k, mm: mukavvanın kitap bloğundan taşması (baş, kuyruk, ön)
+    jointGap: 'auto',    // f: 'otomatik' (mukavva kalınlığına göre) ya da elle mm
+    turnIn: 15,           // e, mm: kaplamanın her kenardan içe kıvrılan payı
+    spareSheets: 0          // test baskısı / fire için ek baskı kağıdı
   };
 
-  function yuvarla(x) { return Math.round(x * 1000) / 1000; }
+  function roundOff(x) { return Math.round(x * 1000) / 1000; }
 
-  function sayi(v, alan, enAz) {
+  function checkNumber(v, field, min) {
     var n = Number(v);
-    if (!isFinite(n) || n < (enAz === undefined ? 0 : enAz)) {
-      throw new RangeError(t('hesap.gecersiz', { ad: ad(alan), deger: v }));
+    if (!isFinite(n) || n < (min === undefined ? 0 : min)) {
+      throw new RangeError(t('calc.invalid', { name: name(field), value: v }));
     }
     return n;
   }
 
   /** Mafsal (oluk) genişliği, mukavva kalınlığına göre: t ≤ 1 → 6, ≤ 2 → 7, ≤ 3 → 8, > 3 → 9 (kaynaksız). */
-  function mafsalOtomatikDegeri(tm) {
+  function autoJointGap(tm) {
     return tm <= 1 ? 6 : tm <= 2 ? 7 : tm <= 3 ? 8 : 9;
   }
 
   /** Sayfa sayısından kitap yaprağı sayısı (tek sayıda sayfa yukarı yuvarlanır). */
-  function yaprakSayisi(sayfa) {
-    return Math.ceil(sayi(sayfa, 'sayfa_sayisi', 0) / 2);
+  function leafCount(page) {
+    return Math.ceil(checkNumber(page, 'page_count', 0) / 2);
   }
 
   /** Sırt kalınlığı = yaprak × kağıt kalınlığı (+ forza payı). */
-  function sirtKalinligi(yaprak, kalinlik, forzaPayi) {
-    return yuvarla(sayi(yaprak, 'yaprak', 0) * sayi(kalinlik, 'kagit_kalinligi', 0) +
-      sayi(forzaPayi || 0, 'forza_payi', 0));
+  function spineThicknessOf(sheet, thickness, endpaperAllowance) {
+    return roundOff(checkNumber(sheet, 'sheet', 0) * checkNumber(thickness, 'paper_thickness', 0) +
+      checkNumber(endpaperAllowance || 0, 'endpaper_allowance', 0));
   }
 
   /** Cilt türüne göre boş sayfayla tamamlanmış toplam sayfa ve forma bilgisi. */
-  function tamamlanmis(ciltTuru, sayfa, formaYaprak, sonFormaKucult) {
-    var p = Math.ceil(sayi(sayfa, 'sayfa_sayisi', 1));
-    if (ciltTuru === 'formali') {
-      var fs = 4 * formaYaprak;
+  function padded(bindingType, page, sheetsPerSignature, shrinkLastSignature) {
+    var p = Math.ceil(checkNumber(page, 'page_count', 1));
+    if (bindingType === 'sewn') {
+      var fs = 4 * sheetsPerSignature;
       var tam = Math.floor(p / fs);
-      var kalan = p - tam * fs;
-      var formaSayisi = tam + (kalan > 0 ? 1 : 0);
-      var son = kalan > 0 ? (sonFormaKucult ? Math.ceil(kalan / 4) : formaYaprak) : 0;
-      var toplam = tam * fs + son * 4;
-      return { toplamSayfa: toplam, formaSayisi: formaSayisi, baskiKagidi: toplam / 4 };
+      var rest = p - tam * fs;
+      var signatureCount = tam + (rest > 0 ? 1 : 0);
+      var last = rest > 0 ? (shrinkLastSignature ? Math.ceil(rest / 4) : sheetsPerSignature) : 0;
+      var total = tam * fs + last * 4;
+      return { totalPages: total, signatureCount: signatureCount, printSheets: total / 4 };
     }
-    if (ciltTuru === 'tek1') {
+    if (bindingType === 'single1') {
       var t1 = 2 * Math.ceil(p / 2);
-      return { toplamSayfa: t1, formaSayisi: 0, baskiKagidi: t1 / 2 };
+      return { totalPages: t1, signatureCount: 0, printSheets: t1 / 2 };
     }
-    if (ciltTuru === 'tek2') {
+    if (bindingType === 'single2') {
       var t2 = 4 * Math.ceil(p / 4);
-      return { toplamSayfa: t2, formaSayisi: 0, baskiKagidi: t2 / 4 };
+      return { totalPages: t2, signatureCount: 0, printSheets: t2 / 4 };
     }
-    throw new Error(t('hata.cilt_turu', { tur: ciltTuru }));
+    throw new Error(t('error.binding_type', { kind: bindingType }));
   }
 
   /**
@@ -94,101 +94,101 @@
    * Sırt kalınlığı tamamlanmış (boş sayfalar dahil) yaprak sayısıyla hesaplanır,
    * çünkü boş sayfalar da kağıttır.
    */
-  function hesapla(girdi) {
+  function calculate(input) {
     var g = {};
-    Object.keys(VARSAYILAN).forEach(function (k) { g[k] = VARSAYILAN[k]; });
-    Object.keys(girdi || {}).forEach(function (k) {
-      if (girdi[k] !== undefined && girdi[k] !== null && girdi[k] !== '') g[k] = girdi[k];
+    Object.keys(DEFAULTS).forEach(function (k) { g[k] = DEFAULTS[k]; });
+    Object.keys(input || {}).forEach(function (k) {
+      if (input[k] !== undefined && input[k] !== null && input[k] !== '') g[k] = input[k];
     });
-    var formaYaprak = sayi(g.formaYaprak, 'forma_yapragi', 1);
-    if (!Number.isInteger(formaYaprak) || formaYaprak > 8) throw new RangeError(t('hesap.forma_yaprak', { deger: g.formaYaprak }));
-    var tam = tamamlanmis(g.ciltTuru, g.sayfaSayisi, formaYaprak, !!g.sonFormaKucult);
-    var kitapYaprak = yaprakSayisi(tam.toplamSayfa);
-    var sirt = sirtKalinligi(kitapYaprak, g.kagitKalinlik, g.forzaPayi);
-    var kitapGen = sayi(g.kitapGen, 'kitap_genisligi', 1);
-    var kitapYuk = sayi(g.kitapYuk, 'kitap_yuksekligi', 1);
-    var tm = sayi(g.mukavvaKalinlik, 'mukavva_kalinligi', 0); // t (mukavva); t() metin işlevi
-    var k = sayi(g.tasma, 'tasma', 0);
-    var e = sayi(g.kivirma, 'kivirma_payi', 0);
-    [['mukavva_kalinligi', tm], ['kivirma_payi', e]].forEach(function (c) {
-      if (!(c[1] > 0)) throw new RangeError(t('hesap.pozitif', { ad: ad(c[0]), deger: c[1] }));
+    var sheetsPerSignature = checkNumber(g.sheetsPerSignature, 'sheets_per_signature', 1);
+    if (!Number.isInteger(sheetsPerSignature) || sheetsPerSignature > 8) throw new RangeError(t('calc.sheets_per_signature', { value: g.sheetsPerSignature }));
+    var tam = padded(g.bindingType, g.pageCount, sheetsPerSignature, !!g.shrinkLastSignature);
+    var leaves = leafCount(tam.totalPages);
+    var spine = spineThicknessOf(leaves, g.paperThickness, g.endpaperAllowance);
+    var bookWidth = checkNumber(g.bookWidth, 'book_width', 1);
+    var bookHeight = checkNumber(g.bookHeight, 'book_height', 1);
+    var tm = checkNumber(g.boardThickness, 'board_thickness', 0); // t (mukavva); t() metin işlevi
+    var k = checkNumber(g.square, 'square', 0);
+    var e = checkNumber(g.turnIn, 'turn_in', 0);
+    [['board_thickness', tm], ['turn_in', e]].forEach(function (c) {
+      if (!(c[1] > 0)) throw new RangeError(t('calc.positive', { name: name(c[0]), value: c[1] }));
     });
     // taşma 0 olabilir (mukavva blokla aynı hizada); negatif olamaz
-    if (!(k >= 0)) throw new RangeError(t('hesap.tasma_negatif', { deger: k }));
-    if (g.sirtTipi !== 'duz' && g.sirtTipi !== 'yuvarlak') throw new Error(t('hesap.sirt_tipi', { deger: g.sirtTipi }));
-    if (g.sirtKurali !== 'ikiT' && g.sirtKurali !== 'yalnizS') throw new Error(t('hesap.sirt_kurali', { deger: g.sirtKurali }));
+    if (!(k >= 0)) throw new RangeError(t('calc.square_negative', { value: k }));
+    if (g.spineShape !== 'flat' && g.spineShape !== 'rounded') throw new Error(t('calc.spine_shape', { value: g.spineShape }));
+    if (g.spineRule !== 'twoT' && g.spineRule !== 'onlyS') throw new Error(t('calc.spine_rule', { value: g.spineRule }));
 
-    var mafsalOtomatik = g.mafsal === 'otomatik';
-    var mafsalKaynakYok = false, f;
-    if (mafsalOtomatik) {
-      f = mafsalOtomatikDegeri(tm);
-      mafsalKaynakYok = tm > 3;
+    var jointAuto = g.jointGap === 'auto';
+    var jointGapUnsourced = false, f;
+    if (jointAuto) {
+      f = autoJointGap(tm);
+      jointGapUnsourced = tm > 3;
     } else {
-      f = sayi(g.mafsal, 'mafsal', 0);
-      if (!(f > 0)) throw new RangeError(t('hesap.pozitif', { ad: ad('mafsal'), deger: g.mafsal }));
+      f = checkNumber(g.jointGap, 'jointGap', 0);
+      if (!(f > 0)) throw new RangeError(t('calc.positive', { name: name('jointGap'), value: g.jointGap }));
     }
 
-    var W = kitapGen, H = kitapYuk;
-    var Db = yuvarla(W - f + k);
-    var Dh = yuvarla(H + 2 * k);
+    var W = bookWidth, H = bookHeight;
+    var Db = roundOff(W - f + k);
+    var Dh = roundOff(H + 2 * k);
 
-    var egriBoyuUyari = false, R, fKaplama = f;
-    if (g.sirtTipi === 'yuvarlak') {
-      var egri;
-      if (g.egriBoyu === undefined || g.egriBoyu === null || g.egriBoyu === '') {
-        egri = sirt + 2 * tm;
-        egriBoyuUyari = true;
+    var curveLengthWarning = false, R, fCovering = f;
+    if (g.spineShape === 'rounded') {
+      var curve;
+      if (g.curveLength === undefined || g.curveLength === null || g.curveLength === '') {
+        curve = spine + 2 * tm;
+        curveLengthWarning = true;
       } else {
-        egri = sayi(g.egriBoyu, 'sirt_egri_boyu', 0);
-        if (!(egri > 0)) throw new RangeError(t('hesap.pozitif', { ad: ad('sirt_egri_boyu'), deger: g.egriBoyu }));
+        curve = checkNumber(g.curveLength, 'spine_curve_length', 0);
+        if (!(curve > 0)) throw new RangeError(t('calc.positive', { name: name('spine_curve_length'), value: g.curveLength }));
       }
-      R = yuvarla(egri + 3);
-    } else if (g.sirtKurali === 'yalnizS') {
-      R = yuvarla(sirt);
-      fKaplama = f + tm;
+      R = roundOff(curve + 3);
+    } else if (g.spineRule === 'onlyS') {
+      R = roundOff(spine);
+      fCovering = f + tm;
     } else {
-      R = yuvarla(sirt + 2 * tm);
+      R = roundOff(spine + 2 * tm);
     }
-    var mullYuk = yuvarla(H - 12);
+    var mullHeight = roundOff(H - 12);
     [
-      ['hesap.ad.mukavva_gen', Db, t('hesap.neden.mafsal_buyuk', { f: f, w: W })],
-      ['hesap.ad.mukavva_yuk', Dh, t('hesap.neden.yukseklik')],
-      ['hesap.ad.sirt_seridi', R, t('hesap.neden.sirt')],
-      ['hesap.ad.mull_yuk', mullYuk, t('hesap.neden.mull', { h: H })]
+      ['calc.name.board_width', Db, t('calc.reason.joint_gap_too_large', { f: f, w: W })],
+      ['calc.name.board_height', Dh, t('calc.reason.height')],
+      ['calc.name.spine_strip', R, t('calc.reason.spine')],
+      ['calc.name.mull_height', mullHeight, t('calc.reason.mull', { h: H })]
     ].forEach(function (c) {
-      if (!(c[1] > 0)) throw new RangeError(t('hesap.sifir_negatif', { ad: t(c[0]), deger: c[1], neden: c[2] }));
+      if (!(c[1] > 0)) throw new RangeError(t('calc.zero_or_negative', { name: t(c[0]), value: c[1], reason: c[2] }));
     });
-    var kaplamaGen = yuvarla(2 * Db + R + 2 * fKaplama + 2 * (e + tm));
-    var kaplamaYuk = yuvarla(Dh + 2 * (e + tm));
+    var coveringWidth = roundOff(2 * Db + R + 2 * fCovering + 2 * (e + tm));
+    var coveringHeight = roundOff(Dh + 2 * (e + tm));
 
     return {
-      girdi: g,
-      sayfaSayisi: Number(g.sayfaSayisi),
-      toplamSayfa: tam.toplamSayfa,
-      bosSayfa: tam.toplamSayfa - Math.ceil(Number(g.sayfaSayisi)),
-      kitapYaprak: kitapYaprak,
-      formaSayisi: tam.formaSayisi,
-      sirtKalinlik: sirt,
-      mukavva: { gen: Db, yuk: Dh, adet: 2 },
-      sirtSeridi: { gen: R, yuk: Dh, adet: 1 },
-      mafsal: f,
-      mafsalKaplama: yuvarla(fKaplama),
-      mafsalKaynakYok: mafsalKaynakYok,
-      egriBoyuUyari: egriBoyuUyari,
-      kaplama: { gen: kaplamaGen, yuk: kaplamaYuk },
-      forza: { gen: yuvarla(2 * W), yuk: H, adet: 2 },
-      mull: { gen: yuvarla(sirt + 50), yuk: mullYuk },
-      kapital: { uzunluk: sirt, adet: 2 },
-      baskiKagidi: tam.baskiKagidi + Math.max(0, Math.round(Number(g.yedekKagit) || 0))
+      input: g,
+      pageCount: Number(g.pageCount),
+      totalPages: tam.totalPages,
+      blankPages: tam.totalPages - Math.ceil(Number(g.pageCount)),
+      leaves: leaves,
+      signatureCount: tam.signatureCount,
+      spineThickness: spine,
+      board: { width: Db, height: Dh, count: 2 },
+      spineStrip: { width: R, height: Dh, count: 1 },
+      jointGap: f,
+      coveringJointGap: roundOff(fCovering),
+      jointGapUnsourced: jointGapUnsourced,
+      curveLengthWarning: curveLengthWarning,
+      covering: { width: coveringWidth, height: coveringHeight },
+      endpapers: { width: roundOff(2 * W), height: H, count: 2 },
+      mull: { width: roundOff(spine + 50), height: mullHeight },
+      headbands: { length: spine, count: 2 },
+      printSheets: tam.printSheets + Math.max(0, Math.round(Number(g.spareSheets) || 0))
     };
   }
 
   return {
-    VARSAYILAN: VARSAYILAN,
-    yaprakSayisi: yaprakSayisi,
-    sirtKalinligi: sirtKalinligi,
-    mafsalOtomatikDegeri: mafsalOtomatikDegeri,
-    tamamlanmis: tamamlanmis,
-    hesapla: hesapla
+    DEFAULTS: DEFAULTS,
+    leafCount: leafCount,
+    spineThicknessOf: spineThicknessOf,
+    autoJointGap: autoJointGap,
+    padded: padded,
+    calculate: calculate
   };
 });

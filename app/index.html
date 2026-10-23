@@ -13,246 +13,246 @@
 <body>
 <header>
   <h1>Mücellit</h1>
-  <nav role="tablist" aria-label="Sections" data-dil-oz="aria-label:nav.bolumler">
-    <button role="tab" id="sekme-dugme-duzenle" data-sekme="duzenle" aria-selected="true" aria-controls="sekme-duzenle" data-dil="sekme.duzenle">Imposition</button>
-    <button role="tab" id="sekme-dugme-surec" data-sekme="surec" aria-selected="false" aria-controls="sekme-surec" data-dil="sekme.surec">Projects</button>
-    <button role="tab" id="sekme-dugme-hesapla" data-sekme="hesapla" aria-selected="false" aria-controls="sekme-hesapla" data-dil="sekme.hesapla">Calculator</button>
-    <button role="tab" id="sekme-dugme-ogren" data-sekme="ogren" aria-selected="false" aria-controls="sekme-ogren" data-dil="sekme.ogren">Learn</button>
+  <nav role="tablist" aria-label="Sections" data-i18n-oz="aria-label:nav.sections">
+    <button role="tab" id="tab-button-impose" data-tab="impose" aria-selected="true" aria-controls="tab-impose" data-i18n="tab.impose">Imposition</button>
+    <button role="tab" id="tab-button-projects" data-tab="projects" aria-selected="false" aria-controls="tab-projects" data-i18n="tab.projects">Projects</button>
+    <button role="tab" id="tab-button-calculator" data-tab="calculator" aria-selected="false" aria-controls="tab-calculator" data-i18n="tab.calculator">Calculator</button>
+    <button role="tab" id="tab-button-learn" data-tab="learn" aria-selected="false" aria-controls="tab-learn" data-i18n="tab.learn">Learn</button>
   </nav>
-  <span class="kucuk" data-dil="ust.gizlilik">Your PDF stays on your computer: everything is processed right here.</span>
-  <select id="dil-sec" aria-label="Language" data-dil-oz="aria-label:dil.etiket"></select>
+  <span class="small" data-i18n="header.privacy">Your PDF stays on your computer: everything is processed right here.</span>
+  <select id="i18n-select" aria-label="Language" data-i18n-oz="aria-label:language.label"></select>
 </header>
 
 <main>
 <!-- ============ DÜZENLE ============ -->
-<section id="sekme-duzenle" role="tabpanel" aria-labelledby="sekme-dugme-duzenle">
-  <div class="duzen-izgara">
-    <aside class="panel" id="ayarlar">
-      <div id="eklenti-ayarlari"></div>
-      <h3 data-dil="duzenle.cilt">Binding</h3>
-      <label class="alan"><span data-dil="duzenle.cilt_turu">Binding style / imposition</span>
-        <select id="cilt-turu">
-          <option value="formali" data-dil="duzenle.tur.formali">Sewn signatures (folded sections)</option>
-          <option value="tek1" data-dil="duzenle.tur.tek1">Perfect binding: single leaves, 1-up</option>
-          <option value="tek2" data-dil="duzenle.tur.tek2">Perfect binding: 2-up (cut and stack)</option>
+<section id="tab-impose" role="tabpanel" aria-labelledby="tab-button-impose">
+  <div class="layout-grid">
+    <aside class="panel" id="settings">
+      <div id="plugin-settings"></div>
+      <h3 data-i18n="impose.binding">Binding</h3>
+      <label class="field"><span data-i18n="impose.binding_type">Binding style / imposition</span>
+        <select id="binding-type">
+          <option value="sewn" data-i18n="impose.kind.sewn">Sewn signatures (folded sections)</option>
+          <option value="single1" data-i18n="impose.kind.single1">Perfect binding: single leaves, 1-up</option>
+          <option value="single2" data-i18n="impose.kind.single2">Perfect binding: 2-up (cut and stack)</option>
         </select>
       </label>
-      <div id="forma-alanlari">
-        <label class="alan"><span data-dil="duzenle.forma_yaprak">Sheets per signature (1–8; 4 sheets = 16 pages)</span>
-          <input type="text" inputmode="decimal" data-sayi id="forma-yaprak" min="1" max="8" step="1" value="4">
+      <div id="signature-fields">
+        <label class="field"><span data-i18n="impose.sheets_per_signature">Sheets per signature (1–8; 4 sheets = 16 pages)</span>
+          <input type="text" inputmode="decimal" data-number id="signature-sheet" min="1" max="8" step="1" value="4">
         </label>
-        <label class="secim"><input type="checkbox" id="son-forma-kucult"> <span data-dil="duzenle.son_forma_kucult">Shrink the last signature (fewer blank pages)</span></label>
-        <label class="secim"><input type="checkbox" id="kayma"> <span data-dil="duzenle.kayma">Creep compensation</span></label>
-        <label class="alan"><span data-dil="duzenle.kagit_kalinlik">Paper thickness (mm, one sheet)</span>
-          <input type="text" inputmode="decimal" data-sayi id="kagit-kalinlik" min="0" step="0.01" value="0.1">
+        <label class="choice"><input type="checkbox" id="last-signature-shrink"> <span data-i18n="impose.shrink_last_signature">Shrink the last signature (fewer blank pages)</span></label>
+        <label class="choice"><input type="checkbox" id="creep"> <span data-i18n="impose.creep">Creep compensation</span></label>
+        <label class="field"><span data-i18n="impose.paper_thickness">Paper thickness (mm, one sheet)</span>
+          <input type="text" inputmode="decimal" data-number id="paper-thickness" min="0" step="0.01" value="0.1">
         </label>
       </div>
 
-      <h3 data-dil="duzenle.olculer">Sizes (mm)</h3>
-      <div class="alan"><span data-dil="duzenle.kagit">Printer paper</span>
-        <select id="kagit-hazir" aria-label="Preset paper size" data-dil-oz="aria-label:duzenle.kagit_hazir">
-          <option value="" data-dil="duzenle.hazir_sec">Choose a preset…</option>
+      <h3 data-i18n="impose.sizes">Sizes (mm)</h3>
+      <div class="field"><span data-i18n="impose.paper">Printer paper</span>
+        <select id="paper-ready" aria-label="Preset paper size" data-i18n-oz="aria-label:impose.paper_preset">
+          <option value="" data-i18n="impose.select_preset">Choose a preset…</option>
         </select>
-        <div class="ikili">
-          <input type="text" inputmode="decimal" data-sayi id="kagit-gen" min="1" step="0.1" value="297" aria-label="Paper width (mm)" data-dil-oz="aria-label:duzenle.kagit_gen">
+        <div class="pair">
+          <input type="text" inputmode="decimal" data-number id="paper-width" min="1" step="0.1" value="297" aria-label="Paper width (mm)" data-i18n-oz="aria-label:impose.paper_width">
           <span>×</span>
-          <input type="text" inputmode="decimal" data-sayi id="kagit-yuk" min="1" step="0.1" value="210" aria-label="Paper height (mm)" data-dil-oz="aria-label:duzenle.kagit_yuk">
-          <button type="button" id="kagit-cevir" title="Swap portrait / landscape" data-dil-oz="title:duzenle.cevir">⇄</button>
+          <input type="text" inputmode="decimal" data-number id="paper-height" min="1" step="0.1" value="210" aria-label="Paper height (mm)" data-i18n-oz="aria-label:impose.paper_height">
+          <button type="button" id="paper-swap" title="Swap portrait / landscape" data-i18n-oz="title:impose.swap">⇄</button>
         </div>
       </div>
-      <div class="alan"><span data-dil="duzenle.kitap">Book page (trimmed)</span>
-        <select id="kitap-hazir" aria-label="Preset book size" data-dil-oz="aria-label:duzenle.kitap_hazir">
-          <option value="" data-dil="duzenle.hazir_sec">Choose a preset…</option>
+      <div class="field"><span data-i18n="impose.book">Book page (trimmed)</span>
+        <select id="book-ready" aria-label="Preset book size" data-i18n-oz="aria-label:impose.book_preset">
+          <option value="" data-i18n="impose.select_preset">Choose a preset…</option>
         </select>
-        <div class="ikili">
-          <input type="text" inputmode="decimal" data-sayi id="kitap-gen" min="1" step="0.1" value="148" aria-label="Book width (mm)" data-dil-oz="aria-label:duzenle.kitap_gen">
+        <div class="pair">
+          <input type="text" inputmode="decimal" data-number id="book-width" min="1" step="0.1" value="148" aria-label="Book width (mm)" data-i18n-oz="aria-label:impose.book_width">
           <span>×</span>
-          <input type="text" inputmode="decimal" data-sayi id="kitap-yuk" min="1" step="0.1" value="210" aria-label="Book height (mm)" data-dil-oz="aria-label:duzenle.kitap_yuk">
-          <button type="button" id="kitap-cevir" title="Swap portrait / landscape" data-dil-oz="title:duzenle.cevir">⇄</button>
+          <input type="text" inputmode="decimal" data-number id="book-height" min="1" step="0.1" value="210" aria-label="Book height (mm)" data-i18n-oz="aria-label:impose.book_height">
+          <button type="button" id="book-swap" title="Swap portrait / landscape" data-i18n-oz="title:impose.swap">⇄</button>
         </div>
       </div>
-      <label class="alan"><span data-dil="duzenle.olcek">Scaling</span>
-        <select id="olcek">
-          <option value="sigdir" data-dil="duzenle.olcek.sigdir">Fit (keep proportions, show everything)</option>
-          <option value="gercek" data-dil="duzenle.olcek.gercek">Actual size</option>
-          <option value="doldur" data-dil="duzenle.olcek.doldur">Fill (keep proportions, crop the overflow)</option>
+      <label class="field"><span data-i18n="impose.scaling">Scaling</span>
+        <select id="scaling">
+          <option value="fit" data-i18n="impose.scaling.fit">Fit (keep proportions, show everything)</option>
+          <option value="actual" data-i18n="impose.scaling.actual">Actual size</option>
+          <option value="fill" data-i18n="impose.scaling.fill">Fill (keep proportions, crop the overflow)</option>
         </select>
       </label>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="duzenle.dis_kenar">Outer margin (mm)</span><input type="text" inputmode="decimal" data-sayi id="dis-kenar" min="0" step="0.5" value="0"></label>
-        <label class="alan"><span data-dil="duzenle.cilt_payi">Gutter (mm)</span><input type="text" inputmode="decimal" data-sayi id="cilt-payi" min="0" step="0.5" value="0"></label>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="impose.outer_margin">Outer margin (mm)</span><input type="text" inputmode="decimal" data-number id="outer-margin" min="0" step="0.5" value="0"></label>
+        <label class="field"><span data-i18n="impose.gutter">Gutter (mm)</span><input type="text" inputmode="decimal" data-number id="binding-allowance" min="0" step="0.5" value="0"></label>
       </div>
 
-      <h3 data-dil="duzenle.isaretler">Marks</h3>
-      <label class="secim"><input type="checkbox" id="kirim" checked> <span data-dil="duzenle.kirim">Crop marks</span></label>
-      <label class="secim"><input type="checkbox" id="katlama" checked> <span data-dil="duzenle.katlama">Fold marks</span></label>
-      <label class="secim"><input type="checkbox" id="sirt-isareti" checked> <span data-dil="duzenle.sirt_isareti">Collation marks on the spine (stepped squares)</span></label>
+      <h3 data-i18n="impose.marks">Marks</h3>
+      <label class="choice"><input type="checkbox" id="cropMarks" checked> <span data-i18n="impose.cropMarks">Crop marks</span></label>
+      <label class="choice"><input type="checkbox" id="folding" checked> <span data-i18n="impose.folding">Fold marks</span></label>
+      <label class="choice"><input type="checkbox" id="spine-mark" checked> <span data-i18n="impose.spine_marks">Collation marks on the spine (stepped squares)</span></label>
 
-      <h3 data-dil="duzenle.baski">Printing</h3>
-      <label class="alan"><span id="cevirme-etiket" data-dil="duzenle.cevirme.tek">Printer duplex setting (choose the same in the print dialog)</span>
-        <select id="cevirme">
-          <option value="kisa" data-dil="duzenle.cevirme.kisa">Flip on short edge</option>
-          <option value="uzun" data-dil="duzenle.cevirme.uzun">Flip on long edge</option>
+      <h3 data-i18n="impose.printing">Printing</h3>
+      <label class="field"><span id="duplex-label" data-i18n="impose.duplex.single">Printer duplex setting (choose the same in the print dialog)</span>
+        <select id="duplex">
+          <option value="short" data-i18n="impose.duplex.short">Flip on short edge</option>
+          <option value="long" data-i18n="impose.duplex.long">Flip on long edge</option>
         </select>
-        <span class="kucuk" id="cevirme-ipucu"></span>
+        <span class="small" id="duplex-hint"></span>
       </label>
-      <label class="alan"><span data-dil="duzenle.cikti">Output</span>
-        <select id="cikti-modu">
-          <option value="tek" data-dil="duzenle.cikti.tek">One PDF (duplex printer)</option>
-          <option value="ikili" data-dil="duzenle.cikti.ikili">Two PDFs: fronts + backs (manual duplex)</option>
+      <label class="field"><span data-i18n="impose.output">Output</span>
+        <select id="output-mode">
+          <option value="single" data-i18n="impose.output.single">One PDF (duplex printer)</option>
+          <option value="pair" data-i18n="impose.output.pair">Two PDFs: fronts + backs (manual duplex)</option>
         </select>
       </label>
-      <label class="secim" id="arka-ters-alan"><input type="checkbox" id="arka-ters"> <span data-dil="duzenle.arka_ters">Backs in reverse order</span></label>
-      <p><button type="button" class="ana" id="disa-aktar" disabled data-dil="duzenle.indir">Download imposed PDF</button></p>
+      <label class="choice" id="back-reversed-field"><input type="checkbox" id="back-reversed"> <span data-i18n="impose.back_reversed">Backs in reverse order</span></label>
+      <p><button type="button" class="main" id="export-transfer" disabled data-i18n="impose.download">Download imposed PDF</button></p>
       <!-- Mac uygulamasında yazdırma (platform.yazdir yoksa, ör. tarayıcıda, gizli kalır; impose.js açar) -->
-      <div class="satir" id="yazdir-alani" hidden>
-        <button type="button" id="yazdir" disabled data-dil="duzenle.yazdir">Print…</button>
-        <button type="button" id="onizlemede-ac" disabled data-dil="duzenle.onizlemede_ac">Open in Preview</button>
+      <div class="line" id="print-field" hidden>
+        <button type="button" id="print" disabled data-i18n="impose.print">Print…</button>
+        <button type="button" id="inPreview-open" disabled data-i18n="impose.open_in_preview">Open in Preview</button>
       </div>
-      <p class="kucuk" id="yazdir-not" hidden></p>
+      <p class="small" id="print-note" hidden></p>
 
-      <h3 data-dil="duzenle.kitaba_kaydet">Save to project</h3>
-      <label class="alan"><span data-dil="duzenle.surecteki_kitap">Project</span><select id="ayar-kitap"><option value="" data-dil="duzenle.kitap_yok">(no projects)</option></select></label>
-      <div class="satir">
-        <button type="button" id="ayar-kaydet" data-dil="duzenle.ayar_kaydet">Save settings to project</button>
-        <button type="button" id="ayar-yukle" data-dil="duzenle.ayar_yukle">Load project settings</button>
+      <h3 data-i18n="impose.save_to_project">Save to project</h3>
+      <label class="field"><span data-i18n="impose.in_projects_book">Project</span><select id="settings-book"><option value="" data-i18n="impose.no_book">(no projects)</option></select></label>
+      <div class="line">
+        <button type="button" id="settings-save" data-i18n="impose.save_settings">Save settings to project</button>
+        <button type="button" id="settings-load" data-i18n="impose.load_settings">Load project settings</button>
       </div>
     </aside>
 
-    <div class="calisma">
+    <div class="work">
       <div class="panel">
-        <div class="arac-cubugu">
-          <label class="dosya-sec"><button type="button" class="ana" id="pdf-sec" data-dil="duzenle.pdf_sec">Choose PDF…</button>
-            <input type="file" id="pdf-dosya" accept=".pdf,application/pdf" hidden></label>
-          <span id="kaynak-bilgi" class="ozet" data-dil="duzenle.kaynak_yok">No PDF loaded yet.</span>
+        <div class="tool-bar">
+          <label class="file-select"><button type="button" class="main" id="pdf-select" data-i18n="impose.pdf_sec">Choose PDF…</button>
+            <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden></label>
+          <span id="source-info" class="summary" data-i18n="impose.unsourced">No PDF loaded yet.</span>
         </div>
-        <div class="arac-cubugu" id="sayfa-araclari">
-          <input type="text" id="aralik" placeholder="e.g. 1-4, 9" aria-label="Page range" data-dil-oz="placeholder:duzenle.aralik_ornek;aria-label:duzenle.aralik">
-          <button type="button" id="aralik-sec" data-dil="duzenle.aralik_sec">Select range</button>
-          <button type="button" id="tumunu-sec" data-dil="duzenle.tumunu_sec">Select all</button>
-          <button type="button" id="secimi-kaldir" data-dil="duzenle.secimi_kaldir">Clear selection</button>
-          <button type="button" id="secili-dondur" data-dil="duzenle.secili_dondur">Rotate selected ⟳</button>
-          <button type="button" id="secili-sil" data-dil="duzenle.secili_sil">Delete selected</button>
-          <button type="button" id="secili-disini-sil" data-dil="duzenle.secili_disini_sil">Delete unselected</button>
-          <button type="button" id="bos-basa" data-dil="duzenle.bos_basa">Insert blank at start</button>
-          <button type="button" id="bos-once" data-dil="duzenle.bos_once">Insert blank before selected</button>
-          <button type="button" id="bos-sona" data-dil="duzenle.bos_sona">Insert blank at end</button>
+        <div class="tool-bar" id="page-tools">
+          <input type="text" id="range" placeholder="e.g. 1-4, 9" aria-label="Page range" data-i18n-oz="placeholder:impose.range_example;aria-label:impose.range">
+          <button type="button" id="range-select" data-i18n="impose.select_range">Select range</button>
+          <button type="button" id="all-select" data-i18n="impose.select_all">Select all</button>
+          <button type="button" id="selection-remove" data-i18n="impose.remove_selection">Clear selection</button>
+          <button type="button" id="selected-rotate" data-i18n="impose.rotate_selected">Rotate selected ⟳</button>
+          <button type="button" id="selected-remove" data-i18n="impose.delete_selected">Delete selected</button>
+          <button type="button" id="selected-unselected-remove" data-i18n="impose.delete_selected_unselected">Delete unselected</button>
+          <button type="button" id="blank-toStart" data-i18n="impose.blank_to_start">Insert blank at start</button>
+          <button type="button" id="blank-once" data-i18n="impose.bos_once">Insert blank before selected</button>
+          <button type="button" id="blank-toEnd" data-i18n="impose.blank_to_end">Insert blank at end</button>
         </div>
-        <p class="kucuk" data-dil="duzenle.siralama_ipucu">Drag the pages or use ◀ ▶ to reorder them. The number is the page's position in the book (source p. = page in the source PDF).</p>
-        <div id="kucuk-resimler" class="izgara" aria-label="Pages" data-dil-oz="aria-label:duzenle.sayfalar"></div>
+        <p class="small" data-i18n="impose.ordering_hint">Drag the pages or use ◀ ▶ to reorder them. The number is the page's position in the book (source p. = page in the source PDF).</p>
+        <div id="small-thumbs" class="grid" aria-label="Pages" data-i18n-oz="aria-label:impose.pages"></div>
       </div>
 
-      <h2 data-dil="duzenle.yaprak_onizleme">Sheet preview</h2>
-      <div id="dizilim-ozet" class="ozet"></div>
-      <div id="uyarilar"></div>
-      <div id="yaprak-onizleme"></div>
+      <h2 data-i18n="impose.sheet_preview">Sheet preview</h2>
+      <div id="imposition-summary" class="summary"></div>
+      <div id="warnings"></div>
+      <div id="sheet-preview"></div>
 
-      <h2 data-dil="duzenle.cikti_onizleme">Output preview</h2>
-      <p class="kucuk" data-dil="duzenle.cikti_ipucu">First sides of the exported file (actual output).</p>
-      <div id="cikti-onizleme"></div>
+      <h2 data-i18n="impose.output_preview">Output preview</h2>
+      <p class="small" data-i18n="impose.output_hint">First sides of the exported file (actual output).</p>
+      <div id="output-preview"></div>
     </div>
   </div>
 </section>
 
 <!-- ============ SÜREÇ ============ -->
-<section id="sekme-surec" role="tabpanel" aria-labelledby="sekme-dugme-surec" hidden>
-  <div id="depo-uyari"></div>
-  <div class="surec-izgara">
+<section id="tab-projects" role="tabpanel" aria-labelledby="tab-button-projects" hidden>
+  <div id="storage-warning"></div>
+  <div class="projects-grid">
     <aside class="panel">
-      <h3 data-dil="surec.kitaplar">Projects</h3>
-      <ul id="kitap-listesi"></ul>
-      <p id="kitap-yok" class="kucuk" data-dil="surec.kitap_yok">No projects yet.</p>
-      <h3 data-dil="surec.yeni_kitap">New project</h3>
-      <form id="yeni-kitap-form">
-        <label class="alan"><span data-dil="surec.alan.ad">Name</span><input type="text" id="yk-ad" required></label>
-        <label class="alan"><span data-dil="alan.cilt_turu">Binding style</span>
-          <select id="yk-tur">
-            <option value="formali" data-dil="cilt.tur.formali">Sewn signatures + hardcover (case binding)</option>
-            <option value="tek" data-dil="cilt.tur.tek">Perfect binding (single leaves)</option>
+      <h3 data-i18n="projects.projects">Projects</h3>
+      <ul id="book-list"></ul>
+      <p id="book-none" class="small" data-i18n="projects.no_book">No projects yet.</p>
+      <h3 data-i18n="projects.new_book">New project</h3>
+      <form id="fresh-book-form">
+        <label class="field"><span data-i18n="projects.field.name">Name</span><input type="text" id="yk-name" required></label>
+        <label class="field"><span data-i18n="field.binding_type">Binding style</span>
+          <select id="yk-kind">
+            <option value="sewn" data-i18n="binding.kind.sewn">Sewn signatures + hardcover (case binding)</option>
+            <option value="single" data-i18n="binding.kind.single">Perfect binding (single leaves)</option>
           </select>
         </label>
-        <div class="ikili basit">
-          <label class="alan"><span data-dil="surec.alan.genislik">Width (mm)</span><input type="text" inputmode="decimal" data-sayi id="yk-gen" value="148" min="1" step="0.1"></label>
-          <label class="alan"><span data-dil="surec.alan.yukseklik">Height (mm)</span><input type="text" inputmode="decimal" data-sayi id="yk-yuk" value="210" min="1" step="0.1"></label>
+        <div class="pair simple">
+          <label class="field"><span data-i18n="projects.field.width">Width (mm)</span><input type="text" inputmode="decimal" data-number id="yk-width" value="148" min="1" step="0.1"></label>
+          <label class="field"><span data-i18n="projects.field.height">Height (mm)</span><input type="text" inputmode="decimal" data-number id="yk-height" value="210" min="1" step="0.1"></label>
         </div>
-        <label class="alan"><span data-dil="surec.alan.kagit">Paper</span><input type="text" id="yk-kagit" placeholder="e.g. 80 gsm book paper" data-dil-oz="placeholder:surec.alan.kagit_ornek"></label>
-        <label class="alan"><span data-dil="alan.kagit_kalinlik">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-sayi id="yk-kalinlik" value="0.1" min="0" step="0.01"></label>
-        <label class="alan"><span data-dil="surec.alan.pdf_adi">PDF file name</span><input type="text" id="yk-pdf" placeholder="e.g. my-book.pdf" data-dil-oz="placeholder:surec.alan.pdf_ornek"></label>
-        <button type="submit" class="ana" id="yk-olustur" data-dil="surec.olustur">Create project</button>
+        <label class="field"><span data-i18n="projects.field.paper">Paper</span><input type="text" id="yk-paper" placeholder="e.g. 80 gsm book paper" data-i18n-oz="placeholder:projects.field.paper_example"></label>
+        <label class="field"><span data-i18n="field.paper_thickness">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-number id="yk-thickness" value="0.1" min="0" step="0.01"></label>
+        <label class="field"><span data-i18n="projects.field.pdf_name">PDF file name</span><input type="text" id="yk-pdf" placeholder="e.g. my-book.pdf" data-i18n-oz="placeholder:projects.field.pdf_example"></label>
+        <button type="submit" class="main" id="yk-create" data-i18n="projects.create">Create project</button>
       </form>
-      <h3 data-dil="surec.yedek">Backup</h3>
-      <div class="satir">
-        <button type="button" id="json-disa" data-dil="surec.json_disa">Export JSON</button>
-        <label><button type="button" id="json-ice-dugme" data-dil="surec.json_ice">Import JSON</button>
-          <input type="file" id="json-ice" accept=".json,application/json" hidden></label>
-        <button type="button" id="veri-temizle" data-dil="surec.temizle">Delete all</button>
+      <h3 data-i18n="projects.backup">Backup</h3>
+      <div class="line">
+        <button type="button" id="json-export" data-i18n="projects.json_disa">Export JSON</button>
+        <label><button type="button" id="json-import-button" data-i18n="projects.json_ice">Import JSON</button>
+          <input type="file" id="json-import" accept=".json,application/json" hidden></label>
+        <button type="button" id="data-clear" data-i18n="projects.clear">Delete all</button>
       </div>
-      <p class="kucuk" id="saklama-ipucu" data-dil="surec.saklama_ipucu">Your data is stored in this browser and is lost if browser data is cleared, so export a JSON backup now and then.</p>
+      <p class="small" id="storage-hint" data-i18n="projects.storage_hint">Your data is stored in this browser and is lost if browser data is cleared, so export a JSON backup now and then.</p>
     </aside>
-    <div class="panel" id="kitap-detay">
-      <p class="kucuk" data-dil="surec.detay_bos">Pick a project on the left or create a new one.</p>
+    <div class="panel" id="book-detail">
+      <p class="small" data-i18n="projects.detail_blank">Pick a project on the left or create a new one.</p>
     </div>
   </div>
 </section>
 
 <!-- ============ HESAPLA ============ -->
-<section id="sekme-hesapla" role="tabpanel" aria-labelledby="sekme-dugme-hesapla" hidden>
-  <div class="hesap-izgara">
-    <form class="panel" id="hesap-form">
-      <div class="satir"><button type="button" id="h-al" data-dil="hesapla.al">Use values from the Imposition tab</button></div>
-      <label class="alan"><span data-dil="alan.cilt_turu">Binding style</span>
-        <select id="h-ciltTuru">
-          <option value="formali" data-dil="hesapla.tur.formali">Sewn signatures</option>
-          <option value="tek1" data-dil="hesapla.tur.tek1">Perfect binding, 1-up</option>
-          <option value="tek2" data-dil="hesapla.tur.tek2">Perfect binding, 2-up</option>
+<section id="tab-calculator" role="tabpanel" aria-labelledby="tab-button-calculator" hidden>
+  <div class="calc-grid">
+    <form class="panel" id="calc-form">
+      <div class="line"><button type="button" id="h-al" data-i18n="calculator.al">Use values from the Imposition tab</button></div>
+      <label class="field"><span data-i18n="field.binding_type">Binding style</span>
+        <select id="h-bindingType">
+          <option value="sewn" data-i18n="calculator.kind.sewn">Sewn signatures</option>
+          <option value="single1" data-i18n="calculator.kind.single1">Perfect binding, 1-up</option>
+          <option value="single2" data-i18n="calculator.kind.single2">Perfect binding, 2-up</option>
         </select>
       </label>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="hesapla.sayfa_sayisi">Page count</span><input type="text" inputmode="decimal" data-sayi id="h-sayfaSayisi" value="200" min="1" step="1"></label>
-        <label class="alan"><span data-dil="hesapla.forma_yapragi">Sheets per signature</span><input type="text" inputmode="decimal" data-sayi id="h-formaYaprak" value="4" min="1" max="8" step="1"></label>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="calculator.page_count">Page count</span><input type="text" inputmode="decimal" data-number id="h-pageCount" value="200" min="1" step="1"></label>
+        <label class="field"><span data-i18n="calculator.sheets_per_signature">Sheets per signature</span><input type="text" inputmode="decimal" data-number id="h-sheetsPerSignature" value="4" min="1" max="8" step="1"></label>
       </div>
-      <label class="secim"><input type="checkbox" id="h-sonFormaKucult"> <span data-dil="hesapla.son_forma">Shrink the last signature</span></label>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="alan.kagit_kalinlik">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-kagitKalinlik" value="0.1" min="0" step="0.01"></label>
-        <label class="alan"><span data-dil="hesapla.forza_payi">Endpaper thickness allowance (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-forzaPayi" value="0" min="0" step="0.1"></label>
+      <label class="choice"><input type="checkbox" id="h-shrinkLastSignature"> <span data-i18n="calculator.last_signature">Shrink the last signature</span></label>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="field.paper_thickness">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-number id="h-paperThickness" value="0.1" min="0" step="0.01"></label>
+        <label class="field"><span data-i18n="calculator.endpaper_allowance">Endpaper thickness allowance (mm)</span><input type="text" inputmode="decimal" data-number id="h-endpaperAllowance" value="0" min="0" step="0.1"></label>
       </div>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="hesapla.kitap_gen">Book width</span><input type="text" inputmode="decimal" data-sayi id="h-kitapGen" value="148" min="1" step="0.1"></label>
-        <label class="alan"><span data-dil="hesapla.kitap_yuk">Book height</span><input type="text" inputmode="decimal" data-sayi id="h-kitapYuk" value="210" min="1" step="0.1"></label>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="calculator.book_width">Book width</span><input type="text" inputmode="decimal" data-number id="h-bookWidth" value="148" min="1" step="0.1"></label>
+        <label class="field"><span data-i18n="calculator.book_height">Book height</span><input type="text" inputmode="decimal" data-number id="h-bookHeight" value="210" min="1" step="0.1"></label>
       </div>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="hesapla.mukavva">Board thickness t (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-mukavvaKalinlik" value="2" min="0.1" step="0.1"></label>
-        <label class="alan"><span data-dil="hesapla.tasma">Square k (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-tasma" value="3" min="0" step="0.5"></label>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="calculator.board">Board thickness t (mm)</span><input type="text" inputmode="decimal" data-number id="h-boardThickness" value="2" min="0.1" step="0.1"></label>
+        <label class="field"><span data-i18n="calculator.square">Square k (mm)</span><input type="text" inputmode="decimal" data-number id="h-square" value="3" min="0" step="0.5"></label>
       </div>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="hesapla.sirt_tipi">Spine shape</span>
-          <select id="h-sirtTipi">
-            <option value="duz" data-dil="hesapla.sirt.duz">Flat</option>
-            <option value="yuvarlak" data-dil="hesapla.sirt.yuvarlak">Rounded</option>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="calculator.spine_shape">Spine shape</span>
+          <select id="h-spineShape">
+            <option value="flat" data-i18n="calculator.spine.flat">Flat</option>
+            <option value="rounded" data-i18n="calculator.spine.rounded">Rounded</option>
           </select>
         </label>
-        <label class="alan"><span data-dil="hesapla.egri_boyu">Spine curve length (mm, rounded only)</span><input type="text" inputmode="decimal" data-sayi id="h-egriBoyu" value="" min="0.1" step="0.5" disabled></label>
+        <label class="field"><span data-i18n="calculator.curve_length">Spine curve length (mm, rounded only)</span><input type="text" inputmode="decimal" data-number id="h-curveLength" value="" min="0.1" step="0.5" disabled></label>
       </div>
-      <label class="alan"><span data-dil="hesapla.sirt_kurali">Spine stiffener rule (flat spine)</span>
-        <select id="h-sirtKurali">
-          <option value="ikiT" data-dil="hesapla.kural.ikiT">S + 2t (default)</option>
-          <option value="yalnizS" data-dil="hesapla.kural.yalnizS">S only (joint gap grows by t)</option>
+      <label class="field"><span data-i18n="calculator.spine_rule">Spine stiffener rule (flat spine)</span>
+        <select id="h-spineRule">
+          <option value="twoT" data-i18n="calculator.rule.twoT">S + 2t (default)</option>
+          <option value="onlyS" data-i18n="calculator.rule.onlyS">S only (joint gap grows by t)</option>
         </select>
       </label>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="hesapla.mafsal">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-sayi id="h-mafsal" value="" placeholder="automatic" data-dil-oz="placeholder:hesapla.otomatik" min="0.5" step="0.5"></label>
-        <label class="alan"><span data-dil="hesapla.kivirma">Turn-in e (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-kivirma" value="15" min="1" step="0.5"></label>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="calculator.jointGap">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-number id="h-jointGap" value="" placeholder="automatic" data-i18n-oz="placeholder:calculator.auto" min="0.5" step="0.5"></label>
+        <label class="field"><span data-i18n="calculator.turnIn">Turn-in e (mm)</span><input type="text" inputmode="decimal" data-number id="h-turnIn" value="15" min="1" step="0.5"></label>
       </div>
-      <div class="ikili basit">
-        <label class="alan"><span data-dil="hesapla.yedek_kagit">Spare printer sheets</span><input type="text" inputmode="decimal" data-sayi id="h-yedekKagit" value="0" min="0" step="1"></label>
+      <div class="pair simple">
+        <label class="field"><span data-i18n="calculator.spare_sheets">Spare printer sheets</span><input type="text" inputmode="decimal" data-number id="h-spareSheets" value="0" min="0" step="1"></label>
       </div>
     </form>
     <div class="panel">
-      <div id="h-hata"></div>
-      <table class="sonuc" id="h-sonuc"></table>
-      <div id="h-uyarilar"></div>
-      <p class="kucuk" data-dil="hesapla.aciklama">Spine thickness S = number of leaves (blank pages included) × paper thickness (+ endpaper thickness allowance). To get the real paper thickness, measure 10 sheets with calipers and divide by 10. W, H: text block width and height; t: board thickness; k: square (board overhang); f: joint gap; e: turn-in. The same cover formulas apply to perfect binding (flat spine).</p>
-      <p class="kucuk" id="h-kaynak" data-dil="hesapla.kaynak">Values follow typical workshop practice; measure and adjust on your first book.</p>
+      <div id="h-error"></div>
+      <table class="result" id="h-result"></table>
+      <div id="h-warnings"></div>
+      <p class="small" data-i18n="calculator.description">Spine thickness S = number of leaves (blank pages included) × paper thickness (+ endpaper thickness allowance). To get the real paper thickness, measure 10 sheets with calipers and divide by 10. W, H: text block width and height; t: board thickness; k: square (board overhang); f: joint gap; e: turn-in. The same cover formulas apply to perfect binding (flat spine).</p>
+      <p class="small" id="h-source" data-i18n="calculator.source">Values follow typical workshop practice; measure and adjust on your first book.</p>
     </div>
   </div>
 </section>
@@ -260,81 +260,81 @@
 <!-- ============ ÖĞREN ============
      Formalı dikiş + sert kapak rehberi (js/learn/). Sekme ilk açıldığında kurulur; sekmeden çıkınca figür sökülür.
      Çizimler Colorfigures motoru ve yöntemiyle (MIT; April Zhu, Tolga Cohce; tam metin js/learn/LICENSE). -->
-<section id="sekme-ogren" role="tabpanel" aria-labelledby="sekme-dugme-ogren" hidden>
-<div class="ogren-kok" id="og-kok">
-  <div class="ust">
-    <div class="baslik">
-      <h2 data-dil="ogren.baslik">Learn bookbinding</h2>
-      <p data-dil="ogren.alt">Sewn signatures and a hardcover, from printed sheets to a finished book</p>
+<section id="tab-learn" role="tabpanel" aria-labelledby="tab-button-learn" hidden>
+<div class="learn-root" id="og-root">
+  <div class="top">
+    <div class="title">
+      <h2 data-i18n="learn.title">Learn bookbinding</h2>
+      <p data-i18n="learn.subtitle">Sewn signatures and a hardcover, from printed sheets to a finished book</p>
     </div>
-    <div class="ayarlar">
-      <label class="kucuk"><span data-dil="ogren.hiz">Speed</span>
-        <select id="og-hiz">
-          <option value="1" data-dil="ogren.hiz1">1×</option>
-          <option value="2" data-dil="ogren.hiz2">2×</option>
-          <option value="4" data-dil="ogren.hiz4">4×</option>
+    <div class="settings">
+      <label class="small"><span data-i18n="learn.speed">Speed</span>
+        <select id="og-speed">
+          <option value="1" data-i18n="learn.speed1">1×</option>
+          <option value="2" data-i18n="learn.speed2">2×</option>
+          <option value="4" data-i18n="learn.speed4">4×</option>
         </select></label>
     </div>
   </div>
 
-  <div class="duzen">
-    <nav class="yan" aria-label="Stages" data-dil-oz="aria-label:ogren.asamalar">
-      <h3 data-dil="ogren.asamalar">Stages</h3>
-      <div class="ilerleme" role="progressbar" aria-valuemin="0" aria-label="Progress" data-dil-oz="aria-label:ogren.ilerleme_ad"><div id="og-ilerleme-cubuk"></div></div>
-      <p id="og-ilerleme-metin" class="kucuk"></p>
-      <ol id="og-asamalar" class="asamalar"></ol>
-      <button type="button" id="og-bastan-sona" class="buyuk" aria-pressed="false" data-dil="ogren.bastan_sona">Play from start to finish</button>
+  <div class="layout">
+    <nav class="side" aria-label="Stages" data-i18n-oz="aria-label:learn.stages">
+      <h3 data-i18n="learn.stages">Stages</h3>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-label="Progress" data-i18n-oz="aria-label:learn.progress_name"><div id="og-progress-bar"></div></div>
+      <p id="og-progress-text" class="small"></p>
+      <ol id="og-stages" class="stages"></ol>
+      <button type="button" id="og-fromStart-toEnd" class="large" aria-pressed="false" data-i18n="learn.from_start_to_end">Play from start to finish</button>
     </nav>
 
-    <div class="orta">
-      <div class="sekil" id="og-sahne"></div>
+    <div class="middle">
+      <div class="figures" id="og-stage"></div>
     </div>
 
-    <aside class="sag">
-      <div class="og-kart" id="og-kart" aria-live="polite">
-        <p class="asama-ad" id="og-asama-ad"></p>
-        <p class="asama-ozet kucuk" id="og-asama-ozet"></p>
-        <ol class="adimlar" id="og-adimlar"></ol>
-        <p class="adim-no kucuk" id="og-adim-no"></p>
-        <h3 id="og-adim-baslik"></h3>
-        <p id="og-adim-aciklama"></p>
-        <div class="kutu arac" id="og-arac-kutu"><strong data-dil="ogren.arac">Tools and materials</strong> <span id="og-arac"></span></div>
-        <div class="kutu dikkat" id="og-dikkat-kutu"><strong data-dil="ogren.dikkat">Watch out</strong> <span id="og-dikkat"></span></div>
-        <div class="oynatici">
-          <button type="button" id="og-onceki" data-dil="ogren.onceki">Previous</button>
-          <button type="button" id="og-oynat" class="birincil" data-dil="ogren.oynat">Play step</button>
-          <button type="button" id="og-sonraki" data-dil="ogren.sonraki">Next</button>
-          <button type="button" id="og-yeniden" data-dil="ogren.yeniden">Replay last step</button>
+    <aside class="right">
+      <div class="og-card" id="og-card" aria-live="polite">
+        <p class="stage-name" id="og-stage-name"></p>
+        <p class="stage-summary small" id="og-stage-summary"></p>
+        <ol class="steps" id="og-steps"></ol>
+        <p class="step-no small" id="og-step-no"></p>
+        <h3 id="og-step-title"></h3>
+        <p id="og-step-description"></p>
+        <div class="box tool" id="og-tool-box"><strong data-i18n="learn.tool">Tools and materials</strong> <span id="og-tool"></span></div>
+        <div class="box caution" id="og-caution-box"><strong data-i18n="learn.caution">Watch out</strong> <span id="og-caution"></span></div>
+        <div class="player">
+          <button type="button" id="og-previous" data-i18n="learn.previous">Previous</button>
+          <button type="button" id="og-play" class="primary" data-i18n="learn.play">Play step</button>
+          <button type="button" id="og-next" data-i18n="learn.next">Next</button>
+          <button type="button" id="og-again" data-i18n="learn.again">Replay last step</button>
         </div>
       </div>
-      <div class="sayilar">
+      <div class="numbers">
       <details open>
-        <summary data-dil="ogren.sayilar">Your book's numbers</summary>
-        <p class="hesapla-al"><button type="button" id="og-hesapladan-al" data-dil="ogren.hesapladan_al">Use values from the Calculator tab</button></p>
-        <form id="og-sayi-form" novalidate>
-          <label><span data-dil="ogren.g.formaSayisi">Signatures</span><input id="og-g-formaSayisi" inputmode="numeric" autocomplete="off"></label>
-          <label><span data-dil="ogren.g.formaYaprak">Sheets per signature</span><input id="og-g-formaYaprak" inputmode="numeric" autocomplete="off"></label>
-          <label><span data-dil="ogren.g.kitapGen">Book width (mm)</span><input id="og-g-kitapGen" inputmode="decimal" autocomplete="off"></label>
-          <label><span data-dil="ogren.g.kitapYuk">Book height (mm)</span><input id="og-g-kitapYuk" inputmode="decimal" autocomplete="off"></label>
-          <label><span data-dil="ogren.g.kagitKalinlik">Paper thickness (mm)</span><input id="og-g-kagitKalinlik" inputmode="decimal" autocomplete="off"></label>
-          <button type="submit" data-dil="ogren.uygula">Apply</button>
+        <summary data-i18n="learn.numbers">Your book's numbers</summary>
+        <p class="calculator-al"><button type="button" id="og-from_calculator-al" data-i18n="learn.take_from_calculator">Use values from the Calculator tab</button></p>
+        <form id="og-number-form" novalidate>
+          <label><span data-i18n="learn.g.signatureCount">Signatures</span><input id="og-g-signatureCount" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.sheetsPerSignature">Sheets per signature</span><input id="og-g-sheetsPerSignature" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.bookWidth">Book width (mm)</span><input id="og-g-bookWidth" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.bookHeight">Book height (mm)</span><input id="og-g-bookHeight" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.paperThickness">Paper thickness (mm)</span><input id="og-g-paperThickness" inputmode="decimal" autocomplete="off"></label>
+          <button type="submit" data-i18n="learn.apply">Apply</button>
         </form>
-        <p id="og-sayi-hata" class="hata" role="alert" hidden></p>
-        <p id="og-sayi-not" class="hata" role="status" hidden></p>
-        <p class="kucuk" data-dil="ogren.sayilar_not">Board thickness, square, turn-in and joint gap come from the Calculator tab. Changes here stay in this guide; the drawings follow these numbers.</p>
-        <p class="kucuk" id="og-uyum" data-dil="ogren.hesapla_uyum" hidden>The Calculator tab uses another binding style or a rounded spine; the guide always draws sewn signatures with a flat spine.</p>
-        <table class="sonuc"><tbody id="og-sonuclar"></tbody></table>
+        <p id="og-number-error" class="error" role="alert" hidden></p>
+        <p id="og-number-note" class="error" role="status" hidden></p>
+        <p class="small" data-i18n="learn.numbers_note">Board thickness, square, turn-in and joint gap come from the Calculator tab. Changes here stay in this guide; the drawings follow these numbers.</p>
+        <p class="small" id="og-match" data-i18n="learn.calculator_match" hidden>The Calculator tab uses another binding style or a rounded spine; the guide always draws sewn signatures with a flat spine.</p>
+        <table class="result"><tbody id="og-results"></tbody></table>
       </details>
       </div>
     </aside>
   </div>
 
-  <p class="alt" data-dil="ogren.lisans">Drawings made with the Colorfigures method (MIT; April Zhu, Tolga Cohce). Full license text below.</p>
+  <p class="bottom" data-i18n="learn.license">Drawings made with the Colorfigures method (MIT; April Zhu, Tolga Cohce). Full license text below.</p>
   <!-- MIT koşulu uygulama içinde görünür (Mac'te kullanıcı js/learn/LICENSE dosyasına erişemez). Metin
        js/learn/LICENSE ile birebir (app/test/learn-fixes.test.js D7); hukuk metni çevrilmez (lang="en"). -->
-  <details class="og-lisans" id="og-lisans">
-    <summary data-dil="ogren.lisans_metni">Colorfigures license (MIT)</summary>
-    <pre id="og-lisans-metin" lang="en" translate="no">MIT License
+  <details class="og-license" id="og-license">
+    <summary data-i18n="learn.license_text">Colorfigures license (MIT)</summary>
+    <pre id="og-license-text" lang="en" translate="no">MIT License
 
 Copyright (c) 2026 April Zhu (Colorfigures: colour, hand-drawn style, 3D props, template, examples)
 Copyright (c) 2026 April Zhu (iso-glow, on which Colorfigures is based)
@@ -362,7 +362,7 @@ SOFTWARE.</pre>
 </section>
 </main>
 
-<div id="bildirim" role="status" aria-live="polite"></div>
+<div id="notice" role="status" aria-live="polite"></div>
 
 <!-- Arayüz dili: sözlükler önce, i18n.js onları okur. Yeni dil: app/i18n/<kod>.js + buraya bir satır.
      dil betikleri ~1,9 MB vendor'dan ÖNCE (ilk kare seçili dilde); Object.prototype'a dokunmazlar
@@ -376,6 +376,8 @@ SOFTWARE.</pre>
 <script src="vendor/pdfjs/pdf.worker.min.js"></script>
 <!-- Object.prototype vendor kütüphanelerinden sonra dondurulur (bkz. js/freeze.js) -->
 <script src="js/freeze.js"></script>
+<!-- One-time migration of data saved by earlier versions (old storage keys and field names); before the app scripts -->
+<script src="js/migrate.js"></script>
 <!-- Uygulama: klasik script (file:// ile çift tıklayınca da çalışır) -->
 <!-- Platform katmanı: tarayıcı uygulaması; Tauri penceresinde platform-tauri.js farklı olanları ezer -->
 <script src="js/platform.js"></script>

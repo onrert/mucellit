@@ -7,31 +7,33 @@
 //! Güvenlik: ana pencere `tauri.conf.json`'daki ayarla (`create: false`) burada kurulur;
 //! uygulama dışı adrese gezinme ve yeni pencere (window.open, target=_blank) reddedilir. CSP conf'ta.
 
-pub mod i18n;
-pub mod files;
-pub mod epub_folder;
-mod menu;
-pub mod recent;
 pub mod backup;
+pub mod epub_folder;
+pub mod files;
+pub mod i18n;
+pub mod legacy;
+mod menu;
 pub mod print;
+pub mod recent;
 
 use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
 use tauri::{Runtime, Url};
 
 /// Ana pencerenin etiketi (`tauri.conf.json` ve `capabilities/default.json` ile aynı).
-const ANA_PENCERE: &str = "main";
+const MAIN_WINDOW: &str = "main";
 
 /// Web görünümü bu adrese gidebilir mi? Yalnız uygulamanın kendi içeriği: macOS'ta `tauri://localhost`,
 /// Windows/Android biçimi `http(s)://tauri.localhost`; bunların kökenli `blob:` adresleri (sayfanın kendi
 /// ürettiği indirme). Kullanıcı adı/parola/bağlantı noktası taşıyan ya da başka her adres reddedilir.
-pub fn gezinme_izinli(url: &Url) -> bool {
-    let kimliksiz = url.username().is_empty() && url.password().is_none() && url.port().is_none();
+pub fn navigation_allowed(url: &Url) -> bool {
+    let without_credentials =
+        url.username().is_empty() && url.password().is_none() && url.port().is_none();
     match url.scheme() {
-        "tauri" => kimliksiz && url.host_str() == Some("localhost"),
-        "http" | "https" => kimliksiz && url.host_str() == Some("tauri.localhost"),
+        "tauri" => without_credentials && url.host_str() == Some("localhost"),
+        "http" | "https" => without_credentials && url.host_str() == Some("tauri.localhost"),
         // blob:<köken>/<kimlik> — köken de uygulamanın kendisi olmalı (iç içe blob: yok).
         "blob" => Url::parse(url.path())
-            .map(|ic| ic.scheme() != "blob" && gezinme_izinli(&ic))
+            .map(|inner| inner.scheme() != "blob" && navigation_allowed(&inner))
             .unwrap_or(false),
         _ => false,
     }
@@ -40,17 +42,17 @@ pub fn gezinme_izinli(url: &Url) -> bool {
 /// `on_navigation`'a verilen karar işlevinin kendisi (testler bunu doğrudan çağırır; kapanış içine
 /// gömülü mantık sınanamıyordu: sınaması, `true || gezinme_izinli(url)` mutantı yakalanmadı).
 /// Reddedilen adres stderr'e yazılır.
-pub fn gezinme_karari(url: &Url) -> bool {
-    let izin = gezinme_izinli(url);
-    if !izin {
-        eprintln!("gezinme reddedildi: {url}");
+pub fn navigation_decision(url: &Url) -> bool {
+    let permission = navigation_allowed(url);
+    if !permission {
+        eprintln!("navigation rejected: {url}");
     }
-    izin
+    permission
 }
 
 /// `on_new_window`'a verilen karar: her yeni pencere isteği (window.open, target=_blank) reddedilir.
-pub fn yeni_pencere_karari<R: Runtime>(url: &Url) -> NewWindowResponse<R> {
-    eprintln!("yeni pencere reddedildi: {url}");
+pub fn new_window_decision<R: Runtime>(url: &Url) -> NewWindowResponse<R> {
+    eprintln!("fresh window rejected: {url}");
     NewWindowResponse::Deny
 }
 
@@ -58,96 +60,98 @@ pub fn yeni_pencere_karari<R: Runtime>(url: &Url) -> NewWindowResponse<R> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(files::Durum::default())
-        .manage(backup::Yedekci::default())
+        .manage(files::FileState::default())
+        .manage(backup::BackupWriter::default())
         .invoke_handler(tauri::generate_handler![
-            files::dosya_ac,
-            files::dosya_oku,
-            files::dosya_kaydet,
-            files::son_acilanlar,
-            files::son_acilani_oku,
-            files::bekleyen_acilanlar,
-            backup::veri_yedekle,
-            backup::veri_oku,
-            i18n::dil_oku,
-            i18n::dil_ayarla,
-            print::yazdir,
-            print::onizlemede_ac,
+            files::open_file,
+            files::read_file,
+            files::save_file,
+            files::recent_files,
+            files::read_recent_file,
+            files::pending_opens,
+            backup::backup_data,
+            backup::read_backup,
+            i18n::read_language,
+            i18n::set_language,
+            print::print,
+            print::open_in_preview,
         ])
         // Menü dili: yedeklenmiş elle seçim ya da sistem dili (JS açılınca dil_ayarla ile eşitler).
         .menu(|app| {
-            i18n::baslat(app);
-            menu::olustur(app)
+            // files of earlier versions are renamed before anything reads them
+            legacy::migrate_app_data(app);
+            i18n::start(app);
+            menu::create(app)
         })
-        .on_menu_event(menu::olay)
+        .on_menu_event(menu::on_event)
         .setup(|app| {
-            let ayar = app
+            let settings = app
                 .config()
                 .app
                 .windows
                 .iter()
-                .find(|w| w.label == ANA_PENCERE)
+                .find(|w| w.label == MAIN_WINDOW)
                 .cloned()
                 .ok_or("tauri.conf.json: no main window")?;
-            WebviewWindowBuilder::from_config(app.handle(), &ayar)?
+            WebviewWindowBuilder::from_config(app.handle(), &settings)?
                 // ilk kare menüyle aynı sistem dilinde (app/js/i18n.js __KC_DIL__)
-                .initialization_script(i18n::baslangic_betigi())
-                .on_navigation(gezinme_karari)
-                .on_new_window(|url, _| yeni_pencere_karari(&url))
+                .initialization_script(i18n::init_script())
+                .on_navigation(navigation_decision)
+                .on_new_window(|url, _| new_window_decision(&url))
                 .build()?;
-            backup::isci_baslat(app.handle());
+            backup::start_worker(app.handle());
             // Önizleme önbelleği (eski çıktı, çökme artığı .gecici) açılışta temizlenir.
-            print::acilista_temizle(app.handle());
+            print::clean_on_startup(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("Mücellit başlatılamadı")
-        .run(|app, olay| match olay {
+        .run(|app, on_event| match on_event {
             // Dock simgesine bırakılan ya da Finder'da "Birlikte Aç" ile gelen dosyalar (macOS; sistem bu
             // dosyalar için güvenlik kapsamlı erişimi kendisi başlatır).
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             tauri::RunEvent::Opened { urls } => {
-                let yollar = urls
+                let paths = urls
                     .into_iter()
                     .filter_map(|u| u.to_file_path().ok())
                     .collect();
-                files::disaridan_acildi(app, yollar);
+                files::opened_from_outside(app, paths);
             }
             // ⌘Q / Dock'tan Çık / son pencere kapandı (tao: applicationWillTerminate → LoopDestroyed → Exit):
             // bekleyen Süreç yedeği beklemeden yazılır.
-            tauri::RunEvent::Exit => backup::kapanista_bosalt(app),
+            tauri::RunEvent::Exit => backup::flush_on_exit(app),
             _ => {}
         });
 }
 
 #[cfg(test)]
-mod testler {
+mod tests {
     use super::*;
 
-    fn izin(adres: &str) -> bool {
-        gezinme_izinli(&Url::parse(adres).unwrap_or_else(|e| panic!("{adres}: {e}")))
+    fn permission(address: &str) -> bool {
+        navigation_allowed(&Url::parse(address).unwrap_or_else(|e| panic!("{address}: {e}")))
     }
 
     #[test]
-    fn uygulama_icerigi_izinli() {
+    fn app_content_allowed() {
         for a in [
             "tauri://localhost",
             "tauri://localhost/",
             "tauri://localhost/index.html",
-            "tauri://localhost/index.html?sekme=surec#x",
+            "tauri://localhost/index.html?tab=projects#x",
             "http://tauri.localhost/",
             "https://tauri.localhost/index.html",
             "blob:tauri://localhost/7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f",
         ] {
-            assert!(izin(a), "{a} izinli olmalı");
+            assert!(permission(a), "{a} izinli olmalı");
         }
     }
 
     /// Kurulumda `on_navigation`'a verilen işlev (`gezinme_karari`) gerçekten reddediyor mu: denetim
     /// devre dışı bırakılırsa (ör. `true || …`, `|_| true`) bu test kalır.
     #[test]
-    fn gezinme_karari_dis_adresi_reddeder_uygulama_icerigine_izin_verir() {
-        let karar = |a: &str| gezinme_karari(&Url::parse(a).unwrap());
+    fn navigation_decision_rejects_external_allows_app_content() {
+        let decision = |a: &str| navigation_decision(&Url::parse(a).unwrap());
         for a in [
             "https://example.com/",
             "file:///etc/passwd",
@@ -155,33 +159,39 @@ mod testler {
             "tauri://localhost.evil.com/",
             "blob:https://example.com/1234",
         ] {
-            assert!(!karar(a), "{a} kurulumdaki karar işlevinde reddedilmeli");
+            assert!(
+                !decision(a),
+                "{a} kurulumdaki decision işlevinde reddedilmeli"
+            );
         }
         for a in ["tauri://localhost/index.html", "https://tauri.localhost/"] {
-            assert!(karar(a), "{a} kurulumdaki karar işlevinde izinli olmalı");
+            assert!(
+                decision(a),
+                "{a} kurulumdaki decision işlevinde allowed olmalı"
+            );
         }
     }
 
     #[test]
-    fn yeni_pencere_her_zaman_reddedilir() {
+    fn new_window_always_rejected() {
         for a in ["https://example.com/", "tauri://localhost/index.html"] {
             assert!(matches!(
-                yeni_pencere_karari::<tauri::Wry>(&Url::parse(a).unwrap()),
+                new_window_decision::<tauri::Wry>(&Url::parse(a).unwrap()),
                 NewWindowResponse::Deny
             ));
         }
     }
 
     #[test]
-    fn dis_ve_supheli_adresler_reddedilir() {
+    fn external_and_suspicious_addresses_are_rejected() {
         for a in [
             "https://example.com/",
             "http://example.com/",
             "tauri://localhost.evil.com/",
             "tauri://evil/",
             "tauri://localhost:8080/",
-            "tauri://kullanici@localhost/",
-            "tauri://kullanici:parola@localhost/",
+            "tauri://user@localhost/",
+            "tauri://user:password@localhost/",
             "https://tauri.localhost.evil.com/",
             "https://evil.com/tauri.localhost",
             "http://tauri.localhost:1430/",
@@ -199,7 +209,7 @@ mod testler {
             "mailto:a@b.c",
             "ws://tauri.localhost/",
         ] {
-            assert!(!izin(a), "{a} reddedilmeli");
+            assert!(!permission(a), "{a} reddedilmeli");
         }
     }
 }

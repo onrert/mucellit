@@ -8,15 +8,15 @@
  * Ölçüler kitabın sayılarından (learn-measure.js → KitapCilt.hesap) gelir; hiçbir kitap ölçüsü burada sabit değildir.
  */
 'use strict';
-(function (kok) {
-  const KC = kok.KitapCilt.ogren, { PALS, INK, P, Dv, f, pd, rrUV, PX, on, cross, norm, vis, tone, toneI, matOf, ease, ink, fill, face, shape, line, loft, hullInk, box, rod, txM, board } = KC.cf;
-  KC.sekil = KC.sekil || {};
+(function (root) {
+  const MC = root.Mucellit.learn, { PALS, INK, P, Dv, f, pd, rrUV, PX, on, cross, norm, vis, tone, toneI, matOf, ease, ink, fill, face, shape, line, loft, hullInk, box, rod, txM, board } = MC.cf;
+  MC.figures = MC.figures || {};
 
   /* x boyunca uzanan parçalar için 2B ressam sıralaması: (y, z) kesitinde doğru parçası (a, b) ya da yarıçaplı nokta (a, r) */
   function xSort(items){
-    const CV = KC.cf.CAM_V, L0 = Math.hypot(CV[1], CV[2]) || 1, vy = CV[1]/L0, vz = CV[2]/L0;
-    const ac = p => -p[0]*vz + p[1]*vy, dp = p => p[0]*vy + p[1]*vz, n = items.length;
-    for (const it of items){ const b = it.b || it.a, r = it.r || 0; it._s0 = ac(it.a); it._s1 = ac(b);
+    const CV = MC.cf.CAM_V, L0 = Math.hypot(CV[1], CV[2]) || 1, vy = CV[1]/L0, vz = CV[2]/L0;
+    const open = p => -p[0]*vz + p[1]*vy, dp = p => p[0]*vy + p[1]*vz, n = items.length;
+    for (const it of items){ const b = it.b || it.a, r = it.r || 0; it._s0 = open(it.a); it._s1 = open(b);
       it._lo = Math.min(it._s0, it._s1) - r; it._hi = Math.max(it._s0, it._s1) + r; it._d = (dp(it.a) + dp(b))/2 + (it.bias || 0); }
     const dAt = (it, s) => { const b = it.b || it.a, ds = it._s1 - it._s0; if (Math.abs(ds) < 1e-7) return Math.max(dp(it.a), dp(b)) + (it.bias || 0);
       const t = Math.max(0, Math.min(1, (s - it._s0)/ds)); return dp([it.a[0] + (b[0] - it.a[0])*t, it.a[1] + (b[1] - it.a[1])*t]) + (it.bias || 0); };
@@ -42,8 +42,8 @@
       const Q = [[x0, a[0], a[1]], [x1, a[0], a[1]], [x1, b[0], b[1]], [x0, b[0], b[1]]];
       faces.push({ a, b, nz: n[2], svg: o.face ? o.face(i, n, Q) : shape(Q, sh(n, m), o.w ?? 1) }); }
     const cs = vis([1, 0, 0]) ? 1 : vis([-1, 0, 0]) ? -1 : 0;
-    if (cs){ const xc = cs > 0 ? x1 : x0, PQ = poly.map(p => [xc, p[0], p[1]]), CV = KC.cf.CAM_V, L0 = Math.hypot(CV[1], CV[2]) || 1;
-      const ac = p => (-p[0]*CV[2] + p[1]*CV[1])/L0, lo = poly.reduce((a, q) => ac(q) < ac(a) ? q : a), hi = poly.reduce((a, q) => ac(q) > ac(a) ? q : a);
+    if (cs){ const xc = cs > 0 ? x1 : x0, PQ = poly.map(p => [xc, p[0], p[1]]), CV = MC.cf.CAM_V, L0 = Math.hypot(CV[1], CV[2]) || 1;
+      const open = p => (-p[0]*CV[2] + p[1]*CV[1])/L0, lo = poly.reduce((a, q) => open(q) < open(a) ? q : a), hi = poly.reduce((a, q) => open(q) > open(a) ? q : a);
       items.push({ a: lo, b: hi, bias: (o.bias || 0) + .001, svg: kOp(o.op, shape(PQ, sh([cs, 0, 0], m), o.w ?? 1) + (o.cap ? o.cap(xc, cs, PQ) : '')) }); }
     for (const fc of faces) items.push({ a: fc.a, b: fc.b, bias: o.bias || 0, svg: kOp(o.op, fc.svg) });
     return poly.flatMap(p => [[x0, p[0], p[1]], [x1, p[0], p[1]]]);
@@ -73,7 +73,7 @@
   function kRun(st, ui, key, T, step, done){ const id = ++st.anim; st[key] = 0;
     ui.animate(dt => { if (id !== st.anim) return false; st[key] += dt; step(Math.min(1, st[key]/T)); if (st[key] >= T){ st[key] = -1; if (done) done(); return false; } return true; }); }
   // ardışık animasyonlar: [[key, T, step], ...] sırayla
-  function kSira(st, ui, list, done){ const go = i => { if (i >= list.length){ if (done) done(); return; } const [k, T, s] = list[i]; kRun(st, ui, k, T, s, () => go(i + 1)); }; go(0); }
+  function kOrder(st, ui, list, done){ const go = i => { if (i >= list.length){ if (done) done(); return; } const [k, T, s] = list[i]; kRun(st, ui, k, T, s, () => go(i + 1)); }; go(0); }
   // kemik (bone folder): x0..x0+L boyunca yassı çubuk, uçları yuvarlak
   function kBone(x0, y0, z0, L = 150, w = 22, h = 4){
     const prof = rrUV(y0, z0, y0 + w, z0 + h, 1.9, 4), x1 = x0 + L, A = on(PX(x0), prof), B = on(PX(x1), prof);
@@ -136,7 +136,7 @@
       const t = [q[0] - p[0], q[1] - p[1]], tl = Math.hypot(...t); let n = [0, t[1]/tl, -t[0]/tl];
       const Q = [[G.XB0, p[0], p[1]], [G.XB1, p[0], p[1]], [G.XB1, q[0], q[1]], [G.XB0, q[0], q[1]]];
       let sv = shape(Q, vis(n) ? tone(n, m) : toneI(n.map(v => -v), kBACK), .9);
-      if (o.oluk && vis(n)){ const mm = [(p[0] + q[0])/2, (p[1] + q[1])/2]; sv += `<g opacity="${f(o.oluk)}">${line([[G.XB0 + 2, mm[0] + n[1]*.1, mm[1] + n[2]*.1], [G.XB1 - 2, mm[0] + n[1]*.1, mm[1] + n[2]*.1]], 1.6)}</g>`; }
+      if (o.groove && vis(n)){ const mm = [(p[0] + q[0])/2, (p[1] + q[1])/2]; sv += `<g opacity="${f(o.groove)}">${line([[G.XB0 + 2, mm[0] + n[1]*.1, mm[1] + n[2]*.1], [G.XB1 - 2, mm[0] + n[1]*.1, mm[1] + n[2]*.1]], 1.6)}</g>`; }
       items.push({ a: p, b: q, bias: (o.bias || 0) - .01, svg: kOp(op, sv) }); }
     return pts;
   }
@@ -150,7 +150,7 @@
         return s + `<path d="${lines(at, n)}" fill="none" stroke="#a89a78" stroke-width=".35"/>`; }
       if (i === 3){ let s = shape(Q, toneI(n, kEDGE), 1), d = ''; for (let j = 1; j < N; j++) d += pd([at(G.XK0, j/N), at(G.XK1, j/N)], false);
         return s + `<path d="${d}" fill="none" stroke="#b9ad92" stroke-width=".3"/>`; }
-      const fz = i === 2 ? (o.forzaUst ?? o.forza) : (o.forzaAlt ?? o.forza);
+      const fz = i === 2 ? (o.endpaperTop ?? o.endpapers) : (o.endpaperAlt ?? o.endpapers);
       let s = shape(Q, toneI(n, fz === false ? kPAPER : kENDP), 1);
       if (i === 2 && o.mull !== false && o.mullKanat !== false){
         const w = Math.hypot(Q[3][1] - Q[0][1], Q[3][2] - Q[0][2]), ee = 25/w;
@@ -171,7 +171,7 @@
         s += `<g opacity="${f(k)}"><path d="${th}" fill="none" stroke="${kTHREAD}" stroke-width=".9" stroke-linecap="round"/></g>`; }
       return s; };
     const pts = xPrism(kRect(y0, z0, y1, z1, tr), G.XK0, G.XK1, kPAPER, items, { face, cap, op: o.op });
-    if (o.kapital !== false) for (const x of [G.XK0 + 1.5, G.XK1 - 1.5]){
+    if (o.headbands !== false) for (const x of [G.XK0 + 1.5, G.XK1 - 1.5]){
       const A = tr([y1 + 1.2, z0 + .3]), B = tr([y1 + 1.2, z1 - .3]);
       const sv = rod([x, A[0], A[1]], [x, B[0], B[1]], 1.4, o.m || PALS.tomato, toneI, .8, 1.4, 10);
       items.push({ a: A, b: B, r: 1.4, bias: .02, svg: kOp(o.op, sv) }); }
@@ -180,7 +180,7 @@
 
   // sırttaki dikiş izi: her formada dış dikişler (delik 1-2, 3-4, …) ve iki uçta kettle zinciri. at(x, t): sırt yüzünde
   // nokta (t 0..1 kalınlık boyunca), ST: delik x konumları, N: forma sayısı
-  function kSirtDikis(at, N, ST, w = .9){
+  function kSpineSewing(at, N, ST, w = .9){
     let s = '';
     for (let j = 0; j < N; j++){ const tm = (j + .5)/N;
       for (let q = 1; q + 1 < ST.length - 1; q += 2) s += kThr([at(ST[q], tm), at(ST[q + 1], tm)], w); }
@@ -188,6 +188,6 @@
     return s;
   }
 
-  KC.ortak = { kSirtDikis, xSort, kOp, xPrism, kRect, kRot, kSeg, kLerp, kText, kEsc, kBoxOf, kThr, kMat, kRun, kSira, kBone, kBrush, kGeo, kChain, kCaseItems, kBlockItems,
-    renk: { kPAPER, kEDGE, kBOARD, kMAT, kMULL, kTHREAD, kBACK, kENDP, kWOOD, kSTEEL, kBONE, kWAX } };
+  MC.common = { kSpineSewing, xSort, kOp, xPrism, kRect, kRot, kSeg, kLerp, kText, kEsc, kBoxOf, kThr, kMat, kRun, kOrder, kBone, kBrush, kGeo, kChain, kCaseItems, kBlockItems,
+    color: { kPAPER, kEDGE, kBOARD, kMAT, kMULL, kTHREAD, kBACK, kENDP, kWOOD, kSTEEL, kBONE, kWAX } };
 })(typeof self !== 'undefined' ? self : this);

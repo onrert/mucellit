@@ -11,11 +11,11 @@
  * ortam: { platform, t(anahtar, p), bildir(metin, tur) }. Dönüş Promise<{ metin, tur }> (tur 'hata' = istenen iş
  * tamamlanmadı); hiç reddedilmez. dosyalar: cikti.uret'in dosyaları ([{ ad, bytes, yuz }], ikili modda [önler, arkalar]).
  */
-(function (kok) {
+(function (root) {
   'use strict';
-  var KC = kok.KitapCilt = kok.KitapCilt || {};
+  var MC = root.Mucellit = root.Mucellit || {};
 
-  function hataMetni(e) { return String(e && e.message ? e.message : e); }
+  function errorText(e) { return String(e && e.message ? e.message : e); }
 
   /** Baskı penceresinden önce gösterilen not (çift yüz ayarı = araçtaki seçim; ölçek %100). */
   /**
@@ -23,61 +23,61 @@
    * penceresinin kendi adıyla söylenir (ana pencere: Çift Taraflı → Açık / Açık (Kısa Kenar); Düzen bölümü: Uzun/Kısa
    * Kenardan Ciltli — PrintingPrivate loctable'ları, printing.test.js), araçtaki ad ayrıca anılır.
    */
-  function not(ortam, ikili, cevirme) {
-    var t = ortam.t, kisa = cevirme === 'kisa';
-    var p = { cift: t('yazdir.panel.cift'), cift_duzen: t('yazdir.panel.cift_duzen'), kapali: t('yazdir.panel.kapali') };
-    if (ikili) return t('yazdir.not_ikili', p);
-    p.secenek = t(kisa ? 'yazdir.panel.kisa' : 'yazdir.panel.uzun');
-    p.duzen = t(kisa ? 'yazdir.panel.kisa_duzen' : 'yazdir.panel.uzun_duzen');
-    p.cevirme = t(kisa ? 'duzenle.cevirme.kisa' : 'duzenle.cevirme.uzun');
-    return t('yazdir.not_tek', p);
+  function note(env, pair, duplex) {
+    var t = env.t, short = duplex === 'short';
+    var p = { double: t('print.panel.double'), double_layout: t('print.panel.double_layout'), closed: t('print.panel.closed') };
+    if (pair) return t('print.note_two_up', p);
+    p.options = t(short ? 'print.panel.short' : 'print.panel.long');
+    p.layout = t(short ? 'print.panel.short_layout' : 'print.panel.long_layout');
+    p.duplex = t(short ? 'impose.duplex.short' : 'impose.duplex.long');
+    return t('print.not_tek', p);
   }
 
-  function yazdir(dosyalar, ortam) {
-    var P = ortam.platform, t = ortam.t;
-    var l = dosyalar || [];
-    if (!P || typeof P.yazdir !== 'function') return Promise.resolve({ metin: t('rust.yazdirma_yok'), tur: 'hata' });
+  function print(files, env) {
+    var P = env.platform, t = env.t;
+    var l = files || [];
+    if (!P || typeof P.print !== 'function') return Promise.resolve({ text: t('rust.no_printing'), kind: 'error' });
     if (l.length === 1) {
       var d = l[0];
-      return Promise.resolve().then(function () { return P.yazdir(d.ad, d.bytes); }).then(function (ok) {
-        return ok ? { metin: t('yazdir.gonderildi', { ad: d.ad }) } : { metin: t('yazdir.vazgecildi'), tur: 'hata' };
-      }, function (e) { return { metin: t('yazdir.hata', { ad: d.ad, hata: hataMetni(e) }), tur: 'hata' }; });
+      return Promise.resolve().then(function () { return P.print(d.name, d.bytes); }).then(function (ok) {
+        return ok ? { text: t('print.sent', { name: d.name }) } : { text: t('print.cancelled'), kind: 'error' };
+      }, function (e) { return { text: t('print.error', { name: d.name, error: errorText(e) }), kind: 'error' }; });
     }
-    var on = l[0], arka = l[1];
-    var p = { onler: on.ad, arkalar: arka.ad };
-    return Promise.resolve().then(function () { return P.yazdir(on.ad, on.bytes); }).then(function (ok) {
-      if (!ok) return { metin: t('yazdir.vazgecildi'), tur: 'hata' };
-      return P.onayla(t('yazdir.cevir_onay', p)).then(function (devam) {
-        if (!devam) return { metin: t('yazdir.yarida', p), tur: 'hata' };
-        return Promise.resolve().then(function () { return P.yazdir(arka.ad, arka.bytes); }).then(function (ok2) {
-          return ok2 ? { metin: t('yazdir.iki_gonderildi', p) } : { metin: t('yazdir.yarida', p), tur: 'hata' };
-        }, function (e) { return { metin: t('yazdir.yarida_hata', { onler: on.ad, ad: arka.ad, hata: hataMetni(e) }), tur: 'hata' }; });
-      }, function (e) { return { metin: t('yazdir.yarida_hata', { onler: on.ad, ad: arka.ad, hata: hataMetni(e) }), tur: 'hata' }; });
-    }, function (e) { return { metin: t('yazdir.hata', { ad: on.ad, hata: hataMetni(e) }), tur: 'hata' }; });
+    var on = l[0], back = l[1];
+    var p = { fronts: on.name, backs: back.name };
+    return Promise.resolve().then(function () { return P.print(on.name, on.bytes); }).then(function (ok) {
+      if (!ok) return { text: t('print.cancelled'), kind: 'error' };
+      return P.ask(t('print.flip_confirm', p)).then(function (resume) {
+        if (!resume) return { text: t('print.halfway', p), kind: 'error' };
+        return Promise.resolve().then(function () { return P.print(back.name, back.bytes); }).then(function (ok2) {
+          return ok2 ? { text: t('print.two_sent', p) } : { text: t('print.halfway', p), kind: 'error' };
+        }, function (e) { return { text: t('print.halfway_error', { fronts: on.name, name: back.name, error: errorText(e) }), kind: 'error' }; });
+      }, function (e) { return { text: t('print.halfway_error', { fronts: on.name, name: back.name, error: errorText(e) }), kind: 'error' }; });
+    }, function (e) { return { text: t('print.error', { name: on.name, error: errorText(e) }), kind: 'error' }; });
   }
 
-  function onizlemedeAc(dosyalar, ortam) {
-    var P = ortam.platform, t = ortam.t;
-    var l = dosyalar || [];
-    if (!P || typeof P.onizlemedeAc !== 'function') return Promise.resolve({ metin: t('rust.yazdirma_yok'), tur: 'hata' });
-    var acilan = [];
+  function openInPreview(files, env) {
+    var P = env.platform, t = env.t;
+    var l = files || [];
+    if (!P || typeof P.openInPreview !== 'function') return Promise.resolve({ text: t('rust.no_printing'), kind: 'error' });
+    var opened = [];
     return l.reduce(function (z, d) {
-      return z.then(function () { return P.onizlemedeAc(d.ad, d.bytes).then(function (r) { acilan.push((r && r.ad) || d.ad); }); });
+      return z.then(function () { return P.openInPreview(d.name, d.bytes).then(function (r) { opened.push((r && r.name) || d.name); }); });
     }, Promise.resolve()).then(function () {
-      return { metin: t('onizleme.acildi', { adlar: acilan.join(t('uygulama.ve')) }) };
+      return { text: t('preview.opened', { names: opened.join(t('app.ve')) }) };
     }, function (e) {
-      var hata = hataMetni(e);
+      var error = errorText(e);
       // Seçenek E: açılamadı → Kaydet + "Önizleme'de basın" notu (açılabilenler zaten açık kalır)
-      return P.onayla(t('onizleme.acilamadi_kaydet', { hata: hata })).then(function (kaydet) {
-        if (!kaydet || typeof P.hepsiniKaydet !== 'function') return { metin: t('onizleme.acilamadi', { hata: hata }), tur: 'hata' };
-        return P.hepsiniKaydet(l, 'application/pdf').then(function (s) {
-          var m = P.kayitMesaji(s);
-          return { metin: s.kaydedilen.length ? m.metin + ' ' + t('onizleme.kaydet_not') : m.metin, tur: m.tur };
+      return P.ask(t('preview.save_open_failed', { error: error })).then(function (save) {
+        if (!save || typeof P.saveAll !== 'function') return { text: t('preview.openFailed', { error: error }), kind: 'error' };
+        return P.saveAll(l, 'application/pdf').then(function (s) {
+          var m = P.saveMessage(s);
+          return { text: s.saved.length ? m.text + ' ' + t('preview.save_note') : m.text, kind: m.kind };
         });
-      }, function () { return { metin: t('onizleme.acilamadi', { hata: hata }), tur: 'hata' }; });
+      }, function () { return { text: t('preview.openFailed', { error: error }), kind: 'error' }; });
     });
   }
 
-  KC.yazdirma = { yazdir: yazdir, onizlemedeAc: onizlemedeAc, not: not };
-  if (typeof module === 'object' && module.exports) module.exports = KC.yazdirma;
+  MC.printing = { print: print, openInPreview: openInPreview, note: note };
+  if (typeof module === 'object' && module.exports) module.exports = MC.printing;
 })(typeof self !== 'undefined' ? self : this);

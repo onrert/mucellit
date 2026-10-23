@@ -27,71 +27,71 @@
  *     }
  *   });
  */
-(function (kok) {
+(function (root) {
   'use strict';
-  var KC = kok.KitapCilt = kok.KitapCilt || {};
-  var donusturuculer = [];
-  function t(a, p) { return KC.dil.t(a, p); }
+  var MC = root.Mucellit = root.Mucellit || {};
+  var converters = [];
+  function t(a, p) { return MC.i18n.t(a, p); }
 
-  function kaydet(d) {
-    if (!d || typeof d.ad !== 'string' || !d.ad) throw new Error(t('eklenti.ad_yok'));
-    if (!Array.isArray(d.uzantilar) || !d.uzantilar.length) throw new Error(t('eklenti.uzanti_yok'));
-    if (typeof d.donustur !== 'function') throw new Error(t('eklenti.donustur_yok'));
-    donusturuculer.push({
-      ad: d.ad,
-      uzantilar: d.uzantilar.map(function (u) { return String(u).toLowerCase(); }),
+  function register(d) {
+    if (!d || typeof d.name !== 'string' || !d.name) throw new Error(t('plugin.no_name'));
+    if (!Array.isArray(d.extensions) || !d.extensions.length) throw new Error(t('plugin.no_extension'));
+    if (typeof d.convert !== 'function') throw new Error(t('plugin.no_convert'));
+    converters.push({
+      name: d.name,
+      extensions: d.extensions.map(function (u) { return String(u).toLowerCase(); }),
       mime: Array.isArray(d.mime) ? d.mime.slice() : [],
-      ayarArayuzu: typeof d.ayarArayuzu === 'function' ? d.ayarArayuzu : null,
-      sifirla: typeof d.sifirla === 'function' ? d.sifirla : null,
-      donustur: d.donustur
+      settingsUi: typeof d.settingsUi === 'function' ? d.settingsUi : null,
+      reset: typeof d.reset === 'function' ? d.reset : null,
+      convert: d.convert
     });
   }
 
-  function bul(dosya) {
-    var ad = String((dosya && dosya.name) || '').toLowerCase();
-    var tip = (dosya && dosya.type) || '';
-    for (var i = 0; i < donusturuculer.length; i++) {
-      var d = donusturuculer[i];
-      if (d.mime.indexOf(tip) >= 0) return d;
-      for (var j = 0; j < d.uzantilar.length; j++) {
-        if (ad.slice(-d.uzantilar[j].length) === d.uzantilar[j]) return d;
+  function find(file) {
+    var name = String((file && file.name) || '').toLowerCase();
+    var type = (file && file.type) || '';
+    for (var i = 0; i < converters.length; i++) {
+      var d = converters[i];
+      if (d.mime.indexOf(type) >= 0) return d;
+      for (var j = 0; j < d.extensions.length; j++) {
+        if (name.slice(-d.extensions[j].length) === d.extensions[j]) return d;
       }
     }
     return null;
   }
 
   /** Dosya girişinin accept değeri: PDF + kayıtlı uzantılar. */
-  function kabul() {
+  function accept() {
     var l = ['.pdf', 'application/pdf'];
-    donusturuculer.forEach(function (d) { l = l.concat(d.uzantilar, d.mime); });
+    converters.forEach(function (d) { l = l.concat(d.extensions, d.mime); });
     return l.join(',');
   }
 
   /** Ayar arayüzü olan her eklentinin alanlarını kap öğesine kurar. Bir eklentinin hatası diğerlerini durdurmaz. */
-  function arayuzleriKur(kap) {
-    if (!kap) return;
-    donusturuculer.forEach(function (d) {
-      if (!d.ayarArayuzu) return;
-      try { d.ayarArayuzu(kap); } catch (e) {
-        var p = kap.ownerDocument.createElement('p');
-        p.className = 'uyari';
-        p.textContent = t('eklenti.kurulamadi', { ad: d.ad, hata: e && e.message ? e.message : e });
-        kap.appendChild(p);
+  function setupInterfaces(container) {
+    if (!container) return;
+    converters.forEach(function (d) {
+      if (!d.settingsUi) return;
+      try { d.settingsUi(container); } catch (e) {
+        var p = container.ownerDocument.createElement('p');
+        p.className = 'warning';
+        p.textContent = t('plugin.setupFailed', { name: d.name, error: e && e.message ? e.message : e });
+        container.appendChild(p);
       }
     });
   }
 
   /** Yeni dosya yüklemesi başlarken: her eklentinin önceki dönüşümden kalan uyarısını temizler. */
-  function hepsiniSifirla() {
-    donusturuculer.forEach(function (d) { if (d.sifirla) { try { d.sifirla(); } catch (e) { /* bir eklenti diğerlerini durdurmaz */ } } });
+  function resetAll() {
+    converters.forEach(function (d) { if (d.reset) { try { d.reset(); } catch (e) { /* bir eklenti diğerlerini durdurmaz */ } } });
   }
 
-  KC.eklentiler = {
-    kaydet: kaydet,
-    hepsiniSifirla: hepsiniSifirla,
-    bul: bul,
-    kabul: kabul,
-    arayuzleriKur: arayuzleriKur,
-    liste: function () { return donusturuculer.map(function (d) { return d.ad; }); }
+  MC.plugins = {
+    register: register,
+    resetAll: resetAll,
+    find: find,
+    accept: accept,
+    setupInterfaces: setupInterfaces,
+    list: function () { return converters.map(function (d) { return d.name; }); }
   };
 })(typeof self !== 'undefined' ? self : this);

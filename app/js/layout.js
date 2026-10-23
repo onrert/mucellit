@@ -7,38 +7,38 @@
  * sayfa yuvalarını, içerik kutularını, kırım/katlama çizgilerini ve forma
  * sırt işaretini üretir. PDF'e çizmek output.js'in işidir.
  */
-(function (kok, fabrika) {
-  var m = fabrika();
+(function (root, factory) {
+  var m = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = m;
   } else {
-    kok.KitapCilt = kok.KitapCilt || {};
-    kok.KitapCilt.yerlesim = m;
+    root.Mucellit = root.Mucellit || {};
+    root.Mucellit.layout = m;
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var kok = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
-  function Dil() { return (kok && kok.KitapCilt && kok.KitapCilt.dil) || require('./i18n.js'); }
-  function t(a, p) { return Dil().t(a, p); }
+  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('./i18n.js'); }
+  function t(a, p) { return I18n().t(a, p); }
 
-  var ISARET_BOSLUK = 2;   // kırım işaretinin kitap bloğuna uzaklığı
-  var ISARET_BOY = 5;      // kırım işareti çizgi boyu
-  var KATLAMA_BOY = 5;     // katlama işareti, kağıt kenarından içeri
-  var SIRT_GEN = 3;        // forma sırt işareti genişliği
-  var SIRT_YUK = 5;        // forma sırt işareti yüksekliği (basamak)
-  var SIRT_STIL = 4;       // sırt işareti biçim sayısı: 0 dolu, 1 çerçeve, 2 iki küçük kare, 3 üç küçük kare
+  var MARK_GAP = 2;   // kırım işaretinin kitap bloğuna uzaklığı
+  var MARK_LENGTH = 5;      // kırım işareti çizgi boyu
+  var FOLD_MARK_LENGTH = 5;     // katlama işareti, kağıt kenarından içeri
+  var SPINE_MARK_WIDTH = 3;        // forma sırt işareti genişliği
+  var SPINE_MARK_HEIGHT = 5;        // forma sırt işareti yüksekliği (basamak)
+  var SPINE_MARK_STYLES = 4;       // sırt işareti biçim sayısı: 0 dolu, 1 çerçeve, 2 iki küçük kare, 3 üç küçük kare
 
-  function yuvarla(x) { return Math.round(x * 1e6) / 1e6; }
+  function roundOff(x) { return Math.round(x * 1e6) / 1e6; }
 
-  function sayi(v, varsayilan) {
+  function num(v, defaults) {
     var n = Number(v);
-    return isFinite(n) ? n : varsayilan;
+    return isFinite(n) ? n : defaults;
   }
 
   /** Sayfa numarasının sırt (cilt) tarafı: tek sayfalar sağdadır, sırtı solda. */
-  function sirtTarafi(tur, yuvaNo, sayfa) {
-    if (tur === 'formali') return yuvaNo === 0 ? 'sag' : 'sol';
-    return sayfa % 2 === 1 ? 'sol' : 'sag';
+  function spineSide(kind, slotNo, page) {
+    if (kind === 'sewn') return slotNo === 0 ? 'right' : 'left';
+    return page % 2 === 1 ? 'left' : 'right';
   }
 
   /**
@@ -48,20 +48,20 @@
    * olcek: 'sigdir' | 'gercek' | 'doldur'
    * Döner: { s (ölçek), gen, yuk (görünen, ölçekli), merkezX, merkezY }
    */
-  function sayfaYerlestir(kutu, sayfaGen, sayfaYuk, aci, olcek) {
-    var a = ((Number(aci) || 0) % 360 + 360) % 360;
-    var dg = a % 180 === 0 ? sayfaGen : sayfaYuk;
-    var dy = a % 180 === 0 ? sayfaYuk : sayfaGen;
+  function fitPage(box, pageWidth, pageHeight, angle, scaling) {
+    var a = ((Number(angle) || 0) % 360 + 360) % 360;
+    var dg = a % 180 === 0 ? pageWidth : pageHeight;
+    var dy = a % 180 === 0 ? pageHeight : pageWidth;
     var s;
-    if (olcek === 'gercek') s = 1;
-    else if (olcek === 'doldur') s = Math.max(kutu.w / dg, kutu.h / dy);
-    else s = Math.min(kutu.w / dg, kutu.h / dy);
+    if (scaling === 'actual') s = 1;
+    else if (scaling === 'fill') s = Math.max(box.w / dg, box.h / dy);
+    else s = Math.min(box.w / dg, box.h / dy);
     return {
       s: s,
-      gen: dg * s,
-      yuk: dy * s,
-      merkezX: kutu.x + kutu.w / 2,
-      merkezY: kutu.y + kutu.h / 2
+      width: dg * s,
+      height: dy * s,
+      centerX: box.x + box.w / 2,
+      centerY: box.y + box.h / 2
     };
   }
 
@@ -71,12 +71,12 @@
    * yönünün TERSİNE `aciTers` derece döndürüldüğünde merkezi (mx, my)'ye
    * gelsin diye başlangıç noktasının nereye konacağı.
    */
-  function cizimKokeni(mx, my, w, h, aciTers) {
-    var r = aciTers * Math.PI / 180;
+  function drawOrigin(mx, my, w, h, angleReversed) {
+    var r = angleReversed * Math.PI / 180;
     var c = Math.cos(r), s = Math.sin(r);
     var ox = (w / 2) * c - (h / 2) * s;
     var oy = (w / 2) * s + (h / 2) * c;
-    return { x: yuvarla(mx - ox), y: yuvarla(my - oy) };
+    return { x: roundOff(mx - ox), y: roundOff(my - oy) };
   }
 
   /**
@@ -89,22 +89,22 @@
    *  - dikey kağıt (gen <= yük): dikey eksen uzun kenara paraleldir →
    *    "uzun kenar" düz, "kısa kenar" ters basar → 180° döndür.
    */
-  function arkaDondurulsunMu(cevirme, kagitGen, kagitYuk) {
-    var yatay = Number(kagitGen) > Number(kagitYuk);
-    var kisa = cevirme === 'kisa';
-    return yatay ? !kisa : kisa;
+  function shouldRotateBacks(duplex, paperWidth, paperHeight) {
+    var landscape = Number(paperWidth) > Number(paperHeight);
+    var short = duplex === 'short';
+    return landscape ? !short : short;
   }
 
-  function dondur180Kutu(k, PW, PH) {
+  function rotateBox180(k, PW, PH) {
     var y = {};
     Object.keys(k).forEach(function (a) { y[a] = k[a]; });
-    y.x = yuvarla(PW - k.x - k.w);
-    y.y = yuvarla(PH - k.y - k.h);
+    y.x = roundOff(PW - k.x - k.w);
+    y.y = roundOff(PH - k.y - k.h);
     return y;
   }
 
-  function dondur180Cizgi(c, PW, PH) {
-    return { x1: yuvarla(PW - c.x1), y1: yuvarla(PH - c.y1), x2: yuvarla(PW - c.x2), y2: yuvarla(PH - c.y2), kesik: c.kesik };
+  function rotateLine180(c, PW, PH) {
+    return { x1: roundOff(PW - c.x1), y1: roundOff(PH - c.y1), x2: roundOff(PW - c.x2), y2: roundOff(PH - c.y2), dashed: c.dashed };
   }
 
   /**
@@ -112,123 +112,123 @@
    *         kirim=true, katlama=true, sirtIsareti=true,
    *         cevirme='kisa'|'uzun' (yazıcının çift yüz çevirme ayarı) }
    */
-  function yerlesim(dizilim, ayar) {
-    var PW = sayi(ayar.kagitGen, 0), PH = sayi(ayar.kagitYuk, 0);
-    var BW = sayi(ayar.kitapGen, 0), BH = sayi(ayar.kitapYuk, 0);
-    if (!(PW > 0 && PH > 0 && BW > 0 && BH > 0)) throw new RangeError(t('yerlesim.olcu_pozitif'));
-    var dis = sayi(ayar.disKenar, 0);
-    var cilt = sayi(ayar.ciltPayi, 0);
-    if (dis < 0 || cilt < 0) throw new RangeError(t('yerlesim.kenar_negatif'));
-    var tur = dizilim.tur;
-    var yuvaSayisi = dizilim.yuvaSayisi;
-    var uyarilar = [];
+  function layout(imposition, settings) {
+    var PW = num(settings.paperWidth, 0), PH = num(settings.paperHeight, 0);
+    var BW = num(settings.bookWidth, 0), BH = num(settings.bookHeight, 0);
+    if (!(PW > 0 && PH > 0 && BW > 0 && BH > 0)) throw new RangeError(t('layout.size_positive'));
+    var outer = num(settings.outerMargin, 0);
+    var binding = num(settings.gutter, 0);
+    if (outer < 0 || binding < 0) throw new RangeError(t('layout.margin_negative'));
+    var kind = imposition.kind;
+    var slotsPerSide = imposition.slotsPerSide;
+    var warnings = [];
 
-    var blokGen = BW * yuvaSayisi;
-    var sigmiyor = blokGen > PW + 0.01 || BH > PH + 0.01;
-    if (sigmiyor) {
-      uyarilar.push(t('yerlesim.sigmiyor', { n: yuvaSayisi, bw: BW, bh: BH, pw: PW, ph: PH }));
+    var blockWidth = BW * slotsPerSide;
+    var doesNotFit = blockWidth > PW + 0.01 || BH > PH + 0.01;
+    if (doesNotFit) {
+      warnings.push(t('layout.doesNotFit', { n: slotsPerSide, bw: BW, bh: BH, pw: PW, ph: PH }));
     }
-    if (BW - dis - cilt <= 0 || BH - 2 * dis <= 0) {
-      uyarilar.push(t('yerlesim.icerik_yok'));
+    if (BW - outer - binding <= 0 || BH - 2 * outer <= 0) {
+      warnings.push(t('layout.no_content'));
     }
-    var bx = (PW - blokGen) / 2;
+    var bx = (PW - blockWidth) / 2;
     var by = (PH - BH) / 2;
-    var ortaX = PW / 2;
+    var middleX = PW / 2;
 
     // Kırım/katlama çizgileri (yaprağın iki yüzünde de aynı konumda)
-    var cizgilerOrtak = [];
-    function kirimEkle(x1, y1, x2, y2) {
+    var sharedLines = [];
+    function addCropMark(x1, y1, x2, y2) {
       // çizgiyi kağıdın içine kırp; çok kısa kalırsa atla
       var c = { x1: Math.max(0, Math.min(PW, x1)), y1: Math.max(0, Math.min(PH, y1)),
         x2: Math.max(0, Math.min(PW, x2)), y2: Math.max(0, Math.min(PH, y2)) };
-      if (Math.hypot(c.x2 - c.x1, c.y2 - c.y1) >= 1) cizgilerOrtak.push(c);
+      if (Math.hypot(c.x2 - c.x1, c.y2 - c.y1) >= 1) sharedLines.push(c);
     }
-    if (ayar.kirim !== false) {
-      var g = ISARET_BOSLUK, L = ISARET_BOY;
-      var xs = [bx, bx + blokGen], ys = [by, by + BH];
+    if (settings.cropMarks !== false) {
+      var g = MARK_GAP, L = MARK_LENGTH;
+      var xs = [bx, bx + blockWidth], ys = [by, by + BH];
       xs.forEach(function (x) {
-        var yon = x === bx ? -1 : 1;
+        var direction = x === bx ? -1 : 1;
         ys.forEach(function (y) {
-          var yyon = y === by ? -1 : 1;
-          kirimEkle(x + yon * g, y, x + yon * (g + L), y);         // yatay
-          kirimEkle(x, y + yyon * g, x, y + yyon * (g + L));       // dikey
+          var ydir = y === by ? -1 : 1;
+          addCropMark(x + direction * g, y, x + direction * (g + L), y);         // yatay
+          addCropMark(x, y + ydir * g, x, y + ydir * (g + L));       // dikey
         });
       });
-      if (tur === 'tek2') { // ortadan kesim çizgisi işareti
-        kirimEkle(ortaX, by - g, ortaX, by - g - L);
-        kirimEkle(ortaX, by + BH + g, ortaX, by + BH + g + L);
+      if (kind === 'single2') { // ortadan kesim çizgisi işareti
+        addCropMark(middleX, by - g, middleX, by - g - L);
+        addCropMark(middleX, by + BH + g, middleX, by + BH + g + L);
       }
     }
-    var katlamaCizgileri = [];
-    if (tur === 'formali' && ayar.katlama !== false) {
-      katlamaCizgileri.push({ x1: ortaX, y1: PH, x2: ortaX, y2: PH - KATLAMA_BOY, kesik: true });
-      katlamaCizgileri.push({ x1: ortaX, y1: 0, x2: ortaX, y2: KATLAMA_BOY, kesik: true });
+    var foldLines = [];
+    if (kind === 'sewn' && settings.folding !== false) {
+      foldLines.push({ x1: middleX, y1: PH, x2: middleX, y2: PH - FOLD_MARK_LENGTH, dashed: true });
+      foldLines.push({ x1: middleX, y1: 0, x2: middleX, y2: FOLD_MARK_LENGTH, dashed: true });
     }
 
-    var sirtBasamak = Math.max(1, Math.floor((BH - 10) / SIRT_YUK));
-    var arkaDonsun = arkaDondurulsunMu(ayar.cevirme, PW, PH);
-    var yuzler = [];
+    var spineSteps = Math.max(1, Math.floor((BH - 10) / SPINE_MARK_HEIGHT));
+    var rotateBacks = shouldRotateBacks(settings.duplex, PW, PH);
+    var sides = [];
 
-    dizilim.yapraklar.forEach(function (yap) {
-      ['on', 'arka'].forEach(function (yuz) {
-        var sayfalar = yap[yuz];
-        var yuvalar = sayfalar.map(function (sayfa, yuvaNo) {
-          var yuva = { x: yuvarla(bx + yuvaNo * BW), y: yuvarla(by), w: BW, h: BH };
-          var taraf = sirtTarafi(tur, yuvaNo, sayfa);
-          var kay = tur === 'formali' ? (yap.kayma || 0) : 0;
-          var icX = yuva.x + (taraf === 'sol' ? cilt : dis) + (taraf === 'sol' ? -kay : kay);
-          var icerik = { x: yuvarla(icX), y: yuvarla(by + dis), w: yuvarla(Math.max(0, BW - cilt - dis)), h: yuvarla(Math.max(0, BH - 2 * dis)) };
-          return { sayfa: sayfa, bos: dizilim.bosMu(sayfa), yuva: yuva, icerik: icerik, sirtTaraf: taraf, kayma: kay };
+    imposition.sheets.forEach(function (sheet) {
+      ['front', 'back'].forEach(function (side) {
+        var pages = sheet[side];
+        var slots = pages.map(function (page, slotNo) {
+          var slot = { x: roundOff(bx + slotNo * BW), y: roundOff(by), w: BW, h: BH };
+          var side = spineSide(kind, slotNo, page);
+          var creep = kind === 'sewn' ? (sheet.creep || 0) : 0;
+          var icX = slot.x + (side === 'left' ? binding : outer) + (side === 'left' ? -creep : creep);
+          var content = { x: roundOff(icX), y: roundOff(by + outer), w: roundOff(Math.max(0, BW - binding - outer)), h: roundOff(Math.max(0, BH - 2 * outer)) };
+          return { page: page, blank: imposition.isBlank(page), slot: slot, content: content, spineSide: side, creep: creep };
         });
-        var cizgiler = cizgilerOrtak.concat(katlamaCizgileri);
-        var kareler = [];
-        if (tur === 'formali' && ayar.sirtIsareti !== false && yuz === 'on' && yap.formaIci === 0) {
+        var lines = sharedLines.concat(foldLines);
+        var squares = [];
+        if (kind === 'sewn' && settings.spineMarks !== false && side === 'front' && sheet.indexInSignature === 0) {
           // Basamak sayısı (sirtBasamak, kitap yüksekliğine bağlı) aşılınca işaret yana kaymaz, hep katlama
           // çizgisinde (ortaX) kalır; yeni turda basamaklar yeniden yukarıdan başlar ve işaret BİÇİMİ değişir
           // (tur 0 dolu, 1 çerçeve, 2 iki küçük kare, 3 üç küçük kare; sonra başa döner). (tur, basamak) çifti benzersizdir.
-          var basamak = yap.forma % sirtBasamak;
-          var tur2 = Math.floor(yap.forma / sirtBasamak);
-          kareler.push({ x: yuvarla(ortaX - SIRT_GEN / 2), y: yuvarla(by + BH - 5 - (basamak + 1) * SIRT_YUK), w: SIRT_GEN, h: SIRT_YUK, forma: yap.forma, tur: tur2, basamak: basamak, stil: tur2 % SIRT_STIL });
+          var step = sheet.signature % spineSteps;
+          var cycle = Math.floor(sheet.signature / spineSteps);
+          squares.push({ x: roundOff(middleX - SPINE_MARK_WIDTH / 2), y: roundOff(by + BH - 5 - (step + 1) * SPINE_MARK_HEIGHT), w: SPINE_MARK_WIDTH, h: SPINE_MARK_HEIGHT, signature: sheet.signature, kind: cycle, step: step, style: cycle % SPINE_MARK_STYLES });
         }
-        var donuk = arkaDonsun && yuz === 'arka';
-        if (donuk) {
-          yuvalar = yuvalar.map(function (y) {
+        var rotated = rotateBacks && side === 'back';
+        if (rotated) {
+          slots = slots.map(function (y) {
             var k = {}; Object.keys(y).forEach(function (a) { k[a] = y[a]; });
-            k.yuva = dondur180Kutu(y.yuva, PW, PH);
-            k.icerik = dondur180Kutu(y.icerik, PW, PH);
+            k.slot = rotateBox180(y.slot, PW, PH);
+            k.content = rotateBox180(y.content, PW, PH);
             return k;
           });
-          cizgiler = cizgiler.map(function (c) { return dondur180Cizgi(c, PW, PH); });
-          kareler = kareler.map(function (k) { return dondur180Kutu(k, PW, PH); });
+          lines = lines.map(function (c) { return rotateLine180(c, PW, PH); });
+          squares = squares.map(function (k) { return rotateBox180(k, PW, PH); });
         }
-        yuzler.push({ yaprak: yap.no, forma: yap.forma, formaIci: yap.formaIci, yuz: yuz, dondur180: donuk, yuvalar: yuvalar, cizgiler: cizgiler, kareler: kareler });
+        sides.push({ sheet: sheet.no, signature: sheet.signature, indexInSignature: sheet.indexInSignature, side: side, rotate180: rotated, slots: slots, lines: lines, squares: squares });
       });
     });
 
-    return { kagit: { gen: PW, yuk: PH }, kitap: { gen: BW, yuk: BH }, yuzler: yuzler, uyarilar: uyarilar, sigmiyor: sigmiyor };
+    return { paper: { width: PW, height: PH }, book: { width: BW, height: BH }, sides: sides, warnings: warnings, doesNotFit: doesNotFit };
   }
 
   /** Sırt işaretinin çizilecek dolu dikdörtgenleri (mm; çizen taraf hepsini doldurur). Merkez x değişmez. */
-  function isaretParcalari(kr) {
-    var stil = kr.stil || 0, k = 0.6;
-    function r(dx, dy, w, h) { return { x: yuvarla(kr.x + dx), y: yuvarla(kr.y + dy), w: w, h: h }; }
-    if (stil === 1) { // çerçeve (içi boş)
+  function markParts(kr) {
+    var style = kr.style || 0, k = 0.6;
+    function r(dx, dy, w, h) { return { x: roundOff(kr.x + dx), y: roundOff(kr.y + dy), w: w, h: h }; }
+    if (style === 1) { // çerçeve (içi boş)
       return [r(0, 0, kr.w, k), r(0, kr.h - k, kr.w, k), r(0, k, k, kr.h - 2 * k), r(kr.w - k, k, k, kr.h - 2 * k)];
     }
-    if (stil === 2 || stil === 3) { // 2 ya da 3 küçük kare, dikey dizili, yatayda ortalı
-      var n = stil, a = n === 2 ? 1.5 : 1.2, ara = (kr.h - n * a) / (n + 1), liste = [];
-      for (var i = 0; i < n; i++) liste.push(r((kr.w - a) / 2, ara + i * (a + ara), a, a));
-      return liste;
+    if (style === 2 || style === 3) { // 2 ya da 3 küçük kare, dikey dizili, yatayda ortalı
+      var n = style, a = n === 2 ? 1.5 : 1.2, gap = (kr.h - n * a) / (n + 1), list = [];
+      for (var i = 0; i < n; i++) list.push(r((kr.w - a) / 2, gap + i * (a + gap), a, a));
+      return list;
     }
     return [r(0, 0, kr.w, kr.h)];
   }
 
   return {
-    isaretParcalari: isaretParcalari,
-    yerlesim: yerlesim,
-    sayfaYerlestir: sayfaYerlestir,
-    cizimKokeni: cizimKokeni,
-    sirtTarafi: sirtTarafi,
-    arkaDondurulsunMu: arkaDondurulsunMu
+    markParts: markParts,
+    layout: layout,
+    fitPage: fitPage,
+    drawOrigin: drawOrigin,
+    spineSide: spineSide,
+    shouldRotateBacks: shouldRotateBacks
   };
 });

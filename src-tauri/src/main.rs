@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    kitap_cilt_lib::run()
+    mucellit_lib::run()
 }

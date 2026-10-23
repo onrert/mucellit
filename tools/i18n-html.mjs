@@ -17,63 +17,63 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
-const HTML_YOLU = join(REPO, 'app', 'index.html');
-const Dil = require(join(REPO, 'app', 'js', 'i18n.js'));
-const EN = Dil.jsonAyikla(readFileSync(join(REPO, 'app', 'i18n', 'en.js'), 'utf8'));
+const HTML_PATH = join(REPO, 'app', 'index.html');
+const I18n = require(join(REPO, 'app', 'js', 'i18n.js'));
+const EN = I18n.extractJson(readFileSync(join(REPO, 'app', 'i18n', 'en.js'), 'utf8'));
 
 const metinKac = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const oznitelikKac = (s) => metinKac(s).replace(/"/g, '&quot;');
+const escapeAttribute = (s) => metinKac(s).replace(/"/g, '&quot;');
 
 /** HTML'i en sözlüğüyle günceller. { html, degisen, sorun[] } */
-export function guncelle(html, en) {
-  const sorun = [];
-  let degisen = 0;
+export function update(html, en) {
+  const problem = [];
+  let changed = 0;
   const OZ = '(?:[^>"\']|"[^"]*"|\'[^\']*\')*';
   // 1) data-dil: <etiket … data-dil="a" …>METİN</etiket>  (iç içe öğe yok)
-  const toplam = (html.match(/\sdata-dil="/g) || []).length;
-  let bulunan = 0;
-  let h = html.replace(new RegExp(`(<([a-z][a-z0-9]*)\\b${OZ}\\sdata-dil="([^"]+)"${OZ}>)([^<]*)(</\\2\\s*>)`, 'gi'), (tam, ac, et, a, ic, kapa) => {
-    bulunan++;
-    if (typeof en[a] !== 'string') { sorun.push(`${a}: en sözlüğünde düz metin değil`); return tam; }
-    const yeni = metinKac(en[a]);
-    if (yeni !== ic) degisen++;
-    return ac + yeni + kapa;
+  const total = (html.match(/\sdata-i18n="/g) || []).length;
+  let found = 0;
+  let h = html.replace(new RegExp(`(<([a-z][a-z0-9]*)\\b${OZ}\\sdata-i18n="([^"]+)"${OZ}>)([^<]*)(</\\2\\s*>)`, 'gi'), (tam, open, et, a, inner, close) => {
+    found++;
+    if (typeof en[a] !== 'string') { problem.push(`${a}: en sözlüğünde düz metin değil`); return tam; }
+    const fresh = metinKac(en[a]);
+    if (fresh !== inner) changed++;
+    return open + fresh + close;
   });
-  if (bulunan !== toplam) sorun.push(`${toplam - bulunan} data-dil öğesi yazılamadı (içinde başka öğe var ya da kapanışı yok)`);
+  if (found !== total) problem.push(`${total - found} data-i18n öğesi yazılamadı (içinde başka öğe var ya da kapanışı yok)`);
   // 2) data-dil-oz: her "öznitelik:anahtar" için öznitelik değeri (yoksa eklenir)
-  h = h.replace(new RegExp(`<[a-z][a-z0-9]*\\b${OZ}\\sdata-dil-oz="([^"]+)"${OZ}>`, 'gi'), (etiket, liste) => {
-    let e = etiket;
-    for (const cift of liste.split(';')) {
-      const b = cift.indexOf(':');
+  h = h.replace(new RegExp(`<[a-z][a-z0-9]*\\b${OZ}\\sdata-i18n-oz="([^"]+)"${OZ}>`, 'gi'), (label, list) => {
+    let e = label;
+    for (const double of list.split(';')) {
+      const b = double.indexOf(':');
       if (b <= 0) continue;
-      const ad = cift.slice(0, b).trim(), a = cift.slice(b + 1).trim();
-      if (typeof en[a] !== 'string') { sorun.push(`${ad}:${a}: en sözlüğünde düz metin değil`); continue; }
-      const deger = oznitelikKac(en[a]);
-      const re = new RegExp(`\\s${ad}="[^"]*"`);
+      const name = double.slice(0, b).trim(), a = double.slice(b + 1).trim();
+      if (typeof en[a] !== 'string') { problem.push(`${name}:${a}: en sözlüğünde düz metin değil`); continue; }
+      const value = escapeAttribute(en[a]);
+      const re = new RegExp(`\\s${name}="[^"]*"`);
       if (re.test(e)) {
         const once = e;
-        e = e.replace(re, ` ${ad}="${deger}"`);
-        if (e !== once) degisen++;
+        e = e.replace(re, ` ${name}="${value}"`);
+        if (e !== once) changed++;
       } else {
-        e = e.replace(/\sdata-dil-oz="/, ` ${ad}="${deger}" data-dil-oz="`);
-        degisen++;
+        e = e.replace(/\sdata-i18n-oz="/, ` ${name}="${value}" data-i18n-oz="`);
+        changed++;
       }
     }
     return e;
   });
-  return { html: h, degisen, sorun };
+  return { html: h, changed, problem };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const denetle = process.argv.includes('--denetle');
-  const eski = readFileSync(HTML_YOLU, 'utf8');
-  const r = guncelle(eski, EN);
-  if (r.sorun.length) { console.error('dil-html: ' + r.sorun.join('\n  ')); process.exit(1); }
-  if (denetle) {
-    if (r.html !== eski) { console.error(`dil-html: index.html güncel değil (${r.degisen} öğe); node tools/i18n-html.mjs çalıştırın`); process.exit(1); }
-    console.log('dil-html: index.html güncel');
+  const verify = process.argv.includes('--verify');
+  const old = readFileSync(HTML_PATH, 'utf8');
+  const r = update(old, EN);
+  if (r.problem.length) { console.error('i18n-html: ' + r.problem.join('\n  ')); process.exit(1); }
+  if (verify) {
+    if (r.html !== old) { console.error(`i18n-html: index.html güncel değil (${r.changed} öğe); node tools/i18n-html.mjs çalıştırın`); process.exit(1); }
+    console.log('i18n-html: index.html güncel');
   } else {
-    if (r.html !== eski) writeFileSync(HTML_YOLU, r.html);
-    console.log(`dil-html: ${r.degisen} öğe güncellendi`);
+    if (r.html !== old) writeFileSync(HTML_PATH, r.html);
+    console.log(`i18n-html: ${r.changed} öğe güncellendi`);
   }
 }

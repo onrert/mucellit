@@ -8,17 +8,17 @@
   "permissions": [
     "core:event:allow-listen",
     "dialog:allow-message",
-    "allow-dosya-ac",
-    "allow-dosya-oku",
-    "allow-dosya-kaydet",
-    "allow-son-acilanlar",
-    "allow-son-acilani-oku",
-    "allow-bekleyen-acilanlar",
-    "allow-veri-yedekle",
-    "allow-veri-oku",
-    "allow-dil-oku",
-    "allow-dil-ayarla",
-    "allow-yazdir",
-    "allow-onizlemede-ac"
+    "allow-open-file",
+    "allow-read-file",
+    "allow-save-file",
+    "allow-recent-files",
+    "allow-read-recent-file",
+    "allow-pending-opens",
+    "allow-backup-data",
+    "allow-read-backup",
+    "allow-read-language",
+    "allow-set-language",
+    "allow-print",
+    "allow-open-in-preview"
   ]
 }

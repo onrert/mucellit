@@ -6,8 +6,8 @@
 //! bütün etiketler (öntanımlı öğeler dahil: Hakkında, Gizle, Çık, Pencereyi Kapat, Geri Al …) sözlükten,
 //! şu anki dilde (`crate::dil`); Görünüm > Dil alt menüsü (`dil:<seçim>`, JS işler); dil değişince menü yeniden kurulur.
 
-use crate::i18n::{self, metin};
-use crate::files::Durum;
+use crate::files::FileState;
+use crate::i18n::{self, text};
 use tauri::menu::{
     CheckMenuItemBuilder, Menu, MenuEvent, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -15,341 +15,342 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 /// Görünüm menüsündeki sekme öğeleri: (kimlik, sözlük anahtarı, kısayol). Kimlikler platform-tauri.js'teki
 /// `SEKME_OGESI` ile aynı olmalı.
-pub const SEKMELER: [(&str, &str, &str); 4] = [
-    ("sekme-duzenle", "sekme.duzenle", "CmdOrCtrl+1"),
-    ("sekme-surec", "sekme.surec", "CmdOrCtrl+2"),
-    ("sekme-hesapla", "sekme.hesapla", "CmdOrCtrl+3"),
-    ("sekme-ogren", "sekme.ogren", "CmdOrCtrl+4"),
+pub const TABS: [(&str, &str, &str); 4] = [
+    ("tab-impose", "tab.impose", "CmdOrCtrl+1"),
+    ("tab-projects", "tab.projects", "CmdOrCtrl+2"),
+    ("tab-calculator", "tab.calculator", "CmdOrCtrl+3"),
+    ("tab-learn", "tab.learn", "CmdOrCtrl+4"),
 ];
 
 /// Dosya menüsünün webview'e giden öğeleri: (kimlik, sözlük anahtarı, kısayol). Kimlikler platform-tauri.js'teki
 /// `DOSYA_OGESI` ile aynı olmalı.
 /// Yazdır… ⌘P (HIG: Dosya menüsü), Önizleme'de Aç ⌥⌘P.
-pub const DOSYA_OGELERI: [(&str, &str, Option<&str>); 6] = [
-    ("dosya-ac", "menu.ac", Some("CmdOrCtrl+O")),
-    ("dosya-kaydet", "menu.kaydet", Some("CmdOrCtrl+S")),
-    ("dosya-yazdir", "menu.yazdir", Some("CmdOrCtrl+P")),
-    ("dosya-onizleme", "menu.onizleme", Some("Alt+CmdOrCtrl+P")),
-    ("json-disa", "menu.json_disa", None),
-    ("json-ice", "menu.json_ice", None),
+pub const FILE_ITEMS: [(&str, &str, Option<&str>); 6] = [
+    ("file-open", "menu.open", Some("CmdOrCtrl+O")),
+    ("file-save", "menu.save", Some("CmdOrCtrl+S")),
+    ("file-print", "menu.print", Some("CmdOrCtrl+P")),
+    ("file-preview", "menu.preview", Some("Alt+CmdOrCtrl+P")),
+    ("json-export", "menu.json_disa", None),
+    ("json-import", "menu.json_ice", None),
 ];
 
 /// Son açılan öğesinin kimlik öneki: "son:<uuid>".
-pub const SON_ONEK: &str = "son:";
+pub const RECENT_PREFIX: &str = "last:";
 /// Dil öğesinin kimlik öneki: "dil:sistem" | "dil:<kod>" (JS `KitapCilt.uygulama.dilDegistir`).
-pub const DIL_ONEK: &str = "dil:";
+pub const LANGUAGE_PREFIX: &str = "i18n:";
 /// Rust'ta işlenen öğe.
-pub const SON_TEMIZLE: &str = "son-temizle";
+pub const CLEAR_LAST: &str = "last-clear";
 
 /// Webview'e iletilecek menü öğesi mi?
-pub fn iletilir_mi(kimlik: &str) -> bool {
-    SEKMELER.iter().any(|(k, _, _)| *k == kimlik)
-        || DOSYA_OGELERI.iter().any(|(k, _, _)| *k == kimlik)
-        || kimlik.strip_prefix(SON_ONEK).is_some_and(|u| {
+pub fn is_forwarded(id: &str) -> bool {
+    TABS.iter().any(|(k, _, _)| *k == id)
+        || FILE_ITEMS.iter().any(|(k, _, _)| *k == id)
+        || id.strip_prefix(RECENT_PREFIX).is_some_and(|u| {
             uuid::Uuid::parse_str(u).is_ok_and(|v| v.hyphenated().to_string() == u)
         })
-        || kimlik
-            .strip_prefix(DIL_ONEK)
-            .is_some_and(|s| s == "sistem" || i18n::destekli(s))
+        || id
+            .strip_prefix(LANGUAGE_PREFIX)
+            .is_some_and(|s| s == "system" || i18n::is_supported(s))
 }
 
 /// Menü etiketi: muda macOS'ta tek `&`'yi (anımsatıcı) siler; dosya adındaki `&` görünsün diye ikilenir.
-pub fn etiket_kac(ad: &str) -> String {
-    ad.replace('&', "&&")
+pub fn escape_label(name: &str) -> String {
+    name.replace('&', "&&")
 }
 
-pub fn olustur<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let ad = app.package_info().name.clone();
-    let uygulama = SubmenuBuilder::new(app, &ad)
-        .about_with_text(metin("menu.hakkinda", &[("ad", &ad)]), None)
+pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let name = app.package_info().name.clone();
+    let app_menu = SubmenuBuilder::new(app, &name)
+        .about_with_text(text("menu.about", &[("name", &name)]), None)
         .separator()
-        .services_with_text(metin("menu.hizmetler", &[]))
+        .services_with_text(text("menu.services", &[]))
         .separator()
-        .hide_with_text(metin("menu.gizle", &[("ad", &ad)]))
-        .hide_others_with_text(metin("menu.digerlerini_gizle", &[]))
-        .show_all_with_text(metin("menu.tumunu_goster", &[]))
+        .hide_with_text(text("menu.hide", &[("name", &name)]))
+        .hide_others_with_text(text("menu.hide_others", &[]))
+        .show_all_with_text(text("menu.show_all", &[]))
         .separator()
-        .quit_with_text(metin("menu.cik", &[("ad", &ad)]))
+        .quit_with_text(text("menu.quit", &[("name", &name)]))
         .build()?;
 
-    let mut son = SubmenuBuilder::new(app, metin("menu.son_acilanlar", &[]));
-    let ozetler = app
-        .try_state::<Durum>()
-        .map(|d| d.son_ozetler(app))
+    let mut last = SubmenuBuilder::new(app, text("menu.recent_files", &[]));
+    let summaries = app
+        .try_state::<FileState>()
+        .map(|d| d.recent_summaries(app))
         .unwrap_or_default();
-    if ozetler.is_empty() {
-        son = son.item(
-            &MenuItemBuilder::with_id("son-bos", metin("menu.son_bos", &[]))
+    if summaries.is_empty() {
+        last = last.item(
+            &MenuItemBuilder::with_id("last-blank", text("menu.son_bos", &[]))
                 .enabled(false)
                 .build(app)?,
         );
     } else {
-        for o in &ozetler {
-            son = son.item(
-                &MenuItemBuilder::with_id(format!("{SON_ONEK}{}", o.kimlik), etiket_kac(&o.ad))
-                    .build(app)?,
+        for o in &summaries {
+            last = last.item(
+                &MenuItemBuilder::with_id(
+                    format!("{RECENT_PREFIX}{}", o.id),
+                    escape_label(&o.name),
+                )
+                .build(app)?,
             );
         }
-        son = son.separator().item(
-            &MenuItemBuilder::with_id(SON_TEMIZLE, metin("menu.son_temizle", &[])).build(app)?,
-        );
+        last = last
+            .separator()
+            .item(&MenuItemBuilder::with_id(CLEAR_LAST, text("menu.clear_last", &[])).build(app)?);
     }
-    let son = son.build()?;
+    let last = last.build()?;
 
-    let [ac, kaydet, yazdir, onizleme, json_disa, json_ice] =
-        DOSYA_OGELERI.map(|(kimlik, anahtar, kisayol)| {
-            let mut b = MenuItemBuilder::with_id(kimlik, metin(anahtar, &[]));
-            if let Some(k) = kisayol {
+    let [open, save, print, preview, json_disa, json_ice] =
+        FILE_ITEMS.map(|(id, key, shortcut)| {
+            let mut b = MenuItemBuilder::with_id(id, text(key, &[]));
+            if let Some(k) = shortcut {
                 b = b.accelerator(k);
             }
             b.build(app)
         });
-    let dosya = SubmenuBuilder::new(app, metin("menu.dosya", &[]))
-        .item(&ac?)
-        .item(&son)
+    let file = SubmenuBuilder::new(app, text("menu.file", &[]))
+        .item(&open?)
+        .item(&last)
         .separator()
-        .item(&kaydet?)
+        .item(&save?)
         .separator()
-        .item(&yazdir?)
-        .item(&onizleme?)
+        .item(&print?)
+        .item(&preview?)
         .separator()
         .item(&json_disa?)
         .item(&json_ice?)
         .separator()
-        .close_window_with_text(metin("menu.pencereyi_kapat", &[]))
+        .close_window_with_text(text("menu.close_window", &[]))
         .build()?;
 
-    let duzen = SubmenuBuilder::new(app, metin("menu.duzen", &[]))
-        .undo_with_text(metin("menu.geri_al", &[]))
-        .redo_with_text(metin("menu.yinele", &[]))
+    let layout = SubmenuBuilder::new(app, text("menu.layout", &[]))
+        .undo_with_text(text("menu.undo", &[]))
+        .redo_with_text(text("menu.redo", &[]))
         .separator()
-        .cut_with_text(metin("menu.kes", &[]))
-        .copy_with_text(metin("menu.kopyala", &[]))
-        .paste_with_text(metin("menu.yapistir", &[]))
-        .select_all_with_text(metin("menu.tumunu_sec", &[]))
+        .cut_with_text(text("menu.cut", &[]))
+        .copy_with_text(text("menu.copy", &[]))
+        .paste_with_text(text("menu.paste", &[]))
+        .select_all_with_text(text("menu.select_all", &[]))
         .build()?;
 
-    let mut gorunum = SubmenuBuilder::new(app, metin("menu.gorunum", &[]));
-    for (kimlik, anahtar, kisayol) in SEKMELER {
-        gorunum = gorunum.item(
-            &MenuItemBuilder::with_id(kimlik, metin(anahtar, &[]))
-                .accelerator(kisayol)
+    let mut view = SubmenuBuilder::new(app, text("menu.view", &[]));
+    for (id, key, shortcut) in TABS {
+        view = view.item(
+            &MenuItemBuilder::with_id(id, text(key, &[]))
+                .accelerator(shortcut)
                 .build(app)?,
         );
     }
-    let gorunum = gorunum
+    let view = view
         .separator()
-        .item(&dil_menusu(app)?)
+        .item(&language_menu(app)?)
         .separator()
         .item(&PredefinedMenuItem::fullscreen(
             app,
-            Some(&metin("menu.tam_ekran", &[])),
+            Some(&text("menu.full_screen", &[])),
         )?)
         .build()?;
 
-    let pencere = SubmenuBuilder::new(app, metin("menu.pencere", &[]))
-        .minimize_with_text(metin("menu.kucult", &[]))
-        .maximize_with_text(metin("menu.buyut", &[]))
+    let window = SubmenuBuilder::new(app, text("menu.window", &[]))
+        .minimize_with_text(text("menu.shrink", &[]))
+        .maximize_with_text(text("menu.zoom", &[]))
         .build()?;
 
-    Menu::with_items(app, &[&uygulama, &dosya, &duzen, &gorunum, &pencere])
+    Menu::with_items(app, &[&app_menu, &file, &layout, &view, &window])
 }
 
 /// Görünüm > Dil: sistem dili ("Sistem Dili (X)", Title Case: menu.dil_sistem) + her sözlük (kendi adıyla); şu anki
 /// seçim işaretli.
-fn dil_menusu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Submenu<R>> {
-    let secim = i18n::secim();
+fn language_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Submenu<R>> {
+    let choice = i18n::choice();
     // seçicideki "Sistem dili (X)" ile aynı kaynak (i18n::sistem_kodu; JS dil_oku.sistem ile alır)
-    let mut m = SubmenuBuilder::new(app, metin("menu.dil", &[])).item(
-        &CheckMenuItemBuilder::with_id(format!("{DIL_ONEK}sistem"), i18n::sistem_etiketi())
-            .checked(secim.is_none())
+    let mut m = SubmenuBuilder::new(app, text("menu.i18n", &[])).item(
+        &CheckMenuItemBuilder::with_id(format!("{LANGUAGE_PREFIX}system"), i18n::system_label())
+            .checked(choice.is_none())
             .build(app)?,
     );
-    for kod in i18n::diller() {
+    for code in i18n::languages() {
         m = m.item(
-            &CheckMenuItemBuilder::with_id(format!("{DIL_ONEK}{kod}"), etiket_kac(&i18n::ad(&kod)))
-                .checked(secim.as_deref() == Some(kod.as_str()))
-                .build(app)?,
+            &CheckMenuItemBuilder::with_id(
+                format!("{LANGUAGE_PREFIX}{code}"),
+                escape_label(&i18n::name(&code)),
+            )
+            .checked(choice.as_deref() == Some(code.as_str()))
+            .build(app)?,
         );
     }
     m.build()
 }
 
 /// Menüyü (Son Açılanlar dahil) yeniden kurar.
-pub fn yenile<R: Runtime>(app: &AppHandle<R>) {
-    match olustur(app).and_then(|m| app.set_menu(m)) {
+pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
+    match create(app).and_then(|m| app.set_menu(m)) {
         Ok(_) => {}
         Err(e) => eprintln!("menü yenilenemedi: {e}"),
     }
 }
 
-pub fn olay<R: Runtime>(app: &AppHandle<R>, olay: MenuEvent) {
-    let kimlik = olay.id().as_ref();
-    if kimlik == SON_TEMIZLE {
-        crate::files::son_acilanlari_temizle(app);
-    } else if iletilir_mi(kimlik) {
-        if kimlik.starts_with(DIL_ONEK) {
+pub fn on_event<R: Runtime>(app: &AppHandle<R>, on_event: MenuEvent) {
+    let id = on_event.id().as_ref();
+    if id == CLEAR_LAST {
+        crate::files::clear_recent_files(app);
+    } else if is_forwarded(id) {
+        if id.starts_with(LANGUAGE_PREFIX) {
             // İşaretli öğe tıklanınca kendiliğinden değişir; JS vazgeçerse yanlış kalmasın diye menü şimdiki
             // seçimle yeniden kurulur (JS kabul ederse dil_ayarla yeniden kurar).
-            yenile(app);
+            refresh(app);
         }
-        if let Err(e) = app.emit("menu", kimlik) {
-            eprintln!("menü olayı iletilemedi ({kimlik}): {e}");
+        if let Err(e) = app.emit("menu", id) {
+            eprintln!("menü olayı iletilemedi ({id}): {e}");
         }
     }
 }
 
 #[cfg(test)]
-mod testler {
+mod tests {
     use super::*;
 
     #[test]
-    fn sekme_kimlikleri_iletilir_digerleri_iletilmez() {
-        for k in [
-            "sekme-duzenle",
-            "sekme-surec",
-            "sekme-hesapla",
-            "sekme-ogren",
-        ] {
-            assert!(iletilir_mi(k), "{k}");
+    fn tab_ids_are_forwarded_others_are_not() {
+        for k in ["tab-impose", "tab-projects", "tab-calculator", "tab-learn"] {
+            assert!(is_forwarded(k), "{k}");
         }
         for k in [
             "",
-            "sekme",
+            "tab",
             "quit",
-            "sekme-duzenle ",
-            "SEKME-SUREC",
-            "sekme-ogren ",
-            "sekme-OGREN",
-            "sekme-ogren2",
+            "tab-impose ",
+            "TAB-PROJECTS",
+            "tab-learn ",
+            "tab-LEARN",
+            "tab-ogren2",
         ] {
-            assert!(!iletilir_mi(k), "{k:?}");
+            assert!(!is_forwarded(k), "{k:?}");
         }
     }
 
     #[test]
-    fn dosya_ve_son_acilan_ogeleri_iletilir_kusurlu_kimlik_iletilmez() {
+    fn file_and_recent_items_are_forwarded_faulty_id_is_not() {
         for k in [
-            "dosya-ac",
-            "dosya-kaydet",
-            "dosya-yazdir",
-            "dosya-onizleme",
-            "json-disa",
-            "json-ice",
-            "son:7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f",
+            "file-open",
+            "file-save",
+            "file-print",
+            "file-preview",
+            "json-export",
+            "json-import",
+            "last:7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f",
         ] {
-            assert!(iletilir_mi(k), "{k}");
+            assert!(is_forwarded(k), "{k}");
         }
         for k in [
-            "son:",
+            "last:",
             "son:../../etc/passwd",
             "son:/etc/hosts",
-            "son:7F0C3A7E-1D2B-4C5D-8E9F-0A1B2C3D4E5F",
-            "son:7f0c3a7e1d2b4c5d8e9f0a1b2c3d4e5f",
+            "last:7F0C3A7E-1D2B-4C5D-8E9F-0A1B2C3D4E5F",
+            "last:7f0c3a7e1d2b4c5d8e9f0a1b2c3d4e5f",
             "son:7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f ",
-            "son-temizle",
-            "son-bos",
-            "dosya-ac ",
+            "last-clear",
+            "last-blank",
+            "file-open ",
         ] {
-            assert!(!iletilir_mi(k), "{k:?}");
+            assert!(!is_forwarded(k), "{k:?}");
         }
     }
 
     #[test]
-    fn dil_ogeleri_iletilir_kusurlu_dil_iletilmez() {
-        for k in ["dil:sistem", "dil:en", "dil:tr"] {
-            assert!(iletilir_mi(k), "{k}");
+    fn language_items_are_forwarded_faulty_language_is_not() {
+        for k in ["i18n:system", "i18n:en", "i18n:tr"] {
+            assert!(is_forwarded(k), "{k}");
         }
         for k in [
-            "dil:",
-            "dil:xx",
-            "dil:TR",
+            "i18n:",
+            "i18n:xx",
+            "i18n:TR",
             "dil:tr ",
             "dil:../en",
-            "dil:sistem2",
-            "dil",
+            "i18n:sistem2",
+            "i18n",
         ] {
-            assert!(!iletilir_mi(k), "{k:?}");
+            assert!(!is_forwarded(k), "{k:?}");
         }
     }
 
     /// Menüdeki her sözlük anahtarı her dilde var (eksik anahtar menüde anahtar adı olarak görünürdü).
     #[test]
-    fn menu_anahtarlari_her_dilde() {
-        let mut anahtarlar: Vec<&str> = SEKMELER.iter().map(|(_, a, _)| *a).collect();
-        anahtarlar.extend(DOSYA_OGELERI.iter().map(|(_, a, _)| *a));
-        for kod in crate::i18n::diller() {
-            for a in &anahtarlar {
-                let m = crate::i18n::metin_dilde(&kod, a, &[]);
-                assert_ne!(&m, a, "{kod}: {a} eksik");
+    fn menu_keys_in_every_language() {
+        let mut keys: Vec<&str> = TABS.iter().map(|(_, a, _)| *a).collect();
+        keys.extend(FILE_ITEMS.iter().map(|(_, a, _)| *a));
+        for code in crate::i18n::languages() {
+            for a in &keys {
+                let m = crate::i18n::text_in(&code, a, &[]);
+                assert_ne!(&m, a, "{code}: {a} missing");
             }
         }
         assert_eq!(
-            crate::i18n::metin_dilde("en", "menu.pencereyi_kapat", &[]),
+            crate::i18n::text_in("en", "menu.close_window", &[]),
             "Close Window"
         );
         assert_eq!(
-            crate::i18n::metin_dilde("tr", "menu.pencereyi_kapat", &[]),
+            crate::i18n::text_in("tr", "menu.close_window", &[]),
             "Pencereyi Kapat"
         );
         // AppKit toggleFullScreen: öğesini menü doğrulanırken kendi metniyle yeniden adlandırır; sözlük o
         // metinle aynı (MenuCommands.loctable "Enter Full Screen": en/tr), doğrulamadan önce/sonra ad değişmez.
         assert_eq!(
-            crate::i18n::metin_dilde("en", "menu.tam_ekran", &[]),
+            crate::i18n::text_in("en", "menu.full_screen", &[]),
             "Enter Full Screen"
         );
         assert_eq!(
-            crate::i18n::metin_dilde("tr", "menu.tam_ekran", &[]),
+            crate::i18n::text_in("tr", "menu.full_screen", &[]),
             "Tam Ekrana Geç"
         );
     }
 
     /// Görünüm menüsünde 4. sekme Öğren ⌘4; etiket iki dilde sözlükten ("Learn" / "Öğren").
     #[test]
-    fn ogren_sekmesi_dort_numarali_kisayolla_iki_dilde() {
-        assert_eq!(SEKMELER.len(), 4);
-        assert_eq!(SEKMELER[3], ("sekme-ogren", "sekme.ogren", "CmdOrCtrl+4"));
-        for (i, (_, _, k)) in SEKMELER.iter().enumerate() {
+    fn learn_tab_has_shortcut_four_in_both_languages() {
+        assert_eq!(TABS.len(), 4);
+        assert_eq!(TABS[3], ("tab-learn", "tab.learn", "CmdOrCtrl+4"));
+        for (i, (_, _, k)) in TABS.iter().enumerate() {
             assert_eq!(
                 *k,
                 format!("CmdOrCtrl+{}", i + 1),
                 "sekme kısayolları sırayla ⌘1-⌘4"
             );
         }
-        assert_eq!(crate::i18n::metin_dilde("en", "sekme.ogren", &[]), "Learn");
-        assert_eq!(crate::i18n::metin_dilde("tr", "sekme.ogren", &[]), "Öğren");
+        assert_eq!(crate::i18n::text_in("en", "tab.learn", &[]), "Learn");
+        assert_eq!(crate::i18n::text_in("tr", "tab.learn", &[]), "Öğren");
     }
 
     #[test]
-    fn etiket_ampersand_ikilenir() {
-        assert_eq!(etiket_kac("Suç & Ceza.epub"), "Suç && Ceza.epub");
-        assert_eq!(etiket_kac("düz.pdf"), "düz.pdf");
+    fn label_ampersand_is_doubled() {
+        assert_eq!(escape_label("Suç & Ceza.epub"), "Suç && Ceza.epub");
+        assert_eq!(escape_label("düz.pdf"), "düz.pdf");
     }
 
     #[test]
-    fn kisayollar_benzersiz_ve_platform_tauri_ile_ayni_kimlikler() {
+    fn shortcuts_unique_and_ids_match_platform_tauri() {
         let js = include_str!("../../app/js/platform-tauri.js");
-        let mut kisayol: Vec<&str> = SEKMELER.iter().map(|(_, _, k)| *k).collect();
-        kisayol.sort_unstable();
-        kisayol.dedup();
-        assert_eq!(kisayol.len(), SEKMELER.len());
-        let mut kimlikler: Vec<&str> = SEKMELER.iter().map(|(k, _, _)| *k).collect();
-        kimlikler.extend(DOSYA_OGELERI.iter().map(|(k, _, _)| *k));
-        for kimlik in kimlikler {
+        let mut shortcut: Vec<&str> = TABS.iter().map(|(_, _, k)| *k).collect();
+        shortcut.sort_unstable();
+        shortcut.dedup();
+        assert_eq!(shortcut.len(), TABS.len());
+        let mut ids: Vec<&str> = TABS.iter().map(|(k, _, _)| *k).collect();
+        ids.extend(FILE_ITEMS.iter().map(|(k, _, _)| *k));
+        for id in ids {
             assert!(
-                js.contains(&format!("'{kimlik}'")),
-                "platform-tauri.js içinde {kimlik} yok"
+                js.contains(&format!("'{id}'")),
+                "platform-tauri.js içinde {id} yok"
             );
         }
         assert!(
-            js.contains(&format!("'{SON_ONEK}'")),
+            js.contains(&format!("'{RECENT_PREFIX}'")),
             "platform-tauri.js son: öneki"
         );
-        let mut tum: Vec<&str> = SEKMELER.iter().map(|(_, _, k)| *k).collect();
-        tum.extend(DOSYA_OGELERI.iter().filter_map(|(_, _, k)| *k));
-        let n = tum.len();
-        tum.sort_unstable();
-        tum.dedup();
-        assert_eq!(tum.len(), n, "kısayollar benzersiz");
+        let mut all: Vec<&str> = TABS.iter().map(|(_, _, k)| *k).collect();
+        all.extend(FILE_ITEMS.iter().filter_map(|(_, _, k)| *k));
+        let n = all.len();
+        all.sort_unstable();
+        all.dedup();
+        assert_eq!(all.len(), n, "kısayollar benzersiz");
     }
 }

@@ -13,14 +13,14 @@
  * ÇİZİM: x boyunca uzanan her şey (y, z) kesitinde 2B ressam sıralamasıyla (xSort).
  */
 'use strict';
-(function (kok) {
-  const KC = kok.KitapCilt.ogren, { INK, f, pd, sp, on, vis, toneI, matOf, ease, fill, face, shape, box, rod, boardTop, xrCallouts } = KC.cf;
-  KC.sekil.sirt = function (o) {
-    const { xSort, xPrism, kRect, kRun, kLerp, kSeg, kMat, kThr, kSirtDikis, kOp, renk } = KC.ortak, O = o.olcu, t = o.t;
-    const kPAPER = renk.kPAPER, kEDGE = renk.kEDGE, kENDP = renk.kENDP, kMULL = renk.kMULL, kTHREAD = renk.kTHREAD, s4WOOD = renk.kWOOD, s4STEEL = renk.kSTEEL;
+(function (root) {
+  const MC = root.Mucellit.learn, { INK, f, pd, sp, on, vis, toneI, matOf, ease, fill, face, shape, box, rod, boardTop, xrCallouts } = MC.cf;
+  MC.figures.spine = function (o) {
+    const { xSort, xPrism, kRect, kRun, kLerp, kSeg, kMat, kThr, kSpineSewing, kOp, color } = MC.common, O = o.size, t = o.t;
+    const kPAPER = color.kPAPER, kEDGE = color.kEDGE, kENDP = color.kENDP, kMULL = color.kMULL, kTHREAD = color.kTHREAD, s4WOOD = color.kWOOD, s4STEEL = color.kSTEEL;
     const N = O.N, s4T = O.S, s4H = O.W, s4BH = 4, s4JW = 34, s4Y0 = 110;
     const s4XA = 60, s4XB = s4XA + O.H, s4JZ = s4BH + s4H - 6,   // sırt çenelerin 6 mm üstünde ("birkaç milimetre")
-    ST = O.istasyon.konum.map(v => s4XA + v);
+    ST = O.station.position.map(v => s4XA + v);
     const lieCY = s4Y0 + 100 + s4H/2, s4W = s4XB + 60, s4D = lieCY + s4H/2 + 25, HMAX = Math.max(200, s4H + 60);
 
     function s4Pose(mv){
@@ -45,7 +45,7 @@
           sv += `<path d="${d}" fill="none" stroke="#b9ad92" stroke-width=".35"/>`; }
         if (i === 2){
           let d = ''; for (let j = 1; j < N; j++) d += pd([at(s4XA, j/N), at(s4XB, j/N)], false);
-          sv += `<path d="${d}" fill="none" stroke="#9c8f72" stroke-width=".45"/>` + kSirtDikis(at, N, ST, .9);
+          sv += `<path d="${d}" fill="none" stroke="#9c8f72" stroke-width=".45"/>` + kSpineSewing(at, N, ST, .9);
           if (k > 0){ let dd = ''; for (let j = 0; j < N; j++){ const tm = (j + .5)/N; for (let q = 0; q + 1 < ST.length; q += 2) dd += pd([at(ST[q] + 2, tm), at(ST[q + 1] - 2, tm)], false); }
             sv += `<g opacity="${f(.8*k)}"><path d="${dd}" fill="none" stroke="${kTHREAD}" stroke-width=".7" stroke-dasharray="2.5 2"/></g>`; }
           if (st.glue > 0){ const xg = kLerp(s4XA, s4XB, st.glue);
@@ -67,11 +67,11 @@
         const zs = s4JZ*.5, yo = s4Y0 + g/2 + s4JW, yi = s4Y0 - g/2 - s4JW;
         const knob = rod([x, s4Y0 + 86, zs], [x, s4Y0 + 98, zs], 8, s4WOOD, toneI, 1.2, 8, 16);
         const rodP = rod([x, yo, zs], [x, s4Y0 + 86, zs], 4.2, s4STEEL, toneI, 1, 4.2, 12);
-        items.push({ a: [yo, zs], b: [s4Y0 + 98, zs], svg: kOp(jop, KC.cf.CAM_V[1] > 0 ? rodP + knob : knob + rodP) });
+        items.push({ a: [yo, zs], b: [s4Y0 + 98, zs], svg: kOp(jop, MC.cf.CAM_V[1] > 0 ? rodP + knob : knob + rodP) });
         items.push({ a: [s4Y0 - 74, zs], b: [yi, zs], svg: kOp(jop, rod([x, s4Y0 - 74, zs], [x, yi, zs], 4.2, s4STEEL, toneI, 1, 4.2, 12)) });
       }
       // kapital (önce)
-      if (st.kap > 0){ const dz = 30*(1 - ease(st.kap)), zk = top + 1.7 + dz;
+      if (st.container > 0){ const dz = 30*(1 - ease(st.container)), zk = top + 1.7 + dz;
         for (const x of [s4XA + 1.7, s4XB - 1.7]){
           const sv = rod([x, s4Y0 - s4T/2, zk], [x, s4Y0 + s4T/2, zk], 1.7, m, toneI, .9, 1.7, 12);
           let st2 = ''; for (let j = 1; j < 8; j++){ const y = s4Y0 - s4T/2 + s4T*j/8; st2 += pd([[x + 1.6, y, zk + .3], [x + .4, y, zk + 1.6]], false); }
@@ -83,8 +83,8 @@
           for (let x = x0 + 8; x < x1; x += 9) d += pd([[x, a[0], a[1]], [x, b[0], b[1]]], false);
           return shape(Q, toneI(n, kMULL), .9) + `<path d="${d}" fill="none" stroke="#c9bb93" stroke-width=".35" opacity=".8"/>`; };
         // kanatlar çenenin içinden geçmez; sırttan çene üstüne iner, çenenin üst yüzüne yatar (toplam ~25 mm)
-        const zj = s4JZ + .5 + dz, yan = Math.max(0, 25 - (zt - zj));
-        const pts = [[yl - yan, zj], [yl, zj], [yl, zt], [yr, zt], [yr, zj], [yr + yan, zj]];
+        const zj = s4JZ + .5 + dz, side = Math.max(0, 25 - (zt - zj));
+        const pts = [[yl - side, zj], [yl, zj], [yl, zt], [yr, zt], [yr, zj], [yr + side, zj]];
         for (let i = 0; i + 1 < pts.length; i++){ const a = pts[i], b = pts[i + 1], tv = [b[0] - a[0], b[1] - a[1]], tl = Math.hypot(...tv);
           let n = [0, -tv[1]/tl, tv[0]/tl]; if (!vis(n)) n = n.map(v => -v);
           items.push({ a, b, bias: .05, svg: mq(a, b, n) }); } }
@@ -96,47 +96,47 @@
       // etiketler
       const LB = [], sp = s4Loc(ps, [0, s4H]);
       if (k > .6){
-        LB.push({ at: [ST[0], sp[0], sp[1]], text: t('ogren.s.sirt.kettle'), on: false });
-        LB.push({ at: [(ST[1] + ST[2])/2, sp[0], sp[1]], text: t('ogren.s.sirt.dis'), on: false });
-        LB.push({ at: [(ST[2] + ST[3])/2, sp[0], sp[1]], text: t('ogren.s.sirt.ic'), on: false });
-        LB.push({ at: [s4XB, ...s4Loc(ps, [0, s4H - 2])], text: t('ogren.s.sirt.katlar', { n: N }), on: false });
+        LB.push({ at: [ST[0], sp[0], sp[1]], text: t('learn.s.spine.kettle'), on: false });
+        LB.push({ at: [(ST[1] + ST[2])/2, sp[0], sp[1]], text: t('learn.s.spine.outer'), on: false });
+        LB.push({ at: [(ST[2] + ST[3])/2, sp[0], sp[1]], text: t('learn.s.spine.inner'), on: false });
+        LB.push({ at: [s4XB, ...s4Loc(ps, [0, s4H - 2])], text: t('learn.s.spine.folds', { n: N }), on: false });
       } else {
-        LB.push({ at: [s4XB, ...s4Loc(ps, [s4T/2, s4H*.7])], text: t('ogren.s.sirt.blok', { n: N, y: O.yaprak }), on: false });
-        LB.push({ at: [s4XB - 30, sp[0], sp[1]], text: t('ogren.s.sirt.sirt', { s: o.sayi(s4T) }), on: false });
-        LB.push({ at: [s4XA + 40, ...s4Loc(ps, [-s4T/2, s4H*.5])], text: t('ogren.s.sirt.forza'), on: false });
-        if (standing) LB.push({ at: [s4XB + 30, s4Y0 + st.gap/2 + s4JW, s4JZ*.75], text: t('ogren.s.sirt.cene'), on: st.gapT >= 0 });
-        LB.push({ at: [s4XB + 28, s4Y0 + 92, s4JZ*.5], text: t('ogren.s.sirt.vida'), on: st.gapT >= 0 });
-        if (st.glue > 0 && st.mull < .5) LB.push({ at: [s4XA + 40, sp[0], sp[1]], text: t('ogren.s.sirt.tutkal'), on: st.glueT >= 0 });
-        if (st.kap > .5) LB.push({ at: [s4XB - 1.7, s4Y0, top + 2], text: t('ogren.s.sirt.kapital', { s: o.sayi(s4T) }), on: st.kapT >= 0 });
-        if (st.mull > .5) LB.push({ at: [s4XA + 120, s4Y0 + s4T/2 + 8, s4JZ + .6], text: t('ogren.s.sirt.mull', { a: o.sayi(O.mull.gen), b: o.sayi(O.mull.yuk) }), on: st.mullT >= 0 });
+        LB.push({ at: [s4XB, ...s4Loc(ps, [s4T/2, s4H*.7])], text: t('learn.s.spine.block', { n: N, y: O.sheet }), on: false });
+        LB.push({ at: [s4XB - 30, sp[0], sp[1]], text: t('learn.s.spine.spine', { s: o.number(s4T) }), on: false });
+        LB.push({ at: [s4XA + 40, ...s4Loc(ps, [-s4T/2, s4H*.5])], text: t('learn.s.spine.endpapers'), on: false });
+        if (standing) LB.push({ at: [s4XB + 30, s4Y0 + st.gap/2 + s4JW, s4JZ*.75], text: t('learn.s.spine.jaw'), on: st.gapT >= 0 });
+        LB.push({ at: [s4XB + 28, s4Y0 + 92, s4JZ*.5], text: t('learn.s.spine.screw'), on: st.gapT >= 0 });
+        if (st.glue > 0 && st.mull < .5) LB.push({ at: [s4XA + 40, sp[0], sp[1]], text: t('learn.s.spine.glue'), on: st.glueT >= 0 });
+        if (st.container > .5) LB.push({ at: [s4XB - 1.7, s4Y0, top + 2], text: t('learn.s.spine.headbands', { s: o.number(s4T) }), on: st.kapT >= 0 });
+        if (st.mull > .5) LB.push({ at: [s4XA + 120, s4Y0 + s4T/2 + 8, s4JZ + .6], text: t('learn.s.spine.mull', { a: o.number(O.mull.width), b: o.number(O.mull.height) }), on: st.mullT >= 0 });
       }
       s += xrCallouts(LB, [0, s4W, 0, s4D, 0, HMAX]);
       return s;
     }
-    const mesgul = (st, ui) => { if (st.anim2){ ui.flash(t('ogren.f.mesgul')); return true; } return false; };
-    const bitir = st => { st.anim2 = false; };
-    const adim = {
-      pres: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.mv >= 1){ ui.flash(t('ogren.s.sirt.f_preste')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.sirt.f_pres'), 2400);
-          kRun(st, ui, 'mvT', 2.2, u => { st.mv = u; }, () => kRun(st, ui, 'gapT', 1, u => { st.gap = kLerp(34, s4T + .3, u); }, () => bitir(st))); return true; },
-        son(st){ st.mv = 1; st.gap = s4T + .3; } },
-      tutkal: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.gap > s4T + 1){ ui.flash(t('ogren.s.sirt.f_once_pres')); return false; }
-          if (st.glue >= 1){ ui.flash(t('ogren.s.sirt.f_tutkal_var')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.sirt.f_tutkal'), 2400); kRun(st, ui, 'glueT', 2, u => { st.glue = u; }, () => bitir(st)); return true; },
-        son(st){ st.glue = 1; } },
-      kapital: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.glue < 1){ ui.flash(t('ogren.s.sirt.f_once_tutkal')); return false; }
-          if (st.kap >= 1){ ui.flash(t('ogren.s.sirt.f_kapital_var')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.sirt.f_kapital'), 2400); kRun(st, ui, 'kapT', 1, u => { st.kap = u; }, () => bitir(st)); return true; },
-        son(st){ st.kap = 1; } },
-      mull: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.kap < 1){ ui.flash(t('ogren.s.sirt.f_once_kapital')); return false; }
-          if (st.mull >= 1){ ui.flash(t('ogren.s.sirt.f_mull_var')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.sirt.f_mull'), 2400); kRun(st, ui, 'mullT', 1.1, u => { st.mull = u; }, () => bitir(st)); return true; },
-        son(st){ st.mull = 1; } }
+    const busy = (st, ui) => { if (st.anim2){ ui.flash(t('learn.f.busy')); return true; } return false; };
+    const finish = st => { st.anim2 = false; };
+    const step = {
+      press: { action(st, ui){ if (busy(st, ui)) return false; if (st.mv >= 1){ ui.flash(t('learn.s.spine.f_in_press')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.spine.f_pres'), 2400);
+          kRun(st, ui, 'mvT', 2.2, u => { st.mv = u; }, () => kRun(st, ui, 'gapT', 1, u => { st.gap = kLerp(34, s4T + .3, u); }, () => finish(st))); return true; },
+        last(st){ st.mv = 1; st.gap = s4T + .3; } },
+      glue: { action(st, ui){ if (busy(st, ui)) return false; if (st.gap > s4T + 1){ ui.flash(t('learn.s.spine.f_once_pres')); return false; }
+          if (st.glue >= 1){ ui.flash(t('learn.s.spine.f_has_glue')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.spine.f_glue'), 2400); kRun(st, ui, 'glueT', 2, u => { st.glue = u; }, () => finish(st)); return true; },
+        last(st){ st.glue = 1; } },
+      headbands: { action(st, ui){ if (busy(st, ui)) return false; if (st.glue < 1){ ui.flash(t('learn.s.spine.f_once_glue')); return false; }
+          if (st.container >= 1){ ui.flash(t('learn.s.spine.f_has_headband')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.spine.f_headband'), 2400); kRun(st, ui, 'kapT', 1, u => { st.container = u; }, () => finish(st)); return true; },
+        last(st){ st.container = 1; } },
+      mull: { action(st, ui){ if (busy(st, ui)) return false; if (st.container < 1){ ui.flash(t('learn.s.spine.f_once_headband')); return false; }
+          if (st.mull >= 1){ ui.flash(t('learn.s.spine.f_mull_var')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.spine.f_mull'), 2400); kRun(st, ui, 'mullT', 1.1, u => { st.mull = u; }, () => finish(st)); return true; },
+        last(st){ st.mull = 1; } }
     };
-    const st0 = { mv: 0, mvT: -1, gap: 34, gapT: -1, glue: 0, glueT: -1, mull: 0, mullT: -1, kap: 0, kapT: -1, anim: 0, anim2: false };
-    return { adim, cfg: {
-      title: t('ogren.sirt.ad'), credit: false, size: [s4W, s4D, HMAX], state: st0, scene,
-      stats: st => [{ label: t('ogren.s.sirt.st_sirt'), value: t('ogren.mm', { v: o.sayi(s4T) }) }, { label: t('ogren.s.sirt.st_forma'), value: String(N), small: true }]
+    const st0 = { mv: 0, mvT: -1, gap: 34, gapT: -1, glue: 0, glueT: -1, mull: 0, mullT: -1, container: 0, kapT: -1, anim: 0, anim2: false };
+    return { step, cfg: {
+      title: t('learn.spine.name'), credit: false, size: [s4W, s4D, HMAX], state: st0, scene,
+      stats: st => [{ label: t('learn.s.spine.st_spine'), value: t('learn.mm', { v: o.number(s4T) }) }, { label: t('learn.s.spine.st_signature'), value: String(N), small: true }]
     } };
   };
 })(typeof self !== 'undefined' ? self : this);

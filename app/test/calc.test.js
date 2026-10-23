@@ -4,147 +4,147 @@ const assert = require('node:assert/strict');
 const h = require('../js/calc.js');
 
 test('200 sayfa → 100 yaprak; 0.1 mm kağıtla sırt 10 mm', () => {
-  assert.equal(h.yaprakSayisi(200), 100);
-  assert.equal(h.sirtKalinligi(100, 0.1), 10);
-  const r = h.hesapla({ sayfaSayisi: 200, ciltTuru: 'tek1', kagitKalinlik: 0.1 });
-  assert.equal(r.kitapYaprak, 100);
-  assert.equal(r.sirtKalinlik, 10);
-  assert.equal(r.baskiKagidi, 100);
+  assert.equal(h.leafCount(200), 100);
+  assert.equal(h.spineThicknessOf(100, 0.1), 10);
+  const r = h.calculate({ pageCount: 200, bindingType: 'single1', paperThickness: 0.1 });
+  assert.equal(r.leaves, 100);
+  assert.equal(r.spineThickness, 10);
+  assert.equal(r.printSheets, 100);
 });
 
 test('forza payı sırta eklenir; tek sayı sayfa yukarı yuvarlanır', () => {
-  assert.equal(h.sirtKalinligi(100, 0.1, 1.5), 11.5);
-  assert.equal(h.yaprakSayisi(201), 101);
+  assert.equal(h.spineThicknessOf(100, 0.1, 1.5), 11.5);
+  assert.equal(h.leafCount(201), 101);
 });
 
 test('formalı: boş sayfalar sırta dahil, forma ve kağıt adedi', () => {
-  const r = h.hesapla({ sayfaSayisi: 200, ciltTuru: 'formali', formaYaprak: 4, kagitKalinlik: 0.1 });
-  assert.equal(r.toplamSayfa, 208);
-  assert.equal(r.formaSayisi, 13);
-  assert.equal(r.kitapYaprak, 104);
-  assert.equal(r.sirtKalinlik, 10.4);
-  assert.equal(r.baskiKagidi, 52);
-  assert.equal(r.bosSayfa, 8);
+  const r = h.calculate({ pageCount: 200, bindingType: 'sewn', sheetsPerSignature: 4, paperThickness: 0.1 });
+  assert.equal(r.totalPages, 208);
+  assert.equal(r.signatureCount, 13);
+  assert.equal(r.leaves, 104);
+  assert.equal(r.spineThickness, 10.4);
+  assert.equal(r.printSheets, 52);
+  assert.equal(r.blankPages, 8);
 });
 
 test('2-up kağıt adedi = toplam / 4', () => {
-  const r = h.hesapla({ sayfaSayisi: 37, ciltTuru: 'tek2' });
-  assert.equal(r.toplamSayfa, 40);
-  assert.equal(r.baskiKagidi, 10);
+  const r = h.calculate({ pageCount: 37, bindingType: 'single2' });
+  assert.equal(r.totalPages, 40);
+  assert.equal(r.printSheets, 10);
 });
 
 // S = 120 yaprak × 0,1 = 12 mm
-const TEMEL = { sayfaSayisi: 240, ciltTuru: 'tek1', kagitKalinlik: 0.1, kitapGen: 148, kitapYuk: 210, mukavvaKalinlik: 2, tasma: 3, kivirma: 15 };
+const BASE = { pageCount: 240, bindingType: 'single1', paperThickness: 0.1, bookWidth: 148, bookHeight: 210, boardThickness: 2, square: 3, turnIn: 15 };
 
 test('sert kapak: düz sırt, S+2t → mukavva 144×216, sırt şeridi 16×216, mafsal 7, kaplama 352×250', () => {
-  const r = h.hesapla(TEMEL);
-  assert.equal(r.sirtKalinlik, 12);
-  assert.deepEqual(r.mukavva, { gen: 144, yuk: 216, adet: 2 });
-  assert.deepEqual(r.sirtSeridi, { gen: 16, yuk: 216, adet: 1 });
-  assert.equal(r.mafsal, 7);
-  assert.equal(r.mafsalKaplama, 7);
-  assert.deepEqual(r.kaplama, { gen: 352, yuk: 250 });
+  const r = h.calculate(BASE);
+  assert.equal(r.spineThickness, 12);
+  assert.deepEqual(r.board, { width: 144, height: 216, count: 2 });
+  assert.deepEqual(r.spineStrip, { width: 16, height: 216, count: 1 });
+  assert.equal(r.jointGap, 7);
+  assert.equal(r.coveringJointGap, 7);
+  assert.deepEqual(r.covering, { width: 352, height: 250 });
 });
 
 test('sert kapak: "yalnız S" kuralı → şerit 12, kaplamada mafsal 9, kaplama yine 352×250', () => {
-  const r = h.hesapla({ ...TEMEL, sirtKurali: 'yalnizS' });
-  assert.deepEqual(r.sirtSeridi, { gen: 12, yuk: 216, adet: 1 });
-  assert.equal(r.mafsal, 7);
-  assert.equal(r.mafsalKaplama, 9);
-  assert.deepEqual(r.mukavva, { gen: 144, yuk: 216, adet: 2 });
-  assert.deepEqual(r.kaplama, { gen: 352, yuk: 250 });
+  const r = h.calculate({ ...BASE, spineRule: 'onlyS' });
+  assert.deepEqual(r.spineStrip, { width: 12, height: 216, count: 1 });
+  assert.equal(r.jointGap, 7);
+  assert.equal(r.coveringJointGap, 9);
+  assert.deepEqual(r.board, { width: 144, height: 216, count: 2 });
+  assert.deepEqual(r.covering, { width: 352, height: 250 });
 });
 
 test('otomatik mafsal: t=1 → 6, t=2.5 → 8, t=4 → 9 ve kaynak yok bayrağı', () => {
-  assert.equal(h.hesapla({ ...TEMEL, mukavvaKalinlik: 1 }).mafsal, 6);
-  assert.equal(h.hesapla({ ...TEMEL, mukavvaKalinlik: 2 }).mafsal, 7);
-  const r25 = h.hesapla({ ...TEMEL, mukavvaKalinlik: 2.5 });
-  assert.equal(r25.mafsal, 8);
-  assert.equal(r25.mafsalKaynakYok, false);
-  assert.equal(h.hesapla({ ...TEMEL, mukavvaKalinlik: 3 }).mafsal, 8);
-  const r4 = h.hesapla({ ...TEMEL, mukavvaKalinlik: 4 });
-  assert.equal(r4.mafsal, 9);
-  assert.equal(r4.mafsalKaynakYok, true);
+  assert.equal(h.calculate({ ...BASE, boardThickness: 1 }).jointGap, 6);
+  assert.equal(h.calculate({ ...BASE, boardThickness: 2 }).jointGap, 7);
+  const r25 = h.calculate({ ...BASE, boardThickness: 2.5 });
+  assert.equal(r25.jointGap, 8);
+  assert.equal(r25.jointGapUnsourced, false);
+  assert.equal(h.calculate({ ...BASE, boardThickness: 3 }).jointGap, 8);
+  const r4 = h.calculate({ ...BASE, boardThickness: 4 });
+  assert.equal(r4.jointGap, 9);
+  assert.equal(r4.jointGapUnsourced, true);
 });
 
 test('elle mafsal otomatiği ezer ve kaynak yok bayrağı çıkmaz', () => {
-  const r = h.hesapla({ ...TEMEL, mukavvaKalinlik: 4, mafsal: 10 });
-  assert.equal(r.mafsal, 10);
-  assert.equal(r.mafsalKaynakYok, false);
-  assert.equal(r.mukavva.gen, 148 - 10 + 3);
+  const r = h.calculate({ ...BASE, boardThickness: 4, jointGap: 10 });
+  assert.equal(r.jointGap, 10);
+  assert.equal(r.jointGapUnsourced, false);
+  assert.equal(r.board.width, 148 - 10 + 3);
 });
 
 test('forza 296×210 ×2; mull 62×198; kapital 12 ×2', () => {
-  const r = h.hesapla(TEMEL);
-  assert.deepEqual(r.forza, { gen: 296, yuk: 210, adet: 2 });
-  assert.deepEqual(r.mull, { gen: 62, yuk: 198 });
-  assert.deepEqual(r.kapital, { uzunluk: 12, adet: 2 });
+  const r = h.calculate(BASE);
+  assert.deepEqual(r.endpapers, { width: 296, height: 210, count: 2 });
+  assert.deepEqual(r.mull, { width: 62, height: 198 });
+  assert.deepEqual(r.headbands, { length: 12, count: 2 });
 });
 
-test('yuvarlak sırt: eğri boyu 20 → şerit 23; boşsa 16 + 3 = 19 ve uyarı bayrağı', () => {
-  const r = h.hesapla({ ...TEMEL, sirtTipi: 'yuvarlak', egriBoyu: 20 });
-  assert.deepEqual(r.sirtSeridi, { gen: 23, yuk: 216, adet: 1 });
-  assert.equal(r.egriBoyuUyari, false);
-  const b = h.hesapla({ ...TEMEL, sirtTipi: 'yuvarlak' });
-  assert.deepEqual(b.sirtSeridi, { gen: 19, yuk: 216, adet: 1 });
-  assert.equal(b.egriBoyuUyari, true);
-  assert.equal(h.hesapla({ ...TEMEL, sirtTipi: 'yuvarlak', egriBoyu: '' }).sirtSeridi.gen, 19);
-  assert.equal(h.hesapla(TEMEL).egriBoyuUyari, false);
+test('rounded sırt: eğri length 20 → şerit 23; boşsa 16 + 3 = 19 ve uyarı bayrağı', () => {
+  const r = h.calculate({ ...BASE, spineShape: 'rounded', curveLength: 20 });
+  assert.deepEqual(r.spineStrip, { width: 23, height: 216, count: 1 });
+  assert.equal(r.curveLengthWarning, false);
+  const b = h.calculate({ ...BASE, spineShape: 'rounded' });
+  assert.deepEqual(b.spineStrip, { width: 19, height: 216, count: 1 });
+  assert.equal(b.curveLengthWarning, true);
+  assert.equal(h.calculate({ ...BASE, spineShape: 'rounded', curveLength: '' }).spineStrip.width, 19);
+  assert.equal(h.calculate(BASE).curveLengthWarning, false);
   // yuvarlak sırtta kural seçeneği şerit formülünü değiştirmez
-  assert.equal(h.hesapla({ ...TEMEL, sirtTipi: 'yuvarlak', egriBoyu: 20, sirtKurali: 'yalnizS' }).sirtSeridi.gen, 23);
+  assert.equal(h.calculate({ ...BASE, spineShape: 'rounded', curveLength: 20, spineRule: 'onlyS' }).spineStrip.width, 23);
 });
 
 test('sert kapak: negatif / sıfır t, k, e, mafsal, eğri boyu reddedilir', () => {
-  ['mukavvaKalinlik', 'kivirma'].forEach((ad) => {
-    assert.throws(() => h.hesapla({ ...TEMEL, [ad]: 0 }), RangeError, ad + '=0');
-    assert.throws(() => h.hesapla({ ...TEMEL, [ad]: -1 }), RangeError, ad + '=-1');
+  ['boardThickness', 'turnIn'].forEach((name) => {
+    assert.throws(() => h.calculate({ ...BASE, [name]: 0 }), RangeError, name + '=0');
+    assert.throws(() => h.calculate({ ...BASE, [name]: -1 }), RangeError, name + '=-1');
   });
-  assert.throws(() => h.hesapla({ ...TEMEL, tasma: -1 }), RangeError, 'tasma=-1');
-  assert.throws(() => h.hesapla({ ...TEMEL, mafsal: 0 }), RangeError);
-  assert.throws(() => h.hesapla({ ...TEMEL, mafsal: -2 }), RangeError);
-  assert.throws(() => h.hesapla({ ...TEMEL, sirtTipi: 'yuvarlak', egriBoyu: -3 }), RangeError);
-  assert.throws(() => h.hesapla({ ...TEMEL, sirtTipi: 'kare' }));
-  assert.throws(() => h.hesapla({ ...TEMEL, sirtKurali: 'x' }));
+  assert.throws(() => h.calculate({ ...BASE, square: -1 }), RangeError, 'square=-1');
+  assert.throws(() => h.calculate({ ...BASE, jointGap: 0 }), RangeError);
+  assert.throws(() => h.calculate({ ...BASE, jointGap: -2 }), RangeError);
+  assert.throws(() => h.calculate({ ...BASE, spineShape: 'rounded', curveLength: -3 }), RangeError);
+  assert.throws(() => h.calculate({ ...BASE, spineShape: 'square' }));
+  assert.throws(() => h.calculate({ ...BASE, spineRule: 'x' }));
 });
 
 test('varsayılanlar: t 2, k 3, e 15, mafsal otomatik, sırt düz, kural S+2t', () => {
-  assert.equal(h.VARSAYILAN.mukavvaKalinlik, 2);
-  assert.equal(h.VARSAYILAN.tasma, 3);
-  assert.equal(h.VARSAYILAN.kivirma, 15);
-  assert.equal(h.VARSAYILAN.mafsal, 'otomatik');
-  assert.equal(h.VARSAYILAN.sirtTipi, 'duz');
-  assert.equal(h.VARSAYILAN.sirtKurali, 'ikiT');
-  const r = h.hesapla({ sayfaSayisi: 240, ciltTuru: 'tek1', kagitKalinlik: 0.1 });
-  assert.deepEqual(r.kaplama, { gen: 352, yuk: 250 });
+  assert.equal(h.DEFAULTS.boardThickness, 2);
+  assert.equal(h.DEFAULTS.square, 3);
+  assert.equal(h.DEFAULTS.turnIn, 15);
+  assert.equal(h.DEFAULTS.jointGap, 'auto');
+  assert.equal(h.DEFAULTS.spineShape, 'flat');
+  assert.equal(h.DEFAULTS.spineRule, 'twoT');
+  const r = h.calculate({ pageCount: 240, bindingType: 'single1', paperThickness: 0.1 });
+  assert.deepEqual(r.covering, { width: 352, height: 250 });
 });
 
 test('kusurlu girdi: negatif / boş / sayı olmayan', () => {
-  assert.throws(() => h.hesapla({ sayfaSayisi: -5 }), RangeError);
-  assert.throws(() => h.hesapla({}), RangeError);
-  assert.throws(() => h.hesapla({ sayfaSayisi: 'abc' }), RangeError);
-  assert.throws(() => h.hesapla({ sayfaSayisi: 10, kagitKalinlik: -1 }), RangeError);
-  assert.throws(() => h.hesapla({ sayfaSayisi: 10, formaYaprak: 9 }), RangeError);
-  assert.throws(() => h.hesapla({ sayfaSayisi: 10, ciltTuru: 'yok' }));
+  assert.throws(() => h.calculate({ pageCount: -5 }), RangeError);
+  assert.throws(() => h.calculate({}), RangeError);
+  assert.throws(() => h.calculate({ pageCount: 'abc' }), RangeError);
+  assert.throws(() => h.calculate({ pageCount: 10, paperThickness: -1 }), RangeError);
+  assert.throws(() => h.calculate({ pageCount: 10, sheetsPerSignature: 9 }), RangeError);
+  assert.throws(() => h.calculate({ pageCount: 10, bindingType: 'none' }));
 });
 
 // ---- D9: Hesapla Düzenle ile aynı: forma yaprağı tam sayı olmalı ----
 test('forma yaprağı tam sayı olmayan girdi reddedilir (yuvarlanmaz)', () => {
-  assert.throws(() => h.hesapla({ sayfaSayisi: 100, formaYaprak: 2.6 }), /tam sayı/);
-  assert.throws(() => h.hesapla({ sayfaSayisi: 100, formaYaprak: 0.5 }), RangeError);
-  assert.equal(h.hesapla({ sayfaSayisi: 100, formaYaprak: 3 }).girdi.formaYaprak, 3);
+  assert.throws(() => h.calculate({ pageCount: 100, sheetsPerSignature: 2.6 }), /tam sayı/);
+  assert.throws(() => h.calculate({ pageCount: 100, sheetsPerSignature: 0.5 }), RangeError);
+  assert.equal(h.calculate({ pageCount: 100, sheetsPerSignature: 3 }).input.sheetsPerSignature, 3);
 });
 
 // ---- AR: sonuç doğrulaması ve taşma 0 ----
-test('taşma k = 0 kabul edilir (mukavva blokla aynı hizada)', () => {
-  const r = h.hesapla({ ...TEMEL, tasma: 0 });
-  assert.equal(r.mukavva.gen, 148 - r.mafsal);
-  assert.equal(r.mukavva.yuk, 210);
+test('taşma k = 0 accept edilir (board blokla aynı hizada)', () => {
+  const r = h.calculate({ ...BASE, square: 0 });
+  assert.equal(r.board.width, 148 - r.jointGap);
+  assert.equal(r.board.height, 210);
 });
 
-test('sonuç Db <= 0 ise RangeError (W=5, mafsal=10 elle, k=0.5) ve ölçüyü adıyla söyler', () => {
-  assert.throws(() => h.hesapla({ ...TEMEL, kitapGen: 5, mafsal: 10, tasma: 0.5 }), (e) => e instanceof RangeError && /mukavva genişliği/.test(e.message) && /-4\.5/.test(e.message));
+test('sonuç Db <= 0 ise RangeError (W=5, jointGap=10 elle, k=0.5) ve ölçüyü adıyla söyler', () => {
+  assert.throws(() => h.calculate({ ...BASE, bookWidth: 5, jointGap: 10, square: 0.5 }), (e) => e instanceof RangeError && /mukavva genişliği/.test(e.message) && /-4\.5/.test(e.message));
 });
 
 test('mull yüksekliği <= 0 ise RangeError', () => {
-  assert.throws(() => h.hesapla({ ...TEMEL, kitapYuk: 12 }), (e) => e instanceof RangeError && /mull yüksekliği/.test(e.message));
+  assert.throws(() => h.calculate({ ...BASE, bookHeight: 12 }), (e) => e instanceof RangeError && /mull yüksekliği/.test(e.message));
 });

@@ -14,12 +14,12 @@
  *   kesilen köşeler ayrı.
  */
 'use strict';
-(function (kok) {
-  const KC = kok.KitapCilt.ogren, { byDepth, f, pd, on, sub, cross, norm, avg, vis, tone, toneI, matOf, ease, ink, fill, face, shape, box, boardTop, board, xrCallouts } = KC.cf;
-  KC.sekil.kaplama = function (o) {
-    const { xSort, kRun, kSeg, kText, renk } = KC.ortak, O = o.olcu, t = o.t;
-    const fcBACK = renk.kBACK, fcBOARD = renk.kBOARD, fcMAT = renk.kMAT;
-    const T = O.t, Db = O.Db, Dh = O.Dh, R = O.R, F = O.f, fcE = O.e + T, KOSE = (O.kose[0] + O.kose[1])/2, C2 = KOSE*Math.SQRT2;
+(function (root) {
+  const MC = root.Mucellit.learn, { byDepth, f, pd, on, sub, cross, norm, avg, vis, tone, toneI, matOf, ease, ink, fill, face, shape, box, boardTop, board, xrCallouts } = MC.cf;
+  MC.figures.covering = function (o) {
+    const { xSort, kRun, kSeg, kText, color } = MC.common, O = o.size, t = o.t;
+    const fcBACK = color.kBACK, fcBOARD = color.kBOARD, fcMAT = color.kMAT;
+    const T = O.t, Db = O.Db, Dh = O.Dh, R = O.R, F = O.f, fcE = O.e + T, CORNER = (O.corner[0] + O.corner[1])/2, C2 = CORNER*Math.SQRT2;
     const fcBH = 4, fcZ0 = fcBH + .3, fcZB = fcBH + .6, fcT = T, fcZT = fcZB + fcT;
     const fcXA = 20 + fcE, fcXB = fcXA + Dh, fcCX0 = fcXA - fcE, fcCX1 = fcXB + fcE;
     const fcCY0 = 25.6, fcRB0 = fcCY0 + fcE, fcRB1 = fcRB0 + Db, fcS0 = fcRB1 + F, fcS1 = fcS0 + R, fcLB0 = fcS1 + F, fcLB1 = fcLB0 + Db, fcCY1 = fcLB1 + fcE;
@@ -54,11 +54,11 @@
       for (let i = 0; i + 1 < G.cloth.length; i++){
         const A = G.cloth[i], B = G.cloth[i + 1], a = A.p, b = B.p, tv = [b[0] - a[0], b[1] - a[1]], tl = Math.hypot(...tv); if (tl < 1e-6) continue;
         const nOut = [0, -tv[1]/tl, tv[0]/tl], good = vis(nOut), seen = good ? nOut : nOut.map(v => -v);
-        const govde = A.d < 0 || B.d < 0, xa = fcXr(govde ? -1 : A.d, st.cut), xb = fcXr(govde ? -1 : B.d, st.cut);   // gövde parçası: mukavva boyu
+        const body = A.d < 0 || B.d < 0, xa = fcXr(body ? -1 : A.d, st.cut), xb = fcXr(body ? -1 : B.d, st.cut);   // gövde parçası: mukavva boyu
         const Q = [[xa[0], a[0], a[1]], [xa[1], a[0], a[1]], [xb[1], b[0], b[1]], [xb[0], b[0], b[1]]];
         let sv = face(pd(Q), good ? tone(seen, m) : toneI(seen, fcBACK)) + ink(pd([Q[0], Q[3]], false), 1) + ink(pd([Q[1], Q[2]], false), 1);
         if (i === 0) sv += ink(pd([Q[0], Q[1]], false), 1); if (i === G.cloth.length - 2) sv += ink(pd([Q[3], Q[2]], false), 1);
-        items.push({ a, b, bias: govde ? 0 : .035, svg: cOp < 1 ? `<g opacity="${f(cOp)}">${sv}</g>` : sv }); all.push(...Q);
+        items.push({ a, b, bias: body ? 0 : .035, svg: cOp < 1 ? `<g opacity="${f(cOp)}">${sv}</g>` : sv }); all.push(...Q);
       }
       // tutkal (kaplamanın astar yüzüne, fırçayla)
       let brush = null;
@@ -67,7 +67,7 @@
         let st2 = ''; for (let x = fcCX0 + 14; x < fcCX1; x += 23) st2 += pd([[x, fcCY0 + 4, zg + .01], [x + 6, Math.max(fcCY0 + 5, yg - 4), zg + .01]], false);
         items.push({ a: [fcCY0 + 2, zg], b: [yg, zg], bias: .005, svg: `<g opacity=".55">${gl}</g><path d="${st2}" fill="none" stroke="#ffffff" stroke-width="1.2" opacity=".6"/>` });
         if (st.glueT >= 0){ const by = Math.min(fcCY1 - 10, yg), bz = fcZ0 + 1.5;
-          brush = { box: [[fcCX0 + 60, by - 6, bz], [fcCX1 - 60, by + 6, bz + 30]], svg: box(fcCX0 + 60, by - 5, bz, fcCX1 - 60, by + 5, bz + 6, matOf('#e9d9a6'), toneI, 1) + box(fcCX0 + 90, by - 4, bz + 6, fcCX1 - 90, by + 4, bz + 22, renk.kWOOD, toneI, 1.2) }; } }
+          brush = { box: [[fcCX0 + 60, by - 6, bz], [fcCX1 - 60, by + 6, bz + 30]], svg: box(fcCX0 + 60, by - 5, bz, fcCX1 - 60, by + 5, bz + 6, matOf('#e9d9a6'), toneI, 1) + box(fcCX0 + 90, by - 4, bz + 6, fcCX1 - 90, by + 4, bz + 22, color.kWOOD, toneI, 1.2) }; } }
       // mukavvalar ve sırt şeridi
       const dz = 70*(1 - ease(st.drop));
       if (st.drop > 0) G.boards.forEach((Rr, bi) => {
@@ -78,7 +78,7 @@
           const Q = [[fcXA, a[0], a[1]], [fcXB, a[0], a[1]], [fcXB, b[0], b[1]], [fcXA, b[0], b[1]]];
           let sv = shape(Q, toneI(n, fcBOARD), 1.1);
           if (bi !== 1 && i === 2){ const ang = bi === 0 ? G.b : -G.b, U = [0, -Math.cos(ang), -Math.sin(ang)], mid = [(a[0] + b[0])/2 + n[1]*.2, (a[1] + b[1])/2 + n[2]*.2];
-            sv += kText([(fcXA + fcXB)/2, mid[0], mid[1]], U, [1, 0, 0], t('ogren.olcu_iki', { a: o.sayi(Db), b: o.sayi(Dh) }), 11, '#4a443b', 800); }
+            sv += kText([(fcXA + fcXB)/2, mid[0], mid[1]], U, [1, 0, 0], t('learn.size_two', { a: o.number(Db), b: o.number(Dh) }), 11, '#4a443b', 800); }
           items.push({ a, b, bias: .01, svg: sv }); all.push(...Q); } });
       // katlanmış baş / etek payları (ÖNCE kıvrılır; kapak kapanırken mukavvayla döner)
       const zTop = fcZT + .3;
@@ -116,46 +116,46 @@
           s += `<g opacity="${f(1 - u)}">${shape([[cx, cy, z], [cx + sx*L, cy, z], [cx, cy + sy*L, z]], tone([0, 0, 1], m), 1)}</g>`; }
       // etiketler
       const LB = [], bk = st.drop > .5;
-      if (bk){ LB.push({ at: [fcXB, ...G.rL([(fcLB0 + fcLB1)/2, fcZT])], text: t('ogren.s.kaplama.muk', { a: o.sayi(Db), b: o.sayi(Dh) }), on: st.dropT >= 0 });
-        LB.push({ at: [fcXB, (fcS0 + fcS1)/2, fcZT], text: t('ogren.s.kaplama.serit', { a: o.sayi(R), b: o.sayi(Dh) }), on: st.dropT >= 0 });
-        LB.push({ at: [fcXB, (fcLB0 + fcS1)/2, fcZ0], text: t('ogren.s.kaplama.mafsal', { f: o.sayi(F) }), on: st.closeT >= 0 }); }
-      if (st.glue > 0 && st.drop < 1) LB.push({ at: [150, fcCY0 + (fcCY1 - fcCY0)*st.glue*.5, fcZ0], text: t('ogren.s.kaplama.tutkal'), on: st.glueT >= 0 });
-      if (st.foldH < 1) LB.push({ at: [fcCX1, (fcRB0 + fcRB1)/2, fcZ0], text: t('ogren.s.kaplama.uzun', { e: o.sayi(O.e), t: o.sayi(T) }), on: st.foldT >= 0 && st.foldH < 1 });
-      if (st.foldL < 1) LB.push({ at: [(fcXA + fcXB)/2, ...G.cloth[G.cloth.length - 1].p], text: t('ogren.s.kaplama.kisa'), on: st.foldT >= 0 && st.foldH >= 1 });
-      LB.push({ at: [fcXA + 5, ...G.cloth[4].p], text: t('ogren.s.kaplama.kaplama', { a: o.sayi(O.kaplama.gen), b: o.sayi(O.kaplama.yuk) }), on: false });
-      if (st.cut && st.close < .3) LB.push({ at: [fcXA - C2/2, fcLB1 + C2/2, fcZ0], text: t('ogren.s.kaplama.kose', { a: o.sayi(O.kose[0]), b: o.sayi(O.kose[1]) }), on: st.cutT >= 0 });
+      if (bk){ LB.push({ at: [fcXB, ...G.rL([(fcLB0 + fcLB1)/2, fcZT])], text: t('learn.s.covering.brd', { a: o.number(Db), b: o.number(Dh) }), on: st.dropT >= 0 });
+        LB.push({ at: [fcXB, (fcS0 + fcS1)/2, fcZT], text: t('learn.s.covering.strip', { a: o.number(R), b: o.number(Dh) }), on: st.dropT >= 0 });
+        LB.push({ at: [fcXB, (fcLB0 + fcS1)/2, fcZ0], text: t('learn.s.covering.jointGap', { f: o.number(F) }), on: st.closeT >= 0 }); }
+      if (st.glue > 0 && st.drop < 1) LB.push({ at: [150, fcCY0 + (fcCY1 - fcCY0)*st.glue*.5, fcZ0], text: t('learn.s.covering.glue'), on: st.glueT >= 0 });
+      if (st.foldH < 1) LB.push({ at: [fcCX1, (fcRB0 + fcRB1)/2, fcZ0], text: t('learn.s.covering.long', { e: o.number(O.e), t: o.number(T) }), on: st.foldT >= 0 && st.foldH < 1 });
+      if (st.foldL < 1) LB.push({ at: [(fcXA + fcXB)/2, ...G.cloth[G.cloth.length - 1].p], text: t('learn.s.covering.short'), on: st.foldT >= 0 && st.foldH >= 1 });
+      LB.push({ at: [fcXA + 5, ...G.cloth[4].p], text: t('learn.s.covering.covering', { a: o.number(O.covering.width), b: o.number(O.covering.height) }), on: false });
+      if (st.cut && st.close < .3) LB.push({ at: [fcXA - C2/2, fcLB1 + C2/2, fcZ0], text: t('learn.s.covering.corner', { a: o.number(O.corner[0]), b: o.number(O.corner[1]) }), on: st.cutT >= 0 });
       s += xrCallouts(LB, [0, fcMW, 0, fcMD, 0, fcH]);
       return s;
     }
-    const mesgul = (st, ui) => { if (st.anim2){ ui.flash(t('ogren.f.mesgul')); return true; } return false; };
-    const bitir = st => { st.anim2 = false; };
-    const adim = {
-      tutkal: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.glue >= 1){ ui.flash(t('ogren.s.kaplama.f_tutkal_var')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.kaplama.f_tutkal'), 2400); kRun(st, ui, 'glueT', 1.6, u => { st.glue = u; }, () => bitir(st)); return true; },
-        son(st){ st.glue = 1; } },
-      yerlestir: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.drop >= 1){ ui.flash(t('ogren.s.kaplama.f_muk_var')); return false; }
-          if (st.glue < 1){ ui.flash(t('ogren.s.kaplama.f_once_tutkal')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.kaplama.f_muk', { f: o.sayi(F) }), 2400); kRun(st, ui, 'dropT', 1, u => { st.drop = u; }, () => bitir(st)); return true; },
-        son(st){ st.glue = 1; st.drop = 1; } },
-      kose: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.drop < 1){ ui.flash(t('ogren.s.kaplama.f_once_muk')); return false; }
-          if (st.cut){ ui.flash(t('ogren.s.kaplama.f_kose_var')); return false; }
-          st.anim2 = true; st.cut = true; ui.flash(t('ogren.s.kaplama.f_kose', { a: o.sayi(O.kose[0]), b: o.sayi(O.kose[1]) }), 2400);
-          kRun(st, ui, 'cutT', .9, () => {}, () => { st.cutT = -1; bitir(st); }); return true; },
-        son(st){ st.cut = true; st.cutT = -1; } },
-      kivir: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (!st.cut){ ui.flash(t('ogren.s.kaplama.f_once_kose')); return false; }
-          if (st.foldL >= 1){ ui.flash(t('ogren.s.kaplama.f_kivir_var')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.kaplama.f_kivir'), 3000);
-          kRun(st, ui, 'foldT', 2.6, u => { st.foldH = kSeg(u, 0, .45); st.foldL = kSeg(u, .55, 1); }, () => bitir(st)); return true; },
-        son(st){ st.foldH = 1; st.foldL = 1; } },
-      kapat: { eylem(st, ui){ if (mesgul(st, ui)) return false; if (st.foldL < 1){ ui.flash(t('ogren.s.kaplama.f_once_kivir')); return false; }
-          st.anim2 = true; ui.flash(t('ogren.s.kaplama.f_kapat'), 2600);
-          kRun(st, ui, 'closeT', 2.4, u => { st.close = u < .5 ? ease(u*2) : 1 - ease((u - .5)*2); }, () => { st.close = 0; st.denendi = 1; bitir(st); }); return true; },
-        son(st){ st.close = 0; st.denendi = 1; } }
+    const busy = (st, ui) => { if (st.anim2){ ui.flash(t('learn.f.busy')); return true; } return false; };
+    const finish = st => { st.anim2 = false; };
+    const step = {
+      glue: { action(st, ui){ if (busy(st, ui)) return false; if (st.glue >= 1){ ui.flash(t('learn.s.covering.f_has_glue')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.covering.f_glue'), 2400); kRun(st, ui, 'glueT', 1.6, u => { st.glue = u; }, () => finish(st)); return true; },
+        last(st){ st.glue = 1; } },
+      place: { action(st, ui){ if (busy(st, ui)) return false; if (st.drop >= 1){ ui.flash(t('learn.s.covering.f_has_brd')); return false; }
+          if (st.glue < 1){ ui.flash(t('learn.s.covering.f_once_glue')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.covering.f_brd', { f: o.number(F) }), 2400); kRun(st, ui, 'dropT', 1, u => { st.drop = u; }, () => finish(st)); return true; },
+        last(st){ st.glue = 1; st.drop = 1; } },
+      corner: { action(st, ui){ if (busy(st, ui)) return false; if (st.drop < 1){ ui.flash(t('learn.s.covering.f_once_brd')); return false; }
+          if (st.cut){ ui.flash(t('learn.s.covering.f_has_corner')); return false; }
+          st.anim2 = true; st.cut = true; ui.flash(t('learn.s.covering.f_corner', { a: o.number(O.corner[0]), b: o.number(O.corner[1]) }), 2400);
+          kRun(st, ui, 'cutT', .9, () => {}, () => { st.cutT = -1; finish(st); }); return true; },
+        last(st){ st.cut = true; st.cutT = -1; } },
+      turnIn: { action(st, ui){ if (busy(st, ui)) return false; if (!st.cut){ ui.flash(t('learn.s.covering.f_once_corner')); return false; }
+          if (st.foldL >= 1){ ui.flash(t('learn.s.covering.f_has_turn_in')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.covering.f_turn_in'), 3000);
+          kRun(st, ui, 'foldT', 2.6, u => { st.foldH = kSeg(u, 0, .45); st.foldL = kSeg(u, .55, 1); }, () => finish(st)); return true; },
+        last(st){ st.foldH = 1; st.foldL = 1; } },
+      close: { action(st, ui){ if (busy(st, ui)) return false; if (st.foldL < 1){ ui.flash(t('learn.s.covering.f_turn_in_once')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.covering.f_close'), 2600);
+          kRun(st, ui, 'closeT', 2.4, u => { st.close = u < .5 ? ease(u*2) : 1 - ease((u - .5)*2); }, () => { st.close = 0; st.tried = 1; finish(st); }); return true; },
+        last(st){ st.close = 0; st.tried = 1; } }
     };
-    const st0 = { glue: 0, glueT: -1, drop: 0, dropT: -1, cut: false, cutT: -1, foldL: 0, foldH: 0, foldT: -1, close: 0, closeT: -1, denendi: 0, anim: 0, anim2: false };
-    return { adim, cfg: {
-      title: t('ogren.kaplama.ad'), credit: false, size: [fcMW, fcMD, fcH], state: st0, scene,
-      stats: st => [{ label: t('ogren.s.kaplama.st_kaplama'), value: t('ogren.olcu_iki', { a: o.sayi(O.kaplama.gen), b: o.sayi(O.kaplama.yuk) }), small: true }, { label: t('ogren.s.kaplama.st_mafsal'), value: t('ogren.mm', { v: o.sayi(F) }), small: true }]
+    const st0 = { glue: 0, glueT: -1, drop: 0, dropT: -1, cut: false, cutT: -1, foldL: 0, foldH: 0, foldT: -1, close: 0, closeT: -1, tried: 0, anim: 0, anim2: false };
+    return { step, cfg: {
+      title: t('learn.covering.name'), credit: false, size: [fcMW, fcMD, fcH], state: st0, scene,
+      stats: st => [{ label: t('learn.s.covering.st_covering'), value: t('learn.size_two', { a: o.number(O.covering.width), b: o.number(O.covering.height) }), small: true }, { label: t('learn.s.covering.st_joint'), value: t('learn.mm', { v: o.number(F) }), small: true }]
     } };
   };
 })(typeof self !== 'undefined' ? self : this);

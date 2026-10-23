@@ -24,104 +24,104 @@
  * dul/öksüz en az 2 satır (≤3 satırlık paragraf bölünmez); başlık sonraki 2 satırla aynı sayfada; bolumBasi ve
  * sayfaSonu yeni sayfa (sayfa zaten boşsa boş sayfa üretilmez); bölüm açılış sayfasına numara basılmaz.
  */
-(function (kok, fabrika) {
-  var m = fabrika(typeof module === 'object' && module.exports ? require('./hyphenation.js') : null);
+(function (root, factory) {
+  var m = factory(typeof module === 'object' && module.exports ? require('./hyphenation.js') : null);
   if (typeof module === 'object' && module.exports) {
     module.exports = m;
   } else {
-    kok.KitapCilt = kok.KitapCilt || {};
-    kok.KitapCilt.epubDizgi = m;
+    root.Mucellit = root.Mucellit || {};
+    root.Mucellit.epubTypeset = m;
   }
-})(typeof self !== 'undefined' ? self : this, function (heceModul) {
+})(typeof self !== 'undefined' ? self : this, function (hyphenationModule) {
   'use strict';
 
-  function H() { return heceModul || (typeof self !== 'undefined' && self.KitapCilt && self.KitapCilt.hece); }
+  function H() { return hyphenationModule || (typeof self !== 'undefined' && self.Mucellit && self.Mucellit.hyphenation); }
 
-  var BASLIK_CARPAN = [1.6, 1.35, 1.15, 1, 1, 1];
-  var DOLULUK_ESIK = 0.92;
-  var BOSLUK_RE = /[ \t\n\r\f]+/;
-  var YUMUSAK = '­';
+  var TITLE_FACTOR = [1.6, 1.35, 1.15, 1, 1, 1];
+  var FILL_THRESHOLD = 0.92;
+  var SPACE_RE = /[ \t\n\r\f]+/;
+  var SOFT = '­';
 
-  function stilAdi(p) { return (p.kalin ? 'B' : '') + (p.italik ? 'I' : '') || 'R'; }
-  function gorunen(s) { return s.replace(/­/g, '').replace(/ /g, ' '); }
+  function styleName(p) { return (p.bold ? 'B' : '') + (p.italic ? 'I' : '') || 'R'; }
+  function visible(s) { return s.replace(/­/g, '').replace(/ /g, ' '); }
 
   // Ölçüm önbelleği sınırlı: yalnız kısa metinler (kelime/parça) saklanır, dolunca boşaltılır.
   // Uzun kelime bölünürken ölçülen önekler (her biri ayrı metin) önbelleği şişirmez.
-  var ONBELLEK_METIN = 64;
-  var ONBELLEK_ENCOK = 20000;
-  function onbellekliOlcer(olcer) {
-    var harita = new Map();
-    var f = function (metin, stil, boy) {
-      var t = gorunen(metin);
+  var CACHE_TEXT = 64;
+  var CACHE_MAX = 20000;
+  function cachedMeasurer(measurer) {
+    var map = new Map();
+    var f = function (text, style, fontSize) {
+      var t = visible(text);
       if (!t) return 0;
-      if (t.length > ONBELLEK_METIN) return olcer.genislik(t, stil, boy);
-      var k = stil + '|' + boy + '|' + t;
-      var v = harita.get(k);
+      if (t.length > CACHE_TEXT) return measurer.width(t, style, fontSize);
+      var k = style + '|' + fontSize + '|' + t;
+      var v = map.get(k);
       if (v === undefined) {
-        v = olcer.genislik(t, stil, boy);
-        if (harita.size >= ONBELLEK_ENCOK) harita.clear();
-        harita.set(k, v);
+        v = measurer.width(t, style, fontSize);
+        if (map.size >= CACHE_MAX) map.clear();
+        map.set(k, v);
       }
       return v;
     };
-    f.boyut = function () { return harita.size; };
+    f.size = function () { return map.size; };
     return f;
   }
 
   // ---------- kelimelere ayırma ----------
   // Kelime: boşlukla ayrılmamış parça dizisi. seg: { metin, stil, boy, ust }
-  function kelimelereAyir(blok, boy) {
-    var simgeler = [];
+  function splitIntoWords(block, fontSize) {
+    var icons = [];
     var cur = null;
-    function bitir() { if (cur && cur.segler.length) simgeler.push(cur); cur = null; }
-    (blok.parcalar || []).forEach(function (p) {
-      if (p.kir) { bitir(); simgeler.push({ kir: true }); return; }
-      var segBoy = boy * (p.kucuk ? 0.85 : 1) * (p.ust ? 0.7 : 1);
-      var stil = stilAdi(p);
-      var dil = p.dil || blok.dil || '';
-      var parcalar = String(p.metin || '').split(/([ \t\n\r\f]+)/);
-      parcalar.forEach(function (t) {
+    function finish() { if (cur && cur.segs.length) icons.push(cur); cur = null; }
+    (block.parts || []).forEach(function (p) {
+      if (p.lineBreak) { finish(); icons.push({ lineBreak: true }); return; }
+      var segBoy = fontSize * (p.small ? 0.85 : 1) * (p.top ? 0.7 : 1);
+      var style = styleName(p);
+      var i18n = p.i18n || block.i18n || '';
+      var parts = String(p.text || '').split(/([ \t\n\r\f]+)/);
+      parts.forEach(function (t) {
         if (!t) return;
-        if (BOSLUK_RE.test(t) && !t.replace(BOSLUK_RE, '')) { bitir(); return; }
-        if (!cur) cur = { segler: [], dil: dil };
-        cur.segler.push({ metin: t, stil: stil, boy: segBoy, ust: !!p.ust });
+        if (SPACE_RE.test(t) && !t.replace(SPACE_RE, '')) { finish(); return; }
+        if (!cur) cur = { segs: [], i18n: i18n };
+        cur.segs.push({ text: t, style: style, fontSize: segBoy, top: !!p.top });
       });
     });
-    bitir();
-    while (simgeler.length && simgeler[simgeler.length - 1].kir) simgeler.pop();
-    while (simgeler.length && simgeler[0].kir) simgeler.shift();
-    return simgeler;
+    finish();
+    while (icons.length && icons[icons.length - 1].lineBreak) icons.pop();
+    while (icons.length && icons[0].lineBreak) icons.shift();
+    return icons;
   }
 
-  function kelimeMetni(w) { return w.segler.map(function (s) { return s.metin; }).join(''); }
-  function kelimeGen(w, olc) { return w.segler.reduce(function (t, s) { return t + olc(s.metin, s.stil, s.boy); }, 0); }
-  function kelimeUz(w) { return w.segler.reduce(function (t, s) { return t + s.metin.length; }, 0); }
+  function wordText(w) { return w.segs.map(function (s) { return s.text; }).join(''); }
+  function wordWidth(w, measure) { return w.segs.reduce(function (t, s) { return t + measure(s.text, s.style, s.fontSize); }, 0); }
+  function wordUz(w) { return w.segs.reduce(function (t, s) { return t + s.text.length; }, 0); }
 
   /** İlk k karakterin genişliği (tiresiz); yalnız sol parça kurulur (sağ kalan kopyalanmaz). */
-  function onekGen(w, k, olc) {
+  function prefixWidth(w, k, measure) {
     var t = 0, i = 0;
-    for (var j = 0; j < w.segler.length && i < k; j++) {
-      var s = w.segler[j];
-      var son = i + s.metin.length;
-      t += olc(son <= k ? s.metin : s.metin.slice(0, k - i), s.stil, s.boy);
-      i = son;
+    for (var j = 0; j < w.segs.length && i < k; j++) {
+      var s = w.segs[j];
+      var last = i + s.text.length;
+      t += measure(last <= k ? s.text : s.text.slice(0, k - i), s.style, s.fontSize);
+      i = last;
     }
     return t;
   }
 
-  function yuksekVekil(c) { return c >= 0xd800 && c <= 0xdbff; }
+  function tallProxy(c) { return c >= 0xd800 && c <= 0xdbff; }
 
   /**
    * Tahmini sığan önek: tek karakter genişliklerinin (önbellekli) önek toplamı yer'i aşana kadar sayılır.
    * En çok k+1 karakter gezilir (satır boyu kadar), kelimenin kalanına bakılmaz.
    */
-  function tahminiOnek(w, yer, olc) {
+  function estimatedPrefix(w, place, measure) {
     var t = 0, k = 0;
-    for (var j = 0; j < w.segler.length; j++) {
-      var s = w.segler[j];
-      for (var i = 0; i < s.metin.length; i++) {
-        t += olc(s.metin.charAt(i), s.stil, s.boy);
-        if (t > yer + 1e-6) return k;
+    for (var j = 0; j < w.segs.length; j++) {
+      var s = w.segs[j];
+      for (var i = 0; i < s.text.length; i++) {
+        t += measure(s.text.charAt(i), s.style, s.fontSize);
+        if (t > place + 1e-6) return k;
         k++;
       }
     }
@@ -133,10 +133,10 @@
    * Önek toplamı tahmininden başlar, gerçek ölçümle doğrular (çoğu satırda 2 ölçüm); tahmin şaşarsa
    * oradan üstel + ikili arama. Satır başına O(log n) ölçüm, her biri satır boyu kadar metin.
    */
-  function enUzunOnek(w, n, yer, olc) {
-    if (n <= 1 || !(yer >= 0)) return 0;
-    function sig(k) { return onekGen(w, k, olc) <= yer + 1e-6; }
-    var k0 = Math.min(n - 1, tahminiOnek(w, yer, olc));
+  function longestPrefix(w, n, place, measure) {
+    if (n <= 1 || !(place >= 0)) return 0;
+    function sig(k) { return prefixWidth(w, k, measure) <= place + 1e-6; }
+    var k0 = Math.min(n - 1, estimatedPrefix(w, place, measure));
     var lo, hi, a;
     if (k0 === 0 || sig(k0)) {
       lo = k0; hi = n; // n: bütün kelime (çağıran için zaten sığmıyor)
@@ -151,37 +151,37 @@
 
   // Uzun kelimede (> UZUN karakter) tam genişlik ölçülmeden önce sığma denetlenir: tahmini taşma noktasındaki
   // gerçek önek bile sığmıyorsa kelime sığmaz (kelimenin tamamı her satırda yeniden ölçülmez).
-  var UZUN = 64;
-  function kelimeGenSinirli(w, yer, olc) {
-    var n = kelimeUz(w);
-    if (n > UZUN) {
-      var k = tahminiOnek(w, yer, olc);
-      if (k < n && onekGen(w, k + 1, olc) > yer + 1e-6) return Infinity;
+  var LONG = 64;
+  function wordWidthLimited(w, place, measure) {
+    var n = wordUz(w);
+    if (n > LONG) {
+      var k = estimatedPrefix(w, place, measure);
+      if (k < n && prefixWidth(w, k + 1, measure) > place + 1e-6) return Infinity;
     }
-    return kelimeGen(w, olc);
+    return wordWidth(w, measure);
   }
 
   /** Kelimeyi k karakterinden böler; tire true ise sol parçaya '-' eklenir. */
-  function kelimeBol(w, k, tire) {
-    var sol = [], sag = [], i = 0;
-    w.segler.forEach(function (s) {
-      var bas = i, son = i + s.metin.length;
-      if (son <= k) sol.push(s);
-      else if (bas >= k) sag.push(s);
+  function splitWord(w, k, hyphen) {
+    var left = [], right = [], i = 0;
+    w.segs.forEach(function (s) {
+      var head = i, last = i + s.text.length;
+      if (last <= k) left.push(s);
+      else if (head >= k) right.push(s);
       else {
-        sol.push(Object.assign({}, s, { metin: s.metin.slice(0, k - bas) }));
-        sag.push(Object.assign({}, s, { metin: s.metin.slice(k - bas) }));
+        left.push(Object.assign({}, s, { text: s.text.slice(0, k - head) }));
+        right.push(Object.assign({}, s, { text: s.text.slice(k - head) }));
       }
-      i = son;
+      i = last;
     });
-    if (tire && sol.length) {
-      var son_ = sol[sol.length - 1];
-      sol[sol.length - 1] = Object.assign({}, son_, { metin: son_.metin.replace(/­$/, '') + '-' });
+    if (hyphen && left.length) {
+      var last_ = left[left.length - 1];
+      left[left.length - 1] = Object.assign({}, last_, { text: last_.text.replace(/­$/, '') + '-' });
     }
-    var kalan = { segler: sag, dil: w.dil };
+    var rest = { segs: right, i18n: w.i18n };
     // bölme noktaları kelimenin aslından devralınır (kalan parça için baştan hesaplanmaz)
-    if (w.nk) kalan.nk = { l: w.nk.l, o: w.nk.o + k };
-    return [{ segler: sol, dil: w.dil }, kalan];
+    if (w.nk) rest.nk = { l: w.nk.l, o: w.nk.o + k };
+    return [{ segs: left, i18n: w.i18n }, rest];
   }
 
   /**
@@ -190,28 +190,28 @@
    * Bölünen kelimenin kalan parçası aynı listeyi devralır (nk.o = kalanın asıldaki başlangıcı); böylece uzun
    * kelimede heceleme her satırda baştan yapılmaz.
    */
-  function noktaListesi(w, tireBol) {
+  function pointList(w, hyphenate) {
     if (w.nk) return w.nk;
-    var t = kelimeMetni(w);
+    var t = wordText(w);
     var l = [];
-    var gor = {};
-    function ekle(k, tire, sol) { if (k > 0 && k < t.length && !gor[k]) { gor[k] = 1; l.push({ k: k, tire: tire, sol: sol }); } }
+    var see = {};
+    function add(k, hyphen, left) { if (k > 0 && k < t.length && !see[k]) { see[k] = 1; l.push({ k: k, hyphen: hyphen, left: left }); } }
     for (var i = 1; i < t.length - 1; i++) {
       var c = t.charAt(i);
       // var olan kısa çizgi: sonrasında tiresiz bölünür (her iki yanda en az 2 karakter)
-      if ((c === '-' || c === '‐') && i >= 2 && t.length - i - 1 >= 2) ekle(i + 1, false, 3);
-      if (tireBol && c === YUMUSAK) ekle(i + 1, true, 2);
+      if ((c === '-' || c === '‐') && i >= 2 && t.length - i - 1 >= 2) add(i + 1, false, 3);
+      if (hyphenate && c === SOFT) add(i + 1, true, 2);
     }
-    if (tireBol && /^tr\b/i.test(w.dil || '') && H()) {
+    if (hyphenate && /^tr\b/i.test(w.i18n || '') && H()) {
       // '-', U+2010 ve U+00AD ile ayrılmış her alt dizi ayrı hecelenir (heceleyici tire görünce hiç nokta vermiyordu)
       var altBas = 0;
-      var altEkle = function (alt, ofs) {
-        H().bolmeNoktalari(alt).forEach(function (k) { ekle(ofs + k, !H().tiresizMi(alt, k), 2); });
+      var addAlternatives = function (part, ofs) {
+        H().breakPoints(part).forEach(function (k) { add(ofs + k, !H().isNoHyphen(part, k), 2); });
       };
       for (var j = 0; j <= t.length; j++) {
         var cj = j < t.length ? t.charAt(j) : '';
-        if (j === t.length || cj === '-' || cj === '‐' || cj === YUMUSAK) {
-          if (j > altBas) altEkle(t.slice(altBas, j), altBas);
+        if (j === t.length || cj === '-' || cj === '‐' || cj === SOFT) {
+          if (j > altBas) addAlternatives(t.slice(altBas, j), altBas);
           altBas = j + 1;
         }
       }
@@ -222,28 +222,28 @@
   }
 
   /** Bölme noktaları (bu parçaya göre): [{ k, tire }] artan. */
-  function noktalar(w, tireBol) {
-    var nk = noktaListesi(w, tireBol);
-    var n = kelimeUz(w);
+  function points(w, hyphenate) {
+    var nk = pointList(w, hyphenate);
+    var n = wordUz(w);
     var l = [];
     nk.l.forEach(function (p) {
       var k = p.k - nk.o;
-      if (k > 0 && k < n && (nk.o === 0 || k >= p.sol)) l.push({ k: k, tire: p.tire });
+      if (k > 0 && k < n && (nk.o === 0 || k >= p.left)) l.push({ k: k, hyphen: p.hyphen });
     });
     return l;
   }
 
   /** Artan l içinde mutlak k ≤ sinir olan son noktanın indisi (yoksa −1); ikili arama. */
-  function sonNokta(l, sinir) {
+  function sonNokta(l, limit) {
     var lo = 0, hi = l.length;
-    while (lo < hi) { var m = (lo + hi) >> 1; if (l[m].k <= sinir) lo = m + 1; else hi = m; }
+    while (lo < hi) { var m = (lo + hi) >> 1; if (l[m].k <= limit) lo = m + 1; else hi = m; }
     return lo - 1;
   }
 
   /** Kelimenin i. UTF-16 birimi (parçaları birleştirmeden). */
-  function birimKodu(w, i) {
-    for (var j = 0; j < w.segler.length; j++) {
-      var m = w.segler[j].metin;
+  function unitCode(w, i) {
+    for (var j = 0; j < w.segs.length; j++) {
+      var m = w.segs[j].text;
       if (i < m.length) return m.charCodeAt(i);
       i -= m.length;
     }
@@ -255,251 +255,251 @@
    * Bir paragraf/başlık bloğunu satırlara böler.
    * Dönüş: [{ ogeler: [{ x (alan soluna göre), dy (satır üstünden taban çizgisi), metin, stil, boy, bosluk }] }]
    */
-  function satirlar(blok, boy, alanGen, ayar, olc) {
-    var em = boy;
-    var solG = (blok.solGirinti || 0) * em, sagG = (blok.sagGirinti || 0) * em;
+  function rows(block, fontSize, alanGen, settings, measure) {
+    var em = fontSize;
+    var solG = (block.leftIndent || 0) * em, sagG = (block.rightIndent || 0) * em;
     // İç içe liste/alıntı girintisi birikir ve üst sınırı yoktur: satır genişliği en az min(alan, 4 em) kalsın,
     // fazlası sol/sağ girintiden orantılı düşülür (W ≤ 0 olursa her kelime boş satır üretiyordu).
-    var enAzGen = Math.min(alanGen, 4 * em);
-    if (solG + sagG > alanGen - enAzGen) {
-      var oran = (alanGen - enAzGen) / (solG + sagG);
-      solG *= oran; sagG *= oran;
+    var minWidth = Math.min(alanGen, 4 * em);
+    if (solG + sagG > alanGen - minWidth) {
+      var ratio = (alanGen - minWidth) / (solG + sagG);
+      solG *= ratio; sagG *= ratio;
     }
     var W0 = alanGen - solG - sagG;
-    var hiza = blok.hiza || 'iki';
-    var girinti = !!blok.girinti && hiza !== 'orta' && hiza !== 'sag' && W0 > 2 * em;
-    var L = boy * ayar.satirAraligi;
-    var tabanDy = (L - boy) / 2 + 0.8 * boy;
-    var bosluk = olc(' ', 'R', boy);
-    var simgeler = kelimelereAyir(blok, boy);
-    var cikti = [];
-    var cur = [], curW = 0, ilk = true;
+    var align = block.align || 'iki';
+    var indent = !!block.indent && align !== 'middle' && align !== 'right' && W0 > 2 * em;
+    var L = fontSize * settings.lineSpacing;
+    var baseDy = (L - fontSize) / 2 + 0.8 * fontSize;
+    var space = measure(' ', 'R', fontSize);
+    var icons = splitIntoWords(block, fontSize);
+    var output = [];
+    var cur = [], curW = 0, first = true;
 
-    function satirGen() { return W0 - (ilk && girinti ? em : 0); }
+    function lineWidth() { return W0 - (first && indent ? em : 0); }
 
-    function bitir(sola) {
-      var W = satirGen();
-      var bas = solG + (ilk && girinti ? em : 0);
-      var genler = cur.map(function (w) { return kelimeGen(w, olc); });
-      var dogal = genler.reduce(function (a, b) { return a + b; }, 0) + bosluk * Math.max(0, cur.length - 1);
-      var aralik = bosluk;
-      var x = bas;
-      if (hiza === 'iki' && !sola && cur.length > 1) aralik = bosluk + (W - dogal) / (cur.length - 1);
-      else if (hiza === 'orta') x = bas + Math.max(0, (W - dogal) / 2);
-      else if (hiza === 'sag') x = bas + Math.max(0, W - dogal);
-      var ogeler = [];
-      if (ilk && blok.onEk) {
-        var oe = olc(blok.onEk, 'R', boy);
-        ogeler.push({ x: Math.max(0, solG - oe - 0.4 * em), dy: tabanDy, metin: blok.onEk, stil: 'R', boy: boy, bosluk: true });
+    function finish(toLeft) {
+      var W = lineWidth();
+      var head = solG + (first && indent ? em : 0);
+      var widths = cur.map(function (w) { return wordWidth(w, measure); });
+      var natural = widths.reduce(function (a, b) { return a + b; }, 0) + space * Math.max(0, cur.length - 1);
+      var range = space;
+      var x = head;
+      if (align === 'iki' && !toLeft && cur.length > 1) range = space + (W - natural) / (cur.length - 1);
+      else if (align === 'middle') x = head + Math.max(0, (W - natural) / 2);
+      else if (align === 'right') x = head + Math.max(0, W - natural);
+      var elements = [];
+      if (first && block.prefix) {
+        var oe = measure(block.prefix, 'R', fontSize);
+        elements.push({ x: Math.max(0, solG - oe - 0.4 * em), dy: baseDy, text: block.prefix, style: 'R', fontSize: fontSize, space: true });
       }
       cur.forEach(function (w, i) {
         var sx = x;
-        w.segler.forEach(function (s, j) {
-          var t = gorunen(s.metin);
+        w.segs.forEach(function (s, j) {
+          var t = visible(s.text);
           if (t) {
-            ogeler.push({ x: sx, dy: tabanDy - (s.ust ? 0.33 * boy : 0), metin: t, stil: s.stil, boy: s.boy, bosluk: j === w.segler.length - 1 && i < cur.length - 1 });
+            elements.push({ x: sx, dy: baseDy - (s.top ? 0.33 * fontSize : 0), text: t, style: s.style, fontSize: s.fontSize, space: j === w.segs.length - 1 && i < cur.length - 1 });
           }
-          sx += olc(s.metin, s.stil, s.boy);
+          sx += measure(s.text, s.style, s.fontSize);
         });
-        x += genler[i] + aralik;
+        x += widths[i] + range;
       });
-      cikti.push({ ogeler: ogeler, yukseklik: L });
-      cur = []; curW = 0; ilk = false;
+      output.push({ elements: elements, height: L });
+      cur = []; curW = 0; first = false;
     }
 
-    function enUzunSigan(w, yer, zorunlu) {
-      var n = kelimeUz(w);
+    function longestFitting(w, place, required) {
+      var n = wordUz(w);
       // tiresiz sığan en uzun önek (üstel + ikili arama); hiçbir bölme noktası bundan ileride sığamaz
-      var kDuz = enUzunOnek(w, n, yer, olc);
-      var nk = noktaListesi(w, ayar.tireBol);
-      for (var i = sonNokta(nk.l, nk.o + kDuz); i >= 0; i--) {
+      var kFlat = longestPrefix(w, n, place, measure);
+      var nk = pointList(w, settings.hyphenate);
+      for (var i = sonNokta(nk.l, nk.o + kFlat); i >= 0; i--) {
         var kr = nk.l[i].k - nk.o;
         if (kr <= 0) break;
-        if (nk.o > 0 && kr < nk.l[i].sol) continue;
-        var p = kelimeBol(w, kr, nk.l[i].tire);
-        if (kelimeGen(p[0], olc) <= yer + 1e-6) return p;
+        if (nk.o > 0 && kr < nk.l[i].left) continue;
+        var p = splitWord(w, kr, nk.l[i].hyphen);
+        if (wordWidth(p[0], measure) <= place + 1e-6) return p;
       }
-      if (!zorunlu) return null;
+      if (!required) return null;
       // hiç nokta sığmıyor ve satır boş: karakterden böl (kelime satırdan uzun); vekil çift bölünmez
-      var k = kDuz;
-      if (k > 1 && k < n && yuksekVekil(birimKodu(w, k - 1))) k -= 1;
-      if (k < 1) k = n > 1 && yuksekVekil(birimKodu(w, 0)) ? 2 : 1;
-      return kelimeBol(w, k, false);
+      var k = kFlat;
+      if (k > 1 && k < n && tallProxy(unitCode(w, k - 1))) k -= 1;
+      if (k < 1) k = n > 1 && tallProxy(unitCode(w, 0)) ? 2 : 1;
+      return splitWord(w, k, false);
     }
 
-    simgeler.forEach(function (s) {
-      if (s.kir) { bitir(true); return; }
+    icons.forEach(function (s) {
+      if (s.lineBreak) { finish(true); return; }
       var w = s;
-      for (var koruma = 0; koruma < 10000; koruma++) {
-        if (!w.segler.length) return; // bölmeden boş kalan parça: döngü biter
-        var W = satirGen();
-        var ek = cur.length ? bosluk : 0;
-        var g = kelimeGenSinirli(w, W - curW - ek, olc);
+      for (var protection = 0; protection < 10000; protection++) {
+        if (!w.segs.length) return; // bölmeden boş kalan parça: döngü biter
+        var W = lineWidth();
+        var ek = cur.length ? space : 0;
+        var g = wordWidthLimited(w, W - curW - ek, measure);
         if (curW + ek + g <= W + 1e-6) { cur.push(w); curW += ek + g; return; }
-        if (!cur.length || curW / W < DOLULUK_ESIK) {
-          var p = enUzunSigan(w, W - curW - ek, !cur.length);
-          if (p) { cur.push(p[0]); curW += ek + kelimeGen(p[0], olc); bitir(false); w = p[1]; continue; }
+        if (!cur.length || curW / W < FILL_THRESHOLD) {
+          var p = longestFitting(w, W - curW - ek, !cur.length);
+          if (p) { cur.push(p[0]); curW += ek + wordWidth(p[0], measure); finish(false); w = p[1]; continue; }
         }
-        bitir(false);
+        finish(false);
       }
     });
-    if (cur.length || !cikti.length) bitir(true);
-    return cikti;
+    if (cur.length || !output.length) finish(true);
+    return output;
   }
 
   /** Arayüz metni: tarayıcıda KitapCilt.dil, Node'da ../../i18n.js. */
-  function dilT(a, p) {
+  function i18nT(a, p) {
     var k = typeof self !== 'undefined' ? self : globalThis;
-    return ((k && k.KitapCilt && k.KitapCilt.dil) || require('../../i18n.js')).t(a, p);
+    return ((k && k.Mucellit && k.Mucellit.i18n) || require('../../i18n.js')).t(a, p);
   }
 
   // ---------- sayfalama ----------
-  function* dizUretec(bloklar, ayar, olcer) {
-    var olc = onbellekliOlcer(olcer);
-    var k = ayar.kenar;
-    var alanGen = ayar.sayfaGen - k.ic - k.dis;
-    var alanYuk = ayar.sayfaYuk - k.ust - k.alt;
-    if (!(alanGen > 0) || !(alanYuk > 0)) throw new Error(dilT('dizgi.kenar_sigmiyor', { gen: Math.round(alanGen), yuk: Math.round(alanYuk) }));
-    var ust = ayar.sayfaYuk - k.ust;
-    var sayfalar = [];
-    var sayfa = { no: 1, bolumBasi: false, ogeler: [] };
-    var kullanilan = 0;
-    var uyarilar = { dusukDpi: 0 };
-    var satirOnbellek = {};
+  function* imposeGenerator(blocks, settings, measurer) {
+    var measure = cachedMeasurer(measurer);
+    var k = settings.margin;
+    var alanGen = settings.pageWidth - k.inner - k.outer;
+    var fieldHeight = settings.pageHeight - k.top - k.bottom;
+    if (!(alanGen > 0) || !(fieldHeight > 0)) throw new Error(i18nT('typeset.margin_too_large', { width: Math.round(alanGen), height: Math.round(fieldHeight) }));
+    var top = settings.pageHeight - k.top;
+    var pages = [];
+    var page = { no: 1, chapterStart: false, elements: [] };
+    var used = 0;
+    var warnings = { lowDpi: 0 };
+    var lineCache = {};
 
-    function bos() { return sayfa.ogeler.length === 0 && kullanilan === 0; }
-    function yeniSayfa() {
-      sayfalar.push(sayfa);
-      sayfa = { no: sayfalar.length + 1, bolumBasi: false, ogeler: [] };
-      kullanilan = 0;
+    function blank() { return page.elements.length === 0 && used === 0; }
+    function newPage() {
+      pages.push(page);
+      page = { no: pages.length + 1, chapterStart: false, elements: [] };
+      used = 0;
     }
-    function blokBoy(b) {
-      if (b.tur === 'baslik') return ayar.boy * BASLIK_CARPAN[Math.min(6, Math.max(1, b.duzey || 1)) - 1];
-      return ayar.boy * (b.kucuk ? 0.85 : 1);
+    function blockLength(b) {
+      if (b.kind === 'title') return settings.fontSize * TITLE_FACTOR[Math.min(6, Math.max(1, b.level || 1)) - 1];
+      return settings.fontSize * (b.small ? 0.85 : 1);
     }
-    function onceki(i) { return i > 0 ? bloklar[i - 1] : null; }
-    function blokGirintili(i) {
-      var b = bloklar[i], o = onceki(i);
-      if (!b.girinti || b.onEk) return false;
-      return !!o && o.tur === 'paragraf' && !o.onEk;
+    function previous(i) { return i > 0 ? blocks[i - 1] : null; }
+    function blockIndented(i) {
+      var b = blocks[i], o = previous(i);
+      if (!b.indent || b.prefix) return false;
+      return !!o && o.kind === 'paragraph' && !o.prefix;
     }
-    function satirlariAl(i) {
-      if (satirOnbellek[i]) return satirOnbellek[i];
-      var b = bloklar[i];
-      var bb = Object.assign({}, b, { girinti: b.tur === 'paragraf' ? blokGirintili(i) : false });
-      if (b.tur === 'baslik') {
-        bb.hiza = b.hiza || (b.duzey <= 2 ? 'orta' : 'sol');
-        bb.parcalar = (b.parcalar || []).map(function (p) { return p.kir ? p : Object.assign({}, p, { kalin: true }); });
+    function takeLines(i) {
+      if (lineCache[i]) return lineCache[i];
+      var b = blocks[i];
+      var bb = Object.assign({}, b, { indent: b.kind === 'paragraph' ? blockIndented(i) : false });
+      if (b.kind === 'title') {
+        bb.align = b.align || (b.level <= 2 ? 'middle' : 'left');
+        bb.parts = (b.parts || []).map(function (p) { return p.lineBreak ? p : Object.assign({}, p, { bold: true }); });
       }
-      var r = satirlar(bb, blokBoy(b), alanGen, ayar, olc);
-      satirOnbellek[i] = r;
+      var r = rows(bb, blockLength(b), alanGen, settings, measure);
+      lineCache[i] = r;
       return r;
     }
-    function satirKoy(s, i, no) {
-      s.ogeler.forEach(function (o) {
-        sayfa.ogeler.push({ tur: 'metin', x: k.ic + o.x, y: ust - kullanilan - o.dy, metin: o.metin, stil: o.stil, boy: o.boy, bosluk: o.bosluk, blok: i, satir: no });
+    function putLine(s, i, no) {
+      s.elements.forEach(function (o) {
+        page.elements.push({ kind: 'text', x: k.inner + o.x, y: top - used - o.dy, text: o.text, style: o.style, fontSize: o.fontSize, space: o.space, block: i, line: no });
       });
-      kullanilan += s.yukseklik;
+      used += s.height;
     }
-    function bosluguKoy(h) { if (!bos()) kullanilan += h; }
-    function kalan() { return alanYuk - kullanilan; }
+    function putSpace(h) { if (!blank()) used += h; }
+    function rest() { return fieldHeight - used; }
 
-    for (var i = 0; i < bloklar.length; i++) {
+    for (var i = 0; i < blocks.length; i++) {
       if (i > 0 && i % 200 === 0) yield i;
-      var b = bloklar[i];
-      var L = blokBoy(b) * ayar.satirAraligi;
-      if (b.tur === 'bolumBasi' || b.tur === 'sayfaSonu') {
-        if (!bos()) yeniSayfa();
-        if (b.tur === 'bolumBasi') sayfa.bolumBasi = true;
+      var b = blocks[i];
+      var L = blockLength(b) * settings.lineSpacing;
+      if (b.kind === 'chapterStart' || b.kind === 'pageEnd') {
+        if (!blank()) newPage();
+        if (b.kind === 'chapterStart') page.chapterStart = true;
         continue;
       }
-      if (b.tur === 'ayrac') {
-        var oncesi = bos() ? 0 : 0.5 * L;
-        if (oncesi + L > kalan() + 1e-6 && !bos()) yeniSayfa(); else bosluguKoy(oncesi);
-        var yildiz = '* * *';
-        var yg = olc(yildiz, 'R', ayar.boy);
-        satirKoy({ ogeler: [{ x: (alanGen - yg) / 2, dy: (L - ayar.boy) / 2 + 0.8 * ayar.boy, metin: yildiz, stil: 'R', boy: ayar.boy, bosluk: false }], yukseklik: L }, i, 0);
-        kullanilan += Math.max(0, Math.min(0.5 * L, kalan()));
+      if (b.kind === 'separator') {
+        var before = blank() ? 0 : 0.5 * L;
+        if (before + L > rest() + 1e-6 && !blank()) newPage(); else putSpace(before);
+        var star = '* * *';
+        var yg = measure(star, 'R', settings.fontSize);
+        putLine({ elements: [{ x: (alanGen - yg) / 2, dy: (L - settings.fontSize) / 2 + 0.8 * settings.fontSize, text: star, style: 'R', fontSize: settings.fontSize, space: false }], height: L }, i, 0);
+        used += Math.max(0, Math.min(0.5 * L, rest()));
         continue;
       }
-      if (b.tur === 'resim') {
-        var r = b.resim || {};
-        var w = (r.pikselGen || 1) * 0.75, h = (r.pikselYuk || 1) * 0.75;
-        var olcek = Math.min(1, alanGen / w, alanYuk / h);
-        w *= olcek; h *= olcek;
-        var once = bos() ? 0 : 0.5 * L;
-        if (once + h > kalan() + 1e-6) yeniSayfa(); else bosluguKoy(once);
-        sayfa.ogeler.push({ tur: 'resim', x: k.ic + (alanGen - w) / 2, y: ust - kullanilan - h, w: w, h: h, anahtar: r.anahtar, blok: i });
-        kullanilan += h;
-        if (r.pikselGen / (w / 72) < 300 - 1e-6) uyarilar.dusukDpi += 1;
-        kullanilan += Math.min(0.5 * L, kalan());
+      if (b.kind === 'image') {
+        var r = b.image || {};
+        var w = (r.pixelWidth || 1) * 0.75, h = (r.pixelHeight || 1) * 0.75;
+        var scaling = Math.min(1, alanGen / w, fieldHeight / h);
+        w *= scaling; h *= scaling;
+        var once = blank() ? 0 : 0.5 * L;
+        if (once + h > rest() + 1e-6) newPage(); else putSpace(once);
+        page.elements.push({ kind: 'image', x: k.inner + (alanGen - w) / 2, y: top - used - h, w: w, h: h, key: r.key, block: i });
+        used += h;
+        if (r.pixelWidth / (w / 72) < 300 - 1e-6) warnings.lowDpi += 1;
+        used += Math.min(0.5 * L, rest());
         continue;
       }
       // paragraf / başlık
-      var sl = satirlariAl(i);
+      var sl = takeLines(i);
       if (!sl.length) continue;
-      var baslik = b.tur === 'baslik';
-      var onBosluk = baslik ? L : 0;
-      if (baslik) {
+      var title = b.kind === 'title';
+      var frontSpace = title ? L : 0;
+      if (title) {
         // başlık + sonraki bloğun ilk 2 satırı aynı sayfada
-        var gerek = (bos() ? 0 : onBosluk) + sl.length * L + 0.5 * L;
+        var need = (blank() ? 0 : frontSpace) + sl.length * L + 0.5 * L;
         var j = i + 1;
-        if (j < bloklar.length && (bloklar[j].tur === 'paragraf' || bloklar[j].tur === 'baslik')) {
-          var sonraki = satirlariAl(j);
-          gerek += Math.min(2, sonraki.length) * (sonraki.length ? sonraki[0].yukseklik : 0);
-        } else if (j < bloklar.length && bloklar[j].tur === 'resim') {
-          gerek += L; // en az bir satırlık yer: resim sayfaya sığmazsa başlık onunla birlikte iner
+        if (j < blocks.length && (blocks[j].kind === 'paragraph' || blocks[j].kind === 'title')) {
+          var next = takeLines(j);
+          need += Math.min(2, next.length) * (next.length ? next[0].height : 0);
+        } else if (j < blocks.length && blocks[j].kind === 'image') {
+          need += L; // en az bir satırlık yer: resim sayfaya sığmazsa başlık onunla birlikte iner
         }
-        if (gerek > kalan() + 1e-6 && !bos()) yeniSayfa();
-        bosluguKoy(onBosluk);
-        sl.forEach(function (s, n) { if (s.yukseklik > kalan() + 1e-6 && !bos()) yeniSayfa(); satirKoy(s, i, n); });
-        kullanilan += Math.min(0.5 * L, kalan());
+        if (need > rest() + 1e-6 && !blank()) newPage();
+        putSpace(frontSpace);
+        sl.forEach(function (s, n) { if (s.height > rest() + 1e-6 && !blank()) newPage(); putLine(s, i, n); });
+        used += Math.min(0.5 * L, rest());
         continue;
       }
       var n = 0;
       while (n < sl.length) {
-        var kalanSatir = sl.length - n;
-        var sigan = Math.floor((kalan() + 1e-6) / L);
-        if (sigan >= kalanSatir) { for (; n < sl.length; n++) satirKoy(sl[n], i, n); break; }
+        var restLine = sl.length - n;
+        var fitting = Math.floor((rest() + 1e-6) / L);
+        if (fitting >= restLine) { for (; n < sl.length; n++) putLine(sl[n], i, n); break; }
         // bölünmesi gerek
-        var koy;
-        if (bos()) {
+        var put;
+        if (blank()) {
           // boş sayfaya bile sığmıyor: sığanı koy, alttakine en az 2 satır bırak
-          koy = Math.max(1, Math.min(sigan, kalanSatir - 2));
-        } else if (kalanSatir <= 3 || sigan < 2 || (n === 0 && sl.length <= 3)) {
-          yeniSayfa();
+          put = Math.max(1, Math.min(fitting, restLine - 2));
+        } else if (restLine <= 3 || fitting < 2 || (n === 0 && sl.length <= 3)) {
+          newPage();
           continue;
         } else {
-          koy = Math.min(sigan, kalanSatir - 2);
-          if (koy < 2) { yeniSayfa(); continue; }
+          put = Math.min(fitting, restLine - 2);
+          if (put < 2) { newPage(); continue; }
         }
-        for (var t = 0; t < koy; t++, n++) satirKoy(sl[n], i, n);
-        yeniSayfa();
+        for (var t = 0; t < put; t++, n++) putLine(sl[n], i, n);
+        newPage();
       }
     }
-    if (sayfa.ogeler.length) sayfalar.push(sayfa);
+    if (page.elements.length) pages.push(page);
     // sayfa numaraları (bölüm açılış sayfasına basılmaz)
-    if (ayar.sayfaNo) {
-      var nb = ayar.sayfaNoBoy || 9;
-      sayfalar.forEach(function (s, idx) {
-        if (s.bolumBasi) return;
+    if (settings.pageNumbers) {
+      var nb = settings.pageNoLength || 9;
+      pages.forEach(function (s, idx) {
+        if (s.chapterStart) return;
         var t = String(idx + 1);
-        s.ogeler.push({ tur: 'metin', rol: 'sayfaNo', x: (ayar.sayfaGen - olc(t, 'R', nb)) / 2, y: k.alt / 2, metin: t, stil: 'R', boy: nb, bosluk: false });
+        s.elements.push({ kind: 'text', role: 'pageNumbers', x: (settings.pageWidth - measure(t, 'R', nb)) / 2, y: k.bottom / 2, text: t, style: 'R', fontSize: nb, space: false });
       });
     }
-    sayfalar.forEach(function (s, idx) { s.no = idx + 1; });
-    return { sayfalar: sayfalar, uyarilar: uyarilar, alan: { x: k.ic, y: k.alt, w: alanGen, h: alanYuk } };
+    pages.forEach(function (s, idx) { s.no = idx + 1; });
+    return { pages: pages, warnings: warnings, field: { x: k.inner, y: k.bottom, w: alanGen, h: fieldHeight } };
   }
 
-  function diz(bloklar, ayar, olcer) {
-    var it = dizUretec(bloklar, ayar, olcer);
+  function impose(blocks, settings, measurer) {
+    var it = imposeGenerator(blocks, settings, measurer);
     var r = it.next();
     while (!r.done) r = it.next();
     return r.value;
   }
 
-  async function dizAsync(bloklar, ayar, olcer) {
-    var it = dizUretec(bloklar, ayar, olcer);
+  async function imposeAsync(blocks, settings, measurer) {
+    var it = imposeGenerator(blocks, settings, measurer);
     var r = it.next();
     while (!r.done) {
       await new Promise(function (ok) { setTimeout(ok, 0); });
@@ -512,18 +512,18 @@
    * fontlar: { R, I, B, BI } fontkit yazı tipi nesneleri. Genişlik = Σ glyph.advanceWidth × boy / unitsPerEm
    * (pdf-lib CustomFontEmbedder.widthOfTextAtSize ile aynı; kerning yok, liga kapalı).
    */
-  function fontkitOlcer(fontlar, ozellikler) {
-    var oz = ozellikler || { liga: false };
+  function fontkitMeasurer(fonts, features) {
+    var oz = features || { liga: false };
     return {
-      genislik: function (metin, stil, boy) {
-        var f = fontlar[stil] || fontlar.R;
-        var gl = f.layout(metin, oz).glyphs;
+      width: function (text, style, fontSize) {
+        var f = fonts[style] || fonts.R;
+        var gl = f.layout(text, oz).glyphs;
         var t = 0;
         for (var i = 0; i < gl.length; i++) t += gl[i].advanceWidth;
-        return t * boy / f.unitsPerEm;
+        return t * fontSize / f.unitsPerEm;
       }
     };
   }
 
-  return { diz: diz, dizAsync: dizAsync, fontkitOlcer: fontkitOlcer, satirlar: satirlar, kelimelereAyir: kelimelereAyir, noktalar: noktalar, onbellekliOlcer: onbellekliOlcer };
+  return { impose: impose, imposeAsync: imposeAsync, fontkitMeasurer: fontkitMeasurer, rows: rows, splitIntoWords: splitIntoWords, points: points, cachedMeasurer: cachedMeasurer };
 });

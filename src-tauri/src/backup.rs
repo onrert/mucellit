@@ -9,8 +9,8 @@
 //! yazılır. Böylece "Tümünü temizle → hemen ⌘Q" sonrası eski dolu yedek kalmaz. Sıra: JS oturum kimliği +
 //! artan sayı; aynı oturumdan geç gelen eski çağrı yok sayılır.
 
-use crate::i18n::metin;
-use crate::recent::atomik_yaz;
+use crate::i18n::text;
+use crate::recent::write_atomic;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,128 +18,128 @@ use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
-pub const DOSYA_ADI: &str = "surec.json";
+pub const FILE_NAME: &str = "projects.json";
 /// Yedeğin üst sınırı; süreç verisi metin ve küçük (kitap + adım listesi).
-pub const EN_COK: usize = 16 << 20;
+pub const MAX_ENTRIES: usize = 16 << 20;
 
-fn dosya<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+fn file<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
-        .map(|d| d.join(DOSYA_ADI))
+        .map(|d| d.join(FILE_NAME))
         .map_err(|e| e.to_string())
 }
 
 /// Diske yazmadan önceki bekleme (sık değişiklik tek yazımda birleşir).
-pub const GECIKME: Duration = Duration::from_secs(1);
+pub const DELAY: Duration = Duration::from_secs(1);
 /// İşçinin yazamadığını webview'e bildirdiği olay (yük: hata metni).
-pub const HATA_OLAYI: &str = "yedek-yazilamadi";
+pub const ERROR_EVENT: &str = "backup-writeFailed";
 
 /// Yedek geçerli mi: JSON nesnesi ve en çok `EN_COK` bayt.
-pub fn dogrula(json: &str) -> Result<(), String> {
-    if json.len() > EN_COK {
-        return Err(metin(
-            "rust.yedek_buyuk",
-            &[("bayt", &json.len().to_string())],
+pub fn validate(json: &str) -> Result<(), String> {
+    if json.len() > MAX_ENTRIES {
+        return Err(text(
+            "rust.backup_large",
+            &[("bytes", &json.len().to_string())],
         ));
     }
     match serde_json::from_str::<serde_json::Value>(json) {
         Ok(serde_json::Value::Object(_)) => Ok(()),
-        Ok(_) => Err(metin("rust.yedek_nesne", &[])),
-        Err(e) => Err(metin("rust.yedek_json", &[("hata", &e.to_string())])),
+        Ok(_) => Err(text("rust.backup_object", &[])),
+        Err(e) => Err(text("rust.backup_json", &[("error", &e.to_string())])),
     }
 }
 
 /// Yedeği hemen yazar. Geçerli JSON nesnesi değilse ya da çok büyükse reddeder (eski yedek bozulmaz).
-pub fn yedekle(yol: &Path, json: &str) -> Result<(), String> {
-    dogrula(json)?;
-    atomik_yaz(yol, json.as_bytes())
-        .map_err(|e| metin("rust.yedek_yazilamadi", &[("hata", &e.to_string())]))
+pub fn write_backup(path: &Path, json: &str) -> Result<(), String> {
+    validate(json)?;
+    write_atomic(path, json.as_bytes())
+        .map_err(|e| text("rust.backup_write_failed", &[("error", &e.to_string())]))
 }
 
 /// Bekleyen yedek ve sıra (uygulama durumu, `manage`).
 #[derive(Default)]
-pub struct Yedekci {
-    ic: Mutex<Ic>,
-    uyan: Condvar,
+pub struct BackupWriter {
+    inner: Mutex<Inner>,
+    wake: Condvar,
     /// Diske yazım tek tek: bekleyen ancak bu kilit alındıktan sonra alınır (sonra alınan sonra yazılır).
-    yazma: Mutex<()>,
+    write_lock: Mutex<()>,
     /// İşçinin bekleme sırasında kaç kez uyandığı (L7: boşta uyanmamalı).
-    uyanma: AtomicU64,
+    wakeups: AtomicU64,
 }
 
 #[derive(Default)]
-struct Ic {
+struct Inner {
     /// Yazılmayı bekleyen en yeni yedek ve nesli.
-    bekleyen: Option<(String, u64)>,
-    nesil: u64,
+    pending: Option<(String, u64)>,
+    generation: u64,
     /// Son kabul edilen (oturum, sıra).
-    son: Option<(String, u64)>,
+    last: Option<(String, u64)>,
     /// İşçi dursun (yalnız testte; `durdur`).
-    dur: bool,
+    stop: bool,
 }
 
-impl Yedekci {
+impl BackupWriter {
     /// JS'ten gelen yedeği doğrular ve bekleyen yapar. Aynı oturumdan sırası eski/eşit çağrı yok sayılır
     /// (`Ok(false)`); yeni oturum (sayfa yeniden yüklendi) her zaman kabul edilir.
-    pub fn kabul(&self, json: String, oturum: &str, sira: u64) -> Result<bool, String> {
-        dogrula(&json)?;
-        let mut ic = self.ic.lock().expect("yedek kilidi");
-        if let Some((o, s)) = &ic.son {
-            if o == oturum && sira <= *s {
+    pub fn accept(&self, json: String, session: &str, order: u64) -> Result<bool, String> {
+        validate(&json)?;
+        let mut inner = self.inner.lock().expect("yedek kilidi");
+        if let Some((o, s)) = &inner.last {
+            if o == session && order <= *s {
                 return Ok(false);
             }
         }
-        ic.son = Some((oturum.to_string(), sira));
-        ic.nesil += 1;
-        let n = ic.nesil;
-        ic.bekleyen = Some((json, n));
-        self.uyan.notify_all();
+        inner.last = Some((session.to_string(), order));
+        inner.generation += 1;
+        let n = inner.generation;
+        inner.pending = Some((json, n));
+        self.wake.notify_all();
         Ok(true)
     }
 
     /// İşçiyi durdurur (testte; üretimde işçi süreç boyunca yaşar).
-    pub fn durdur(&self) {
-        self.ic.lock().expect("yedek kilidi").dur = true;
-        self.uyan.notify_all();
+    pub fn stop(&self) {
+        self.inner.lock().expect("yedek kilidi").stop = true;
+        self.wake.notify_all();
     }
 
     /// İşçinin bekleme sırasında kaç kez uyandığı.
-    pub fn uyanma_sayisi(&self) -> u64 {
-        self.uyanma.load(Ordering::Relaxed)
+    pub fn wakeup_count(&self) -> u64 {
+        self.wakeups.load(Ordering::Relaxed)
     }
 
     /// Henüz diske yazılmamış en yeni yedek.
-    pub fn bekleyen(&self) -> Option<String> {
-        self.ic
+    pub fn pending(&self) -> Option<String> {
+        self.inner
             .lock()
             .expect("yedek kilidi")
-            .bekleyen
+            .pending
             .as_ref()
             .map(|b| b.0.clone())
     }
 
     /// Bekleyeni hemen diske yazar (kapanışta da bu). `Ok(false)`: bekleyen yoktu. Yazılamazsa bekleyen
     /// (bu arada daha yenisi gelmediyse) geri konur: kapanışta yeniden denenir.
-    pub fn bosalt(&self, yol: &Path) -> Result<bool, String> {
-        self.bosalt_nesilli(yol)
+    pub fn flush(&self, path: &Path) -> Result<bool, String> {
+        self.flush_generation(path)
             .map(|n| n.is_some())
             .map_err(|(m, _)| m)
     }
 
-    fn bosalt_nesilli(&self, yol: &Path) -> Result<Option<u64>, (String, u64)> {
-        let _sira = self.yazma.lock().expect("yazma kilidi");
-        let Some((json, n)) = self.ic.lock().expect("yedek kilidi").bekleyen.take() else {
+    fn flush_generation(&self, path: &Path) -> Result<Option<u64>, (String, u64)> {
+        let _order = self.write_lock.lock().expect("yazma kilidi");
+        let Some((json, n)) = self.inner.lock().expect("yedek kilidi").pending.take() else {
             return Ok(None);
         };
-        match atomik_yaz(yol, json.as_bytes()) {
+        match write_atomic(path, json.as_bytes()) {
             Ok(()) => Ok(Some(n)),
             Err(e) => {
-                let mut ic = self.ic.lock().expect("yedek kilidi");
-                if ic.bekleyen.is_none() {
-                    ic.bekleyen = Some((json, n));
+                let mut inner = self.inner.lock().expect("yedek kilidi");
+                if inner.pending.is_none() {
+                    inner.pending = Some((json, n));
                 }
                 Err((
-                    metin("rust.yedek_yazilamadi", &[("hata", &e.to_string())]),
+                    text("rust.backup_write_failed", &[("error", &e.to_string())]),
                     n,
                 ))
             }
@@ -150,32 +150,32 @@ impl Yedekci {
     /// testte denetimli) bekler, en yenisini yazar. Yazım hatası `hata` ile bir kez bildirilir; aynı yedek
     /// için yeniden denenmez (yeni değişiklik ya da kapanış dener). L7: bekleyen yokken zaman aşımsız
     /// `wait` ile uyur (boşta uyanmaz); yalnız `kabul` ya da `durdur` uyandırır.
-    pub fn isci(
+    pub fn worker(
         &self,
-        yol: &Path,
-        gecikme: Duration,
-        bekle: &dyn Fn(Duration),
-        hata: &dyn Fn(String),
+        path: &Path,
+        delay: Duration,
+        wait: &dyn Fn(Duration),
+        error: &dyn Fn(String),
     ) {
-        let mut gorulen = 0u64;
+        let mut seen = 0u64;
         loop {
             {
-                let mut ic = self.ic.lock().expect("yedek kilidi");
-                while !matches!(&ic.bekleyen, Some((_, n)) if *n > gorulen) {
-                    if ic.dur {
+                let mut inner = self.inner.lock().expect("yedek kilidi");
+                while !matches!(&inner.pending, Some((_, n)) if *n > seen) {
+                    if inner.stop {
                         return;
                     }
-                    ic = self.uyan.wait(ic).expect("yedek kilidi");
-                    self.uyanma.fetch_add(1, Ordering::Relaxed);
+                    inner = self.wake.wait(inner).expect("yedek kilidi");
+                    self.wakeups.fetch_add(1, Ordering::Relaxed);
                 }
             }
-            bekle(gecikme);
-            match self.bosalt_nesilli(yol) {
-                Ok(Some(n)) => gorulen = n,
+            wait(delay);
+            match self.flush_generation(path) {
+                Ok(Some(n)) => seen = n,
                 Ok(None) => {}
                 Err((m, n)) => {
-                    gorulen = n;
-                    hata(m);
+                    seen = n;
+                    error(m);
                 }
             }
         }
@@ -183,64 +183,64 @@ impl Yedekci {
 }
 
 /// Açılışta artık geçici dosyalar bu yaştan eskiyse silinir (L7; daha tazesi şu an yazılıyor olabilir).
-pub const ARTIK_YASI: Duration = Duration::from_secs(60);
+pub const LEFTOVER_AGE: Duration = Duration::from_secs(60);
 
 /// İşçi iş parçacığını başlatır (kurulumda bir kez). Önce uygulama veri klasöründeki çökme artığı geçici
 /// dosyaları temizler.
-pub fn isci_baslat<R: Runtime>(app: &AppHandle<R>) {
-    let yol = match dosya(app) {
+pub fn start_worker<R: Runtime>(app: &AppHandle<R>) {
+    let path = match file(app) {
         Ok(y) => y,
         Err(e) => {
-            eprintln!("otomatik yedek yolu yok: {e}");
+            eprintln!("auto backup path none: {e}");
             return;
         }
     };
-    if let Some(klasor) = yol.parent() {
-        let n = crate::recent::artik_gecicileri_temizle(klasor, ARTIK_YASI);
+    if let Some(folder) = path.parent() {
+        let n = crate::recent::remove_leftover_temps(folder, LEFTOVER_AGE);
         if n > 0 {
             eprintln!("{n} artık geçici dosya silindi");
         }
     }
     let app = app.clone();
-    let baslat = std::thread::Builder::new()
-        .name("kc-yedek".into())
+    let start = std::thread::Builder::new()
+        .name("mc-backup".into())
         .spawn(move || {
-            let yedekci = app.state::<Yedekci>();
-            yedekci.isci(&yol, GECIKME, &std::thread::sleep, &|m| {
+            let backups = app.state::<BackupWriter>();
+            backups.worker(&path, DELAY, &std::thread::sleep, &|m| {
                 eprintln!("{m}");
-                if let Err(e) = app.emit(HATA_OLAYI, m) {
-                    eprintln!("{HATA_OLAYI} olayı iletilemedi: {e}");
+                if let Err(e) = app.emit(ERROR_EVENT, m) {
+                    eprintln!("{ERROR_EVENT} olayı iletilemedi: {e}");
                 }
             });
         });
-    if let Err(e) = baslat {
-        eprintln!("otomatik yedek iş parçacığı başlatılamadı: {e}");
+    if let Err(e) = start {
+        eprintln!("auto backup iş parçacığı başlatılamadı: {e}");
     }
 }
 
 /// Kapanışta (`RunEvent::Exit`) bekleyen yedeği beklemeden yazar.
-pub fn kapanista_bosalt<R: Runtime>(app: &AppHandle<R>) {
-    let Some(yedekci) = app.try_state::<Yedekci>() else {
+pub fn flush_on_exit<R: Runtime>(app: &AppHandle<R>) {
+    let Some(backups) = app.try_state::<BackupWriter>() else {
         return;
     };
-    match dosya(app) {
-        Ok(yol) => kapanista_bosalt_yola(&yedekci, &yol),
+    match file(app) {
+        Ok(path) => flush_on_exit_to(&backups, &path),
         Err(e) => eprintln!("kapanışta yedek yolu yok: {e}"),
     }
 }
 
 /// `kapanista_bosalt`'ın kendisi, yol verilerek (testte geçici klasör).
-pub fn kapanista_bosalt_yola(yedekci: &Yedekci, yol: &Path) {
-    if let Err(e) = yedekci.bosalt(yol) {
+pub fn flush_on_exit_to(backups: &BackupWriter, path: &Path) {
+    if let Err(e) = backups.flush(path) {
         eprintln!("kapanışta {e}");
     }
 }
 
 /// Yedeği okur; yoksa, okunamıyorsa ya da bozuksa `None`.
-pub fn oku(yol: &Path) -> Option<String> {
-    let metin = fs::read_to_string(yol).ok()?;
-    match serde_json::from_str::<serde_json::Value>(&metin) {
-        Ok(serde_json::Value::Object(_)) => Some(metin),
+pub fn read(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(serde_json::Value::Object(_)) => Some(text),
         _ => None,
     }
 }
@@ -250,52 +250,52 @@ pub fn oku(yol: &Path) -> Option<String> {
 /// parçacığında olduğundan Exit'ten önce alınmış her yedek kapanışta yazılır. Sınır: istek ⌘Q'dan sonra
 /// ana sürece ulaşırsa (WebContent sürecinde yolda) kaybolur; localStorage birincil kayıt olarak kalır.
 #[tauri::command]
-pub fn veri_yedekle(
-    yedekci: State<'_, Yedekci>,
+pub fn backup_data(
+    backups: State<'_, BackupWriter>,
     json: String,
-    oturum: String,
-    sira: u64,
+    session: String,
+    order: u64,
 ) -> Result<(), String> {
-    yedekci.kabul(json, &oturum, sira).map(|_| ())
+    backups.accept(json, &session, order).map(|_| ())
 }
 
 /// Yedek: henüz yazılmamış bekleyen varsa o (sayfa yeniden yüklendiyse), yoksa diskteki.
 #[tauri::command]
-pub async fn veri_oku<R: Runtime>(
+pub async fn read_backup<R: Runtime>(
     app: AppHandle<R>,
-    yedekci: State<'_, Yedekci>,
+    backups: State<'_, BackupWriter>,
 ) -> Result<Option<String>, String> {
-    Ok(yedekci
-        .bekleyen()
-        .or_else(|| dosya(&app).ok().and_then(|y| oku(&y))))
+    Ok(backups
+        .pending()
+        .or_else(|| file(&app).ok().and_then(|y| read(&y))))
 }
 
 #[cfg(test)]
-mod testler {
+mod tests {
     use super::*;
 
     #[test]
-    fn yedekle_oku_gidis_donus_ve_kusurlu_girdi() {
-        let d = std::env::temp_dir().join(format!("kc-veri-{}", uuid::Uuid::new_v4()));
-        let y = d.join("alt").join(DOSYA_ADI);
-        assert_eq!(oku(&y), None, "yedek yok");
-        let iyi = r#"{"surum":1,"kitaplar":[{"id":"k1","ad":"Çiğdemköy"}]}"#;
-        yedekle(&y, iyi).unwrap();
-        assert_eq!(oku(&y).as_deref(), Some(iyi));
-        for kotu in ["", "{", "[]", "null", "42", "\"metin\"", "{\"a\":1}x"] {
-            assert!(yedekle(&y, kotu).is_err(), "{kotu:?} reddedilmeli");
+    fn write_backup_read_round_trip_and_faulty_input() {
+        let d = std::env::temp_dir().join(format!("mc-data-{}", uuid::Uuid::new_v4()));
+        let y = d.join("alt").join(FILE_NAME);
+        assert_eq!(read(&y), None, "yedek yok");
+        let good = r#"{"version":2,"projects":[{"id":"k1","name":"Çiğdemköy"}]}"#;
+        write_backup(&y, good).unwrap();
+        assert_eq!(read(&y).as_deref(), Some(good));
+        for bad in ["", "{", "[]", "null", "42", "\"text\"", "{\"a\":1}x"] {
+            assert!(write_backup(&y, bad).is_err(), "{bad:?} reddedilmeli");
             assert_eq!(
-                oku(&y).as_deref(),
-                Some(iyi),
+                read(&y).as_deref(),
+                Some(good),
                 "kusurlu yedek eskisini bozmamalı"
             );
         }
-        let buyuk = format!("{{\"x\":\"{}\"}}", "a".repeat(EN_COK));
-        assert!(yedekle(&y, &buyuk).is_err());
-        fs::write(&y, "{bozuk").unwrap();
-        assert_eq!(oku(&y), None, "diskteki bozuk yedek geri yüklenmez");
+        let large = format!("{{\"x\":\"{}\"}}", "a".repeat(MAX_ENTRIES));
+        assert!(write_backup(&y, &large).is_err());
+        fs::write(&y, "{corrupt").unwrap();
+        assert_eq!(read(&y), None, "diskteki bozuk yedek geri yüklenmez");
         assert_eq!(
-            crate::recent::testler::gecici_dosyalar(&d.join("alt")),
+            crate::recent::tests::temp_files(&d.join("alt")),
             Vec::<String>::new(),
             "geçici dosya kalmadı (L2: klasör listelenir)"
         );
@@ -305,81 +305,81 @@ mod testler {
     /// öncesi `surec.json` (Türkçe adım adları, şablon anahtarı yok) okunur ve yedek olarak kabul
     /// edilir (JS geriYukle → surecModel.dogrula ayrıca i18n.test.js'te).
     #[test]
-    fn eski_m2_surec_yedegi_okunur() {
+    fn legacy_projects_backup_is_read() {
         let y = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../app/test/fixtures/legacy/projects-v1.json");
-        let json = oku(&y).expect("eski surec.json okunmalı");
+        let json = read(&y).expect("eski surec.json okunmalı");
         assert!(json.contains("Hazırlık / PDF"));
-        let k = Yedekci::default();
-        assert_eq!(k.kabul(json.clone(), "o", 1), Ok(true));
-        assert_eq!(k.bekleyen().as_deref(), Some(json.as_str()));
+        let k = BackupWriter::default();
+        assert_eq!(k.accept(json.clone(), "o", 1), Ok(true));
+        assert_eq!(k.pending().as_deref(), Some(json.as_str()));
     }
 
-    fn gecici() -> PathBuf {
-        let d = std::env::temp_dir().join(format!("kc-yedekci-{}", uuid::Uuid::new_v4()));
+    fn temp() -> PathBuf {
+        let d = std::env::temp_dir().join(format!("mc-backups-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&d).unwrap();
         d
     }
 
     /// O2: kabul doğrular ve sırayı denetler; kapanıştaki gibi hemen boşaltma EN YENİ yedeği bekletmeden yazar.
     #[test]
-    fn kabul_sira_denetler_kapanista_en_yeni_hemen_yazilir() {
-        let d = gecici();
-        let y = d.join(DOSYA_ADI);
-        let k = Yedekci::default();
-        assert!(k.kabul("{bozuk".into(), "o1", 1).is_err());
-        assert!(k.kabul("[]".into(), "o1", 1).is_err());
-        assert_eq!(k.bekleyen(), None, "kusurlu yedek bekleyen olmaz");
-        assert_eq!(k.kabul(r#"{"n":1}"#.into(), "o1", 1), Ok(true));
-        assert_eq!(k.kabul(r#"{"n":3}"#.into(), "o1", 3), Ok(true));
+    fn accept_checks_order_newest_written_immediately_on_exit() {
+        let d = temp();
+        let y = d.join(FILE_NAME);
+        let k = BackupWriter::default();
+        assert!(k.accept("{corrupt".into(), "o1", 1).is_err());
+        assert!(k.accept("[]".into(), "o1", 1).is_err());
+        assert_eq!(k.pending(), None, "kusurlu yedek bekleyen olmaz");
+        assert_eq!(k.accept(r#"{"n":1}"#.into(), "o1", 1), Ok(true));
+        assert_eq!(k.accept(r#"{"n":3}"#.into(), "o1", 3), Ok(true));
         assert_eq!(
-            k.kabul(r#"{"n":2}"#.into(), "o1", 2),
+            k.accept(r#"{"n":2}"#.into(), "o1", 2),
             Ok(false),
             "geç gelen eski"
         );
         assert_eq!(
-            k.kabul(r#"{"n":3}"#.into(), "o1", 3),
+            k.accept(r#"{"n":3}"#.into(), "o1", 3),
             Ok(false),
             "aynı sıra"
         );
-        assert_eq!(k.bekleyen().as_deref(), Some(r#"{"n":3}"#));
-        assert_eq!(oku(&y), None, "henüz diske yazılmadı");
-        assert_eq!(k.bosalt(&y), Ok(true));
+        assert_eq!(k.pending().as_deref(), Some(r#"{"n":3}"#));
+        assert_eq!(read(&y), None, "henüz diske yazılmadı");
+        assert_eq!(k.flush(&y), Ok(true));
         assert_eq!(
-            oku(&y).as_deref(),
+            read(&y).as_deref(),
             Some(r#"{"n":3}"#),
             "kapanışta beklemeden yazıldı"
         );
-        assert_eq!(k.bekleyen(), None);
-        assert_eq!(k.bosalt(&y), Ok(false), "bekleyen yok");
+        assert_eq!(k.pending(), None);
+        assert_eq!(k.flush(&y), Ok(false), "bekleyen yok");
         // temizlik: boş veri gelir ve hemen yazılır
         assert_eq!(
-            k.kabul(r#"{"surum":1,"kitaplar":[]}"#.into(), "o2", 1),
+            k.accept(r#"{"version":2,"projects":[]}"#.into(), "o2", 1),
             Ok(true),
             "yeni oturum"
         );
-        k.bosalt(&y).unwrap();
-        assert_eq!(oku(&y).as_deref(), Some(r#"{"surum":1,"kitaplar":[]}"#));
+        k.flush(&y).unwrap();
+        assert_eq!(read(&y).as_deref(), Some(r#"{"version":2,"projects":[]}"#));
         fs::remove_dir_all(&d).unwrap();
     }
 
     /// Yazılamayan yedek kaybolmaz: bekleyen geri konur, kapanışta (yol düzelince) yazılır.
     #[test]
-    fn yazilamazsa_bekleyen_korunur() {
-        let d = gecici();
-        let engel = d.join("dosya");
-        fs::write(&engel, "x").unwrap();
-        let kotu = engel.join("alt").join(DOSYA_ADI); // üst "klasör" bir dosya
-        let k = Yedekci::default();
-        k.kabul(r#"{"a":1}"#.into(), "o", 1).unwrap();
+    fn pending_kept_when_write_fails() {
+        let d = temp();
+        let blocked = d.join("file");
+        fs::write(&blocked, "x").unwrap();
+        let bad = blocked.join("alt").join(FILE_NAME); // üst "klasör" bir dosya
+        let k = BackupWriter::default();
+        k.accept(r#"{"a":1}"#.into(), "o", 1).unwrap();
         assert!(k
-            .bosalt(&kotu)
+            .flush(&bad)
             .unwrap_err()
-            .starts_with(&crate::i18n::kalip("rust.yedek_yazilamadi")));
-        assert_eq!(k.bekleyen().as_deref(), Some(r#"{"a":1}"#), "geri kondu");
-        let iyi = d.join(DOSYA_ADI);
-        assert_eq!(k.bosalt(&iyi), Ok(true));
-        assert_eq!(oku(&iyi).as_deref(), Some(r#"{"a":1}"#));
+            .starts_with(&crate::i18n::prefix_of("rust.backup_write_failed")));
+        assert_eq!(k.pending().as_deref(), Some(r#"{"a":1}"#), "geri kondu");
+        let good = d.join(FILE_NAME);
+        assert_eq!(k.flush(&good), Ok(true));
+        assert_eq!(read(&good).as_deref(), Some(r#"{"a":1}"#));
         fs::remove_dir_all(&d).unwrap();
     }
 
@@ -387,90 +387,90 @@ mod testler {
     /// aynı yedek için yinelenmez, yeni değişiklikte yeniden denenir. L7: gecikme test tarafından denetlenir
     /// (kanal), olumlu koşullar zaman aşımlı beklenir; sabit uyku yok (yavaş makinede yanlış KALDI vermez).
     #[test]
-    fn isci_gecikmeyle_en_yeniyi_yazar_hatayi_bir_kez_bildirir() {
+    fn worker_writes_newest_after_delay_reports_error_once() {
         use std::sync::{mpsc, Arc};
-        const UZUN: Duration = Duration::from_secs(10);
+        const LONG: Duration = Duration::from_secs(10);
         /// İşçiyi başlatır: gecikmeye girince `girdi` kanalına haber verir, `birak` gelene dek bekler.
-        fn baslat(
-            k: &Arc<Yedekci>,
-            yol: PathBuf,
+        fn start(
+            k: &Arc<BackupWriter>,
+            path: PathBuf,
         ) -> (
             std::thread::JoinHandle<()>,
             mpsc::Receiver<()>,
             mpsc::Sender<()>,
             mpsc::Receiver<String>,
         ) {
-            let (girdi_tx, girdi) = mpsc::channel();
-            let (birak, birak_rx) = mpsc::channel::<()>();
-            let (hata_tx, hata) = mpsc::channel();
+            let (input_tx, input) = mpsc::channel();
+            let (release, release_rx) = mpsc::channel::<()>();
+            let (error_tx, error) = mpsc::channel();
             let k = k.clone();
             let t = std::thread::spawn(move || {
-                k.isci(
-                    &yol,
+                k.worker(
+                    &path,
                     Duration::from_millis(150),
                     &|_| {
-                        girdi_tx.send(()).ok();
-                        birak_rx.recv().ok();
+                        input_tx.send(()).ok();
+                        release_rx.recv().ok();
                     },
                     &|m| {
-                        hata_tx.send(m).ok();
+                        error_tx.send(m).ok();
                     },
                 )
             });
-            (t, girdi, birak, hata)
+            (t, input, release, error)
         }
-        fn bekle_ki(kosul: impl Fn() -> bool) -> bool {
-            let son = std::time::Instant::now() + UZUN;
-            while std::time::Instant::now() < son {
-                if kosul() {
+        fn wait_until(condition: impl Fn() -> bool) -> bool {
+            let last = std::time::Instant::now() + LONG;
+            while std::time::Instant::now() < last {
+                if condition() {
                     return true;
                 }
                 std::thread::sleep(Duration::from_millis(5));
             }
-            kosul()
+            condition()
         }
-        let d = gecici();
-        let y = d.join(DOSYA_ADI);
-        let k = Arc::new(Yedekci::default());
-        let (t, girdi, birak, _) = baslat(&k, y.clone());
-        k.kabul(r#"{"n":1}"#.into(), "o", 1).unwrap();
-        k.kabul(r#"{"n":2}"#.into(), "o", 2).unwrap();
-        girdi.recv_timeout(UZUN).expect("işçi gecikmeye girmedi");
-        assert_eq!(oku(&y), None, "gecikmeden önce yazılmaz");
-        birak.send(()).unwrap();
+        let d = temp();
+        let y = d.join(FILE_NAME);
+        let k = Arc::new(BackupWriter::default());
+        let (t, input, release, _) = start(&k, y.clone());
+        k.accept(r#"{"n":1}"#.into(), "o", 1).unwrap();
+        k.accept(r#"{"n":2}"#.into(), "o", 2).unwrap();
+        input.recv_timeout(LONG).expect("işçi gecikmeye girmedi");
+        assert_eq!(read(&y), None, "gecikmeden önce yazılmaz");
+        release.send(()).unwrap();
         assert!(
-            bekle_ki(|| oku(&y).as_deref() == Some(r#"{"n":2}"#)),
+            wait_until(|| read(&y).as_deref() == Some(r#"{"n":2}"#)),
             "en yenisi yazıldı: {:?}",
-            oku(&y)
+            read(&y)
         );
-        k.durdur();
+        k.stop();
         t.join().unwrap();
         // hata yolu (yeni yedekçi; üst "klasör" bir dosya)
-        let engel = d.join("engel");
-        fs::write(&engel, "x").unwrap();
-        let k = Arc::new(Yedekci::default());
-        let (t, girdi, birak, hata) = baslat(&k, engel.join(DOSYA_ADI));
-        k.kabul(r#"{"n":3}"#.into(), "o", 3).unwrap();
-        girdi.recv_timeout(UZUN).expect("işçi gecikmeye girmedi");
-        birak.send(()).unwrap();
-        assert!(hata.recv_timeout(UZUN).is_ok(), "hata bildirildi");
+        let blocked = d.join("blocked");
+        fs::write(&blocked, "x").unwrap();
+        let k = Arc::new(BackupWriter::default());
+        let (t, input, release, error) = start(&k, blocked.join(FILE_NAME));
+        k.accept(r#"{"n":3}"#.into(), "o", 3).unwrap();
+        input.recv_timeout(LONG).expect("işçi gecikmeye girmedi");
+        release.send(()).unwrap();
+        assert!(error.recv_timeout(LONG).is_ok(), "hata bildirildi");
         assert!(
-            girdi.recv_timeout(Duration::from_millis(300)).is_err(),
+            input.recv_timeout(Duration::from_millis(300)).is_err(),
             "aynı yedek için yeniden denenmez (yeni gecikme yok)"
         );
-        assert!(hata.try_recv().is_err(), "aynı yedek için tek bildirim");
-        k.kabul(r#"{"n":4}"#.into(), "o", 4).unwrap();
-        girdi
-            .recv_timeout(UZUN)
+        assert!(error.try_recv().is_err(), "aynı yedek için tek bildirim");
+        k.accept(r#"{"n":4}"#.into(), "o", 4).unwrap();
+        input
+            .recv_timeout(LONG)
             .expect("yeni değişiklikte yeniden denendi");
-        birak.send(()).unwrap();
-        assert!(hata.recv_timeout(UZUN).is_ok(), "ikinci bildirim");
+        release.send(()).unwrap();
+        assert!(error.recv_timeout(LONG).is_ok(), "second notice");
         assert_eq!(
-            k.bekleyen().as_deref(),
+            k.pending().as_deref(),
             Some(r#"{"n":4}"#),
             "kapanış için duruyor"
         );
-        k.durdur();
+        k.stop();
         t.join().unwrap();
         fs::remove_dir_all(&d).unwrap();
     }
@@ -478,19 +478,19 @@ mod testler {
     /// L7: işçi boşta (bekleyen yokken) uyanmaz; yalnız yeni yedek gelince ya da durdurulunca uyanır
     /// (eski döngü saniyede 5 kez `wait_timeout` ile uyanıyordu).
     #[test]
-    fn isci_bostayken_uyanmaz() {
+    fn worker_does_not_wake_when_idle() {
         use std::sync::Arc;
-        let d = gecici();
-        let k = Arc::new(Yedekci::default());
+        let d = temp();
+        let k = Arc::new(BackupWriter::default());
         let t = {
-            let (k, y) = (k.clone(), d.join(DOSYA_ADI));
+            let (k, y) = (k.clone(), d.join(FILE_NAME));
             std::thread::spawn(move || {
-                k.isci(&y, Duration::from_millis(10), &std::thread::sleep, &|_| {})
+                k.worker(&y, Duration::from_millis(10), &std::thread::sleep, &|_| {})
             })
         };
         std::thread::sleep(Duration::from_millis(700));
-        let n = k.uyanma_sayisi();
-        k.durdur();
+        let n = k.wakeup_count();
+        k.stop();
         t.join().unwrap();
         assert!(n <= 1, "boşta {n} kez uyandı");
         fs::remove_dir_all(&d).unwrap();
@@ -500,22 +500,22 @@ mod testler {
     /// işler; `RunEvent::Exit` de ana iş parçacığındadır, böylece kapanıştan önce alınmış yedek Exit'teki
     /// boşaltmayı kaçırmaz (async komut tokio görevinde Exit'ten sonra koşabilirdi).
     #[test]
-    fn veri_yedekle_esanli_komut() {
-        let kaynak = include_str!("backup.rs");
+    fn backup_data_is_sync_command() {
+        let source = include_str!("backup.rs");
         // satır başında arar (bu testin kendi dizgileri satır başında değil)
-        let bas = kaynak
-            .find("\npub fn veri_yedekle(")
-            .or_else(|| kaynak.find("\npub async fn veri_yedekle("))
-            .expect("veri_yedekle yok");
-        let once = &kaynak[..bas];
-        let nitelik = &once[once.rfind("#[tauri::command").expect("komut niteliği yok")..];
+        let head = source
+            .find("\npub fn backup_data(")
+            .or_else(|| source.find("\npub async fn backup_data("))
+            .expect("backup_data yok");
+        let once = &source[..head];
+        let attribute = &once[once.rfind("#[tauri::command").expect("komut niteliği yok")..];
         assert!(
-            kaynak[bas..].starts_with("\npub fn veri_yedekle("),
-            "veri_yedekle async olmamalı"
+            source[head..].starts_with("\npub fn backup_data("),
+            "backup_data async olmamalı"
         );
         assert!(
-            !nitelik.contains("async"),
-            "komut niteliği async olmamalı: {nitelik}"
+            !attribute.contains("async"),
+            "komut niteliği async olmamalı: {attribute}"
         );
     }
 
@@ -524,34 +524,34 @@ mod testler {
     /// işlenir ve yanıtlanır; dolayısıyla ana iş parçacığında Exit'ten önce alınmış yedek, Exit işleyicisinin
     /// (`kapanista_bosalt`) boşaltmasında diske yazılır. async komutta işleme tokio görevine kalır (bu test kalır).
     #[test]
-    fn exitten_once_alinan_yedek_kapanista_yazilir() {
+    fn backup_received_before_exit_is_written_on_exit() {
         use std::sync::{Arc, Mutex};
         use tauri::ipc::{CallbackFn, InvokeBody, InvokeResponse};
         use tauri::test::{mock_builder, mock_context, noop_assets, INVOKE_KEY};
         let app = mock_builder()
-            .manage(Yedekci::default())
-            .invoke_handler(tauri::generate_handler![veri_yedekle])
+            .manage(BackupWriter::default())
+            .invoke_handler(tauri::generate_handler![backup_data])
             .build(mock_context(noop_assets()))
-            .expect("sahte uygulama");
+            .expect("fake app");
         let w = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
             .build()
-            .expect("sahte pencere");
-        let json = r#"{"surum":1,"kitaplar":[{"id":"k1","ad":"Exit öncesi"}]}"#;
-        let istek = |sira: u64| tauri::webview::InvokeRequest {
-            cmd: "veri_yedekle".into(),
+            .expect("fake window");
+        let json = r#"{"version":2,"projects":[{"id":"k1","name":"Exit öncesi"}]}"#;
+        let request = |order: u64| tauri::webview::InvokeRequest {
+            cmd: "backup_data".into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
             url: "tauri://localhost".parse().unwrap(),
             body: InvokeBody::Json(
-                serde_json::json!({ "json": json, "oturum": "o1", "sira": sira }),
+                serde_json::json!({ "json": json, "session": "o1", "order": order }),
             ),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),
         };
-        let yanit: Arc<Mutex<Vec<(std::thread::ThreadId, bool)>>> = Arc::default();
-        let y = yanit.clone();
+        let response: Arc<Mutex<Vec<(std::thread::ThreadId, bool)>>> = Arc::default();
+        let y = response.clone();
         w.as_ref().clone().on_message(
-            istek(1),
+            request(1),
             Box::new(move |_, _, r, _, _| {
                 y.lock().unwrap().push((
                     std::thread::current().id(),
@@ -561,22 +561,22 @@ mod testler {
         );
         // on_message döndü: istek bu iş parçacığında işlenmiş ve yanıtlanmış olmalı
         assert_eq!(
-            yanit.lock().unwrap().clone(),
+            response.lock().unwrap().clone(),
             vec![(std::thread::current().id(), true)],
             "eşzamanlı komut: yanıt aynı iş parçacığında, on_message dönmeden"
         );
-        let yedekci = app.state::<Yedekci>();
+        let backups = app.state::<BackupWriter>();
         assert_eq!(
-            yedekci.bekleyen().as_deref(),
+            backups.pending().as_deref(),
             Some(json),
             "Exit öncesi bekleyen"
         );
         // RunEvent::Exit işleyicisinin yaptığı (yalnız yol geçici klasörde)
-        let d = gecici();
-        let yol = d.join(DOSYA_ADI);
-        kapanista_bosalt_yola(&yedekci, &yol);
-        assert_eq!(oku(&yol).as_deref(), Some(json), "kapanışta yazıldı");
-        assert_eq!(yedekci.bekleyen(), None);
+        let d = temp();
+        let path = d.join(FILE_NAME);
+        flush_on_exit_to(&backups, &path);
+        assert_eq!(read(&path).as_deref(), Some(json), "kapanışta yazıldı");
+        assert_eq!(backups.pending(), None);
         fs::remove_dir_all(&d).unwrap();
     }
 }

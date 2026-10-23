@@ -9,14 +9,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const KLASOR = path.join(__dirname, '..', 'i18n');
-const SOZLUK_DOSYALARI = fs.readdirSync(KLASOR).filter((a) => /^[a-z]{2,3}\.js$/.test(a)).sort();
+const FOLDER = path.join(__dirname, '..', 'i18n');
+const DICTIONARY_FILES = fs.readdirSync(FOLDER).filter((a) => /^[a-z]{2,3}\.js$/.test(a)).sort();
 
-function dilKur(ctx, kod = 'tr') {
-  for (const ad of SOZLUK_DOSYALARI) vm.runInContext(fs.readFileSync(path.join(KLASOR, ad), 'utf8'), ctx, { filename: 'i18n/' + ad });
+function setupI18n(ctx, code = 'tr') {
+  for (const name of DICTIONARY_FILES) vm.runInContext(fs.readFileSync(path.join(FOLDER, name), 'utf8'), ctx, { filename: 'i18n/' + name });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'i18n.js'), 'utf8'), ctx, { filename: 'i18n.js' });
-  ctx.KitapCilt.dil.ayarla(kod);
-  return ctx.KitapCilt.dil;
+  ctx.Mucellit.i18n.set(code);
+  return ctx.Mucellit.i18n;
 }
 
-module.exports = { dilKur, SOZLUK_DOSYALARI, KLASOR };
+module.exports = { setupI18n, DICTIONARY_FILES, FOLDER };

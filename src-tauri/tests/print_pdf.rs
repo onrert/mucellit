@@ -12,17 +12,17 @@
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
-    println!("baski_pdf: yalnız macOS (atlandı)");
+    println!("printing_pdf: yalnız macOS (atlandı)");
 }
 
 #[cfg(target_os = "macos")]
 fn main() {
-    std::process::exit(mac::calistir());
+    std::process::exit(mac::run());
 }
 
 #[cfg(target_os = "macos")]
 mod mac {
-    use kitap_cilt_lib::print::{baski_ayari, mac as baski};
+    use mucellit_lib::print::{mac as printing, print_settings};
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2::MainThreadMarker;
@@ -33,79 +33,79 @@ mod mac {
     use std::process::Command;
 
     const MM: f64 = 72.0 / 25.4;
-    const OLCU_TOL_MM: f64 = 0.5;
-    const KAYMA_TOL_MM: f64 = 0.5;
-    const OLCEK_TOL: f64 = 0.002;
+    const SIZE_TOL_MM: f64 = 0.5;
+    const CREEP_TOL_MM: f64 = 0.5;
+    const SCALE_TOL: f64 = 0.002;
 
     /// Metinli test PDF'i: her sayfada sol üstte "Mücellit <n>", sağ altta "SON" (Helvetica, gömülü değil).
-    pub fn metinli_pdf(gen: f64, yuk: f64, sayfa: usize) -> Vec<u8> {
-        let mut nesneler = vec![
+    pub fn with_text_pdf(width: f64, height: f64, page: usize) -> Vec<u8> {
+        let mut objects = vec![
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
             String::new(), // sayfalar (çocuk listesi aşağıda)
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
                 .to_string(),
         ];
-        let mut cocuklar = Vec::new();
-        for i in 0..sayfa {
-            let akis = format!(
-                "BT /F1 12 Tf {:.3} {:.3} Td (Mücellit {}) Tj ET\nBT /F1 12 Tf {:.3} {:.3} Td (SON) Tj ET\n",
+        let mut children = Vec::new();
+        for i in 0..page {
+            let flow = format!(
+                "BT /F1 12 Tf {:.3} {:.3} Td (Mücellit {}) Tj ET\nBT /F1 12 Tf {:.3} {:.3} Td (LAST) Tj ET\n",
                 20.0 * MM,
-                yuk - 20.0 * MM,
+                height - 20.0 * MM,
                 i + 1,
-                gen - 30.0 * MM,
+                width - 30.0 * MM,
                 20.0 * MM
             );
-            let sayfa_no = nesneler.len() + 1;
-            nesneler.push(format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {gen} {yuk}] /Resources << /Font << /F1 3 0 R >> >> /Contents {} 0 R >>",
-                sayfa_no + 1
+            let page_no = objects.len() + 1;
+            objects.push(format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Resources << /Font << /F1 3 0 R >> >> /Contents {} 0 R >>",
+                page_no + 1
             ));
-            nesneler.push(format!(
-                "<< /Length {} >>\nstream\n{akis}endstream",
-                akis.len()
+            objects.push(format!(
+                "<< /Length {} >>\nstream\n{flow}endstream",
+                flow.len()
             ));
-            cocuklar.push(format!("{sayfa_no} 0 R"));
+            children.push(format!("{page_no} 0 R"));
         }
-        nesneler[1] = format!(
-            "<< /Type /Pages /Kids [{}] /Count {sayfa} >>",
-            cocuklar.join(" ")
+        objects[1] = format!(
+            "<< /Type /Pages /Kids [{}] /Count {page} >>",
+            children.join(" ")
         );
         let mut s = String::from("%PDF-1.4\n");
         let mut ofs = Vec::new();
-        for (i, n) in nesneler.iter().enumerate() {
+        for (i, n) in objects.iter().enumerate() {
             ofs.push(s.len());
             s.push_str(&format!("{} 0 obj\n{n}\nendobj\n", i + 1));
         }
         let xref = s.len();
         s.push_str(&format!(
             "xref\n0 {}\n0000000000 65535 f \n",
-            nesneler.len() + 1
+            objects.len() + 1
         ));
         for o in ofs {
             s.push_str(&format!("{o:010} 00000 n \n"));
         }
         s.push_str(&format!(
             "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
-            nesneler.len() + 1
+            objects.len() + 1
         ));
         s.into_bytes()
     }
 
     /// Uygulamanın baskı yolunu panelsiz, PDF'e kaydederek çalıştırır. Kâğıt ve yazdırılabilir alan döner.
-    fn pdfe_bas(
+    fn print_to_pdf(
         mtm: MainThreadMarker,
-        bayt: &[u8],
-        cikti: &Path,
+        bytes: &[u8],
+        output: &Path,
     ) -> Result<(String, String), String> {
-        let (belge, g, y) = baski::pdf_ac(bayt.to_vec())?;
-        let a = baski_ayari(g, y)?;
-        let info: Retained<NSPrintInfo> = baski::print_info_kur(&a);
+        let (document, g, y) = printing::pdf_ac(bytes.to_vec())?;
+        let a = print_settings(g, y)?;
+        let info: Retained<NSPrintInfo> = printing::setup_print_info(&a);
         info.setJobDisposition(unsafe { NSPrintSaveJob });
-        let url = NSURL::from_file_path(cikti).ok_or("çıktı adresi kurulamadı")?;
+        let url = NSURL::from_file_path(output).ok_or("çıktı adresi kurulamadı")?;
         unsafe {
-            let sozluk = info.dictionary();
-            let deger: &AnyObject = &url;
-            sozluk.insert(NSPrintJobSavingURL, deger);
+            let dictionary = info.dictionary();
+            let value: &AnyObject = &url;
+            dictionary.insert(NSPrintJobSavingURL, value);
         }
         // Güvenlik: yalnız dosyaya kaydetme işi başlatılır.
         if info.jobDisposition().to_string() != unsafe { NSPrintSaveJob }.to_string() {
@@ -113,8 +113,8 @@ mod mac {
         }
         let k = info.paperSize();
         let ib = info.imageablePageBounds();
-        let bilgi = format!(
-            "NSPrintInfo kâğıt {:.2} × {:.2} pt, kenar sol {:.1} sağ {:.1} üst {:.1} alt {:.1}, ortalı {}/{}",
+        let info_text = format!(
+            "NSPrintInfo kâğıt {:.2} × {:.2} pt, margin left {:.1} sağ {:.1} üst {:.1} alt {:.1}, ortalı {}/{}",
             k.width,
             k.height,
             info.leftMargin(),
@@ -124,8 +124,8 @@ mod mac {
             info.isHorizontallyCentered(),
             info.isVerticallyCentered()
         );
-        let alan = format!(
-            "yazdırılabilir alan x {:.1} y {:.1} g {:.1} y {:.1} (donanım kenarı sol {:.1} sağ {:.1} alt {:.1} üst {:.1})",
+        let field = format!(
+            "yazdırılabilir field x {:.1} y {:.1} g {:.1} y {:.1} (donanım kenarı left {:.1} sağ {:.1} alt {:.1} üst {:.1})",
             ib.origin.x,
             ib.origin.y,
             ib.size.width,
@@ -135,17 +135,17 @@ mod mac {
             ib.origin.y,
             k.height - ib.origin.y - ib.size.height
         );
-        let islem =
-            baski::baski_islemi(&belge, &info, &a, mtm).ok_or("PDFKit baskı işlemi kurulamadı")?;
-        islem.setShowsPrintPanel(false);
-        islem.setShowsProgressPanel(false);
-        if !islem.runOperation() {
+        let operation = printing::print_operation(&document, &info, &a, mtm)
+            .ok_or("PDFKit baskı işlemi kurulamadı")?;
+        operation.setShowsPrintPanel(false);
+        operation.setShowsProgressPanel(false);
+        if !operation.runOperation() {
             return Err("runOperation false".into());
         }
-        Ok((bilgi, alan))
+        Ok((info_text, field))
     }
 
-    fn olcu_mm(p: &PDFPage) -> (f64, f64) {
+    fn size_mm(p: &PDFPage) -> (f64, f64) {
         let b = unsafe { p.boundsForBox(PDFDisplayBox::MediaBox) };
         let (g, y) = (b.size.width / MM, b.size.height / MM);
         if unsafe { p.rotation() }.rem_euclid(180) == 90 {
@@ -156,8 +156,8 @@ mod mac {
     }
 
     /// Sınır kutusu boş olmayan karakterlerin merkezleri (sayfa köşesine göre, pt), dizinle.
-    fn karakterler(p: &PDFPage) -> (String, Vec<Option<NSPoint>>) {
-        let metin = unsafe { p.string() }
+    fn chars(p: &PDFPage) -> (String, Vec<Option<NSPoint>>) {
+        let text = unsafe { p.string() }
             .map(|s| s.to_string())
             .unwrap_or_default();
         let n = unsafe { p.string() }.map(|s| s.length()).unwrap_or(0);
@@ -173,199 +173,208 @@ mod mac {
                 })
             })
             .collect();
-        (metin, m)
+        (text, m)
     }
 
-    fn belge_ac(yol: &Path) -> Result<Retained<PDFDocument>, String> {
-        let bayt = std::fs::read(yol).map_err(|e| format!("{}: {e}", yol.display()))?;
-        Ok(baski::pdf_ac(bayt)?.0)
+    fn open_document(path: &Path) -> Result<Retained<PDFDocument>, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(printing::pdf_ac(bytes)?.0)
     }
 
     /// Girdi ve çıktıyı karşılaştırır; satırlar ve geçti mi.
-    pub fn karsilastir(girdi: &Path, cikti: &Path) -> Result<(Vec<String>, bool), String> {
-        let (gb, cb) = (belge_ac(girdi)?, belge_ac(cikti)?);
+    pub fn compare(input: &Path, output: &Path) -> Result<(Vec<String>, bool), String> {
+        let (gb, cb) = (open_document(input)?, open_document(output)?);
         let (gn, cn) = unsafe { (gb.pageCount(), cb.pageCount()) };
-        let mut satir = vec![format!("sayfa: girdi {gn}, çıktı {cn}")];
-        let mut tamam = gn == cn;
+        let mut line = vec![format!("sayfa: girdi {gn}, çıktı {cn}")];
+        let mut done = gn == cn;
         for i in 0..gn.min(cn) {
             let (gp, cp) = unsafe { (gb.pageAtIndex(i).unwrap(), cb.pageAtIndex(i).unwrap()) };
-            let ((gg, gy), (cg, cy)) = (olcu_mm(&gp), olcu_mm(&cp));
-            let iyi = (gg - cg).abs() <= OLCU_TOL_MM && (gy - cy).abs() <= OLCU_TOL_MM;
-            tamam &= iyi;
-            if i == 0 || !iyi {
-                satir.push(format!(
-                    "s.{}: girdi {gg:.2} × {gy:.2} mm, çıktı {cg:.2} × {cy:.2} mm → {}",
+            let ((gg, gy), (cg, cy)) = (size_mm(&gp), size_mm(&cp));
+            let good = (gg - cg).abs() <= SIZE_TOL_MM && (gy - cy).abs() <= SIZE_TOL_MM;
+            done &= good;
+            if i == 0 || !good {
+                line.push(format!(
+                    "s.{}: input {gg:.2} × {gy:.2} mm, çıktı {cg:.2} × {cy:.2} mm → {}",
                     i + 1,
-                    if iyi { "GEÇTİ (±0,5 mm)" } else { "KALDI" }
+                    if good { "GEÇTİ (±0,5 mm)" } else { "FAIL" }
                 ));
             }
         }
         let (gp, cp) = unsafe { (gb.pageAtIndex(0).unwrap(), cb.pageAtIndex(0).unwrap()) };
-        let ((gm, gk), (cm, ck)) = (karakterler(&gp), karakterler(&cp));
-        let sade = |s: &str| s.split_whitespace().collect::<String>();
-        if sade(&gm).is_empty() || sade(&gm) != sade(&cm) || gk.len() != ck.len() {
+        let ((gm, gk), (cm, ck)) = (chars(&gp), chars(&cp));
+        let plain = |s: &str| s.split_whitespace().collect::<String>();
+        if plain(&gm).is_empty() || plain(&gm) != plain(&cm) || gk.len() != ck.len() {
             return Err(format!(
-                "ölçek ölçülemedi: 1. sayfa metni farklı ya da yok ({gm:?} / {cm:?})"
+                "ölçek ölçülemedi: 1. page text farklı ya da none ({gm:?} / {cm:?})"
             ));
         }
-        let ortak: Vec<(NSPoint, NSPoint)> = gk
+        let common: Vec<(NSPoint, NSPoint)> = gk
             .iter()
             .zip(ck.iter())
             .filter_map(|(a, b)| Some(((*a)?, (*b)?)))
             .collect();
-        let (Some(ilk), Some(son)) = (ortak.first(), ortak.last()) else {
+        let (Some(first), Some(last)) = (common.first(), common.last()) else {
             return Err("ölçek ölçülemedi: ölçülebilir karakter yok".into());
         };
-        let uzak = |a: NSPoint, b: NSPoint| (b.x - a.x).hypot(b.y - a.y);
-        let (dg, dc) = (uzak(ilk.0, son.0), uzak(ilk.1, son.1));
+        let far = |a: NSPoint, b: NSPoint| (b.x - a.x).hypot(b.y - a.y);
+        let (dg, dc) = (far(first.0, last.0), far(first.1, last.1));
         if dg < 10.0 * MM {
             return Err("ölçek ölçülemedi: metin çok dar".into());
         }
-        let olcek = dc / dg;
-        let kayma = ((ilk.1.x - ilk.0.x) / MM, (ilk.1.y - ilk.0.y) / MM);
-        let olcek_iyi = (olcek - 1.0).abs() <= OLCEK_TOL;
-        let kayma_iyi = kayma.0.abs() <= KAYMA_TOL_MM && kayma.1.abs() <= KAYMA_TOL_MM;
-        satir.push(format!(
-            "ölçek {olcek:.4} ({}), kayma {:.2} / {:.2} mm ({})",
-            if olcek_iyi { "GEÇTİ ±%0,2" } else { "KALDI" },
-            kayma.0,
-            kayma.1,
-            if kayma_iyi {
+        let scaling = dc / dg;
+        let creep = ((first.1.x - first.0.x) / MM, (first.1.y - first.0.y) / MM);
+        let scale_good = (scaling - 1.0).abs() <= SCALE_TOL;
+        let creep_good = creep.0.abs() <= CREEP_TOL_MM && creep.1.abs() <= CREEP_TOL_MM;
+        line.push(format!(
+            "ölçek {scaling:.4} ({}), creep {:.2} / {:.2} mm ({})",
+            if scale_good { "GEÇTİ ±%0,2" } else { "FAIL" },
+            creep.0,
+            creep.1,
+            if creep_good {
                 "GEÇTİ ±0,5 mm"
             } else {
-                "KALDI"
+                "FAIL"
             }
         ));
-        tamam &= olcek_iyi && kayma_iyi;
-        Ok((satir, tamam))
+        done &= scale_good && creep_good;
+        Ok((line, done))
     }
 
-    fn klasor() -> PathBuf {
-        std::env::var_os("KC_BASKI_KLASOR")
+    fn folder() -> PathBuf {
+        std::env::var_os("MC_PRINT_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("baski-pdf"))
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("printing-pdf"))
     }
 
     /// Ölçücünün kendisi kusurlu girdiyle sınanır (aynı → geçer; kaymış, ölçekli, eksik sayfa, farklı boy → kalır;
     /// metinsiz/bozuk → ölçülemez). Ölçücü yanlışsa baskı ölçümüne güvenilmez.
-    fn olcucu_sinamasi(d: &Path) -> Result<(), String> {
+    fn measurer_test(d: &Path) -> Result<(), String> {
         let (g, y) = (297.0 * MM, 210.0 * MM);
-        let yaz = |ad: &str, b: &[u8]| -> PathBuf {
-            let p = d.join(ad);
+        let write = |name: &str, b: &[u8]| -> PathBuf {
+            let p = d.join(name);
             std::fs::write(&p, b).unwrap();
             p
         };
-        let girdi = yaz("sina-girdi.pdf", &metinli_pdf(g, y, 2));
-        let kaydir = |dx: f64, olcek: f64, gen: f64, yuk: f64, sayfa: usize| -> Vec<u8> {
+        let input = write("sina-girdi.pdf", &with_text_pdf(g, y, 2));
+        let shift = |dx: f64, scaling: f64, width: f64, height: f64, page: usize| -> Vec<u8> {
             // aynı içerik, dönüşümlü (cm): önce ölçek, sonra öteleme
-            let s = String::from_utf8(metinli_pdf(g, y, sayfa)).unwrap();
-            let s = s.replace("BT /F1", &format!("q {olcek} 0 0 {olcek} {dx} 0 cm BT /F1"));
+            let s = String::from_utf8(with_text_pdf(g, y, page)).unwrap();
+            let s = s.replace(
+                "BT /F1",
+                &format!("q {scaling} 0 0 {scaling} {dx} 0 cm BT /F1"),
+            );
             let s = s.replace("Tj ET\n", "Tj ET Q\n");
-            let s = s.replace(&format!("[0 0 {g} {y}]"), &format!("[0 0 {gen} {yuk}]"));
+            let s = s.replace(
+                &format!("[0 0 {g} {y}]"),
+                &format!("[0 0 {width} {height}]"),
+            );
             // /Length ve xref eskidi: PDFKit onarır (sınama girdisi; ölçülen bayt değil)
             s.into_bytes()
         };
-        let durumlar: Vec<(&str, Vec<u8>, Option<bool>)> = vec![
-            ("aynı", metinli_pdf(g, y, 2), Some(true)),
-            ("2 mm kaymış", kaydir(2.0 * MM, 1.0, g, y, 2), Some(false)),
-            ("0,4 mm kaymış (sınır içi)", kaydir(0.4 * MM, 1.0, g, y, 2), Some(true)),
-            ("%97 ölçek", kaydir(0.0, 0.97, g, y, 2), Some(false)),
-            ("eksik sayfa", metinli_pdf(g, y, 1), Some(false)),
-            ("297 × 212 mm", kaydir(0.0, 1.0, g, 212.0 * MM, 2), Some(false)),
-            ("metinsiz", b"%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 841.89 595.28] >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n".to_vec(), None),
+        let states: Vec<(&str, Vec<u8>, Option<bool>)> = vec![
+            ("aynı", with_text_pdf(g, y, 2), Some(true)),
+            ("2 mm kaymış", shift(2.0 * MM, 1.0, g, y, 2), Some(false)),
+            ("0,4 mm kaymış (sınır içi)", shift(0.4 * MM, 1.0, g, y, 2), Some(true)),
+            ("%97 ölçek", shift(0.0, 0.97, g, y, 2), Some(false)),
+            ("missing page", with_text_pdf(g, y, 1), Some(false)),
+            ("297 × 212 mm", shift(0.0, 1.0, g, 212.0 * MM, 2), Some(false)),
+            ("withoutText", b"%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 841.89 595.28] >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n".to_vec(), None),
             ("boş", Vec::new(), None),
-            ("iskelet", b"%PDF-1.4\n%%EOF\n".to_vec(), None),
+            ("skeleton", b"%PDF-1.4\n%%EOF\n".to_vec(), None),
         ];
-        for (ad, b, beklenen) in durumlar {
-            let c = yaz("sina-cikti.pdf", &b);
-            let sonuc = karsilastir(&girdi, &c).map(|(_, t)| t).ok();
-            if sonuc != beklenen {
+        for (name, b, expected) in states {
+            let c = write("sina-cikti.pdf", &b);
+            let result = compare(&input, &c).map(|(_, t)| t).ok();
+            if result != expected {
                 return Err(format!(
-                    "ölçücü sınaması: {ad} → {sonuc:?}, beklenen {beklenen:?}"
+                    "ölçücü sınaması: {name} → {result:?}, expected {expected:?}"
                 ));
             }
-            println!("ölçücü sınaması: {ad} → {sonuc:?} (beklenen)");
+            println!("ölçücü sınaması: {name} → {result:?} (expected)");
         }
         Ok(())
     }
 
-    pub fn calistir() -> i32 {
+    pub fn run() -> i32 {
         let Some(mtm) = MainThreadMarker::new() else {
-            eprintln!("baski_pdf: ana iş parçacığında değil");
+            eprintln!("printing_pdf: ana iş parçacığında değil");
             return 1;
         };
-        let d = klasor();
+        let d = folder();
         std::fs::create_dir_all(&d).unwrap();
-        if let Err(e) = olcucu_sinamasi(&d) {
-            eprintln!("KALDI: {e}");
+        if let Err(e) = measurer_test(&d) {
+            eprintln!("FAIL: {e}");
             return 1;
         }
-        let olcek_araci = std::env::var_os("KC_PDF_OLCEK").map(PathBuf::from);
-        let mut kalan = 0;
-        let mut kagitlar: Vec<(String, Vec<u8>)> = [
-            ("a4-yatay", 297.0 * MM, 210.0 * MM),
-            ("a5-dikey", 148.0 * MM, 210.0 * MM),
-            ("ozel-320x220", 320.0 * MM, 220.0 * MM),
+        let scale_tool = std::env::var_os("MC_PDF_MEASURE").map(PathBuf::from);
+        let mut rest = 0;
+        let mut papers: Vec<(String, Vec<u8>)> = [
+            ("a4-landscape", 297.0 * MM, 210.0 * MM),
+            ("a5-portrait", 148.0 * MM, 210.0 * MM),
+            ("custom-320x220", 320.0 * MM, 220.0 * MM),
         ]
         .into_iter()
-        .map(|(ad, g, y)| (ad.to_string(), metinli_pdf(g, y, 3)))
+        .map(|(name, g, y)| (name.to_string(), with_text_pdf(g, y, 3)))
         .collect();
         // İsteğe bağlı: uygulamanın ürettiği gerçek bir dizilmiş PDF (ör. elle S9 girdisi) aynı yoldan.
-        if let Some(ek) = std::env::var_os("KC_BASKI_EK") {
+        if let Some(ek) = std::env::var_os("MC_PRINT_EXTRA") {
             match std::fs::read(&ek) {
-                Ok(b) => kagitlar.push(("ek".to_string(), b)),
+                Ok(b) => papers.push(("ek".to_string(), b)),
                 Err(e) => {
-                    println!("KC_BASKI_EK okunamadı: {e}");
-                    kalan += 1;
+                    println!("MC_PRINT_EXTRA okunamadı: {e}");
+                    rest += 1;
                 }
             }
         }
-        for (ad, bayt) in &kagitlar {
-            let girdi = d.join(format!("{ad}-girdi.pdf"));
-            let cikti = d.join(format!("{ad}-baski.pdf"));
-            let _ = std::fs::remove_file(&cikti);
-            std::fs::write(&girdi, bayt).unwrap();
-            println!("== {ad}");
-            let sonuc = pdfe_bas(mtm, bayt, &cikti).and_then(|(bilgi, alan)| {
-                println!("{bilgi}\n{alan}");
-                karsilastir(&girdi, &cikti)
+        for (name, bytes) in &papers {
+            let input = d.join(format!("{name}-girdi.pdf"));
+            let output = d.join(format!("{name}-baski.pdf"));
+            let _ = std::fs::remove_file(&output);
+            std::fs::write(&input, bytes).unwrap();
+            println!("== {name}");
+            let result = print_to_pdf(mtm, bytes, &output).and_then(|(info_text, field)| {
+                println!("{info_text}\n{field}");
+                compare(&input, &output)
             });
-            match sonuc {
-                Ok((satirlar, tamam)) => {
-                    for s in satirlar {
+            match result {
+                Ok((rows, done)) => {
+                    for s in rows {
                         println!("{s}");
                     }
-                    println!("SONUÇ ({ad}): {}", if tamam { "GEÇTİ" } else { "KALDI" });
-                    if !tamam {
-                        kalan += 1;
+                    println!("SONUÇ ({name}): {}", if done { "GEÇTİ" } else { "FAIL" });
+                    if !done {
+                        rest += 1;
                     }
                 }
                 Err(e) => {
-                    println!("SONUÇ ({ad}): KALDI ({e})");
-                    kalan += 1;
+                    println!("SONUÇ ({name}): FAIL ({e})");
+                    rest += 1;
                 }
             }
-            if let Some(arac) = &olcek_araci {
-                match Command::new(arac).arg(&girdi).arg(&cikti).output() {
+            if let Some(tool) = &scale_tool {
+                match Command::new(tool).arg(&input).arg(&output).output() {
                     Ok(o) => {
-                        print!("pdf-olcek ({ad}):\n{}", String::from_utf8_lossy(&o.stdout));
+                        print!(
+                            "pdf-scaling ({name}):\n{}",
+                            String::from_utf8_lossy(&o.stdout)
+                        );
                         if !o.status.success() {
-                            kalan += 1;
+                            rest += 1;
                         }
                     }
                     Err(e) => {
-                        println!("pdf-olcek çalıştırılamadı: {e}");
-                        kalan += 1;
+                        println!("pdf-scaling çalıştırılamadı: {e}");
+                        rest += 1;
                     }
                 }
             }
         }
         println!("girdi/çıktı: {}", d.display());
-        if kalan == 0 {
-            println!("baski_pdf: {} kâğıt GEÇTİ", kagitlar.len());
+        if rest == 0 {
+            println!("printing_pdf: {} kâğıt GEÇTİ", papers.len());
             0
         } else {
-            println!("baski_pdf: {kalan} KALDI");
+            println!("printing_pdf: {rest} FAIL");
             1
         }
     }

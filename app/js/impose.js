@@ -2,94 +2,94 @@
  * impose.js — Düzenle sekmesi: PDF yükleme, sayfa ızgarası (sil, sırala,
  * döndür, boş sayfa), dizilim ayarları, yaprak önizlemesi, dışa aktarma.
  */
-(function (kok) {
+(function (root) {
   'use strict';
-  var KC = kok.KitapCilt = kok.KitapCilt || {};
-  var O = KC.ortak, $ = O.$, el = O.el, DIL = KC.dil; // (D bu dosyada belge durumu)
-  function t(a, p) { return DIL.t(a, p); }
-  var AYAR_ANAHTAR = 'kitapCilt.duzenleAyar';
+  var MC = root.Mucellit = root.Mucellit || {};
+  var O = MC.common, $ = O.$, el = O.el, I18N = MC.i18n; // (D bu dosyada belge durumu)
+  function t(a, p) { return I18N.t(a, p); }
+  var SETTINGS_KEY = 'mucellit.imposeSettings';
 
   var D = {
-    kaynakAd: '',
-    kaynakBytes: null,
+    sourceName: '',
+    sourceBytes: null,
     pdf: null,
-    resimler: {},
-    sayfalar: [],
-    secili: {},
-    surukle: null,
-    yuklemeNo: 0,
-    istekNo: 0,       // dosya seçimi sıra numarası: bayat yükleme sonucu atılır
-    ciktiPdf: null,
-    sifreli: false,   // kaynak PDF şifreli/izin kısıtlı: pdf-lib çözemez, dışa aktarma kapalı
-    denetimYok: false, // şifre/kısıt durumu denetlenemedi: dışa aktarma kapalı (kapalı başarısız)
-    parolali: false,  // parolalı PDF seçildi: önizleme açılmadı
-    eklentiOlcu: null, // eklentiyle (ör. EPUB) dönüştürüldüyse o andaki ölçüler {kitapGen, kitapYuk, ciltPayi, disKenar}
-    engel: false      // dışa aktarma düğmesi kapalı olmalı mı (şifreli, kağıda sığmıyor, hata)
+    thumbs: {},
+    pages: [],
+    selected: {},
+    dragging: null,
+    loadNo: 0,
+    requestNo: 0,       // dosya seçimi sıra numarası: bayat yükleme sonucu atılır
+    outputPdf: null,
+    encrypted: false,   // kaynak PDF şifreli/izin kısıtlı: pdf-lib çözemez, dışa aktarma kapalı
+    uncheckable: false, // şifre/kısıt durumu denetlenemedi: dışa aktarma kapalı (kapalı başarısız)
+    passwordProtected: false,  // parolalı PDF seçildi: önizleme açılmadı
+    pluginSizes: null, // eklentiyle (ör. EPUB) dönüştürüldüyse o andaki ölçüler {kitapGen, kitapYuk, ciltPayi, disKenar}
+    blocked: false      // dışa aktarma düğmesi kapalı olmalı mı (şifreli, kağıda sığmıyor, hata)
   };
   // Uyarı metinleri okundukları anda o anki dilde.
-  function SIFRELI_UYARI() { return t('duzenle.uyari.sifreli'); }
-  function PAROLALI_UYARI() { return t('duzenle.uyari.parolali'); }
+  function ENCRYPTED_WARNING() { return t('impose.warning.encrypted'); }
+  function PASSWORD_WARNING() { return t('impose.warning.passwordProtected'); }
   // ortama göre (tarayıcı: "sayfayı yenileyin"; Mac uygulaması: tauri.uyari_denetim)
-  function DENETIM_UYARI() { return (KC.platform && KC.platform.metin && KC.platform.metin.denetimUyari) || t('duzenle.uyari.denetim'); }
-  var sayac = 0;
-  function yeniId() { sayac += 1; return 's' + sayac; }
+  function UNCHECKED_WARNING() { return (MC.platform && MC.platform.text && MC.platform.text.checkWarning) || t('impose.warning.check'); }
+  var counter = 0;
+  function newId() { counter += 1; return 's' + counter; }
 
   // ---------------- ayarlar ----------------
-  var ALANLAR = {
-    ciltTuru: ['cilt-turu', 'metin'], formaYaprak: ['forma-yaprak', 'sayi'], sonFormaKucult: ['son-forma-kucult', 'isaret'],
-    kayma: ['kayma', 'isaret'], kagitKalinlik: ['kagit-kalinlik', 'sayi'], kagitGen: ['kagit-gen', 'sayi'], kagitYuk: ['kagit-yuk', 'sayi'],
-    kitapGen: ['kitap-gen', 'sayi'], kitapYuk: ['kitap-yuk', 'sayi'], olcek: ['olcek', 'metin'], disKenar: ['dis-kenar', 'sayi'],
-    ciltPayi: ['cilt-payi', 'sayi'], kirim: ['kirim', 'isaret'], katlama: ['katlama', 'isaret'], sirtIsareti: ['sirt-isareti', 'isaret'],
-    cevirme: ['cevirme', 'metin'], ciktiModu: ['cikti-modu', 'metin'], arkaTers: ['arka-ters', 'isaret']
+  var FIELDS = {
+    bindingType: ['binding-type', 'text'], sheetsPerSignature: ['signature-sheet', 'number'], shrinkLastSignature: ['last-signature-shrink', 'mark'],
+    creep: ['creep', 'mark'], paperThickness: ['paper-thickness', 'number'], paperWidth: ['paper-width', 'number'], paperHeight: ['paper-height', 'number'],
+    bookWidth: ['book-width', 'number'], bookHeight: ['book-height', 'number'], scaling: ['scaling', 'text'], outerMargin: ['outer-margin', 'number'],
+    gutter: ['binding-allowance', 'number'], cropMarks: ['cropMarks', 'mark'], folding: ['folding', 'mark'], spineMarks: ['spine-mark', 'mark'],
+    duplex: ['duplex', 'text'], outputMode: ['output-mode', 'text'], backsReversed: ['back-reversed', 'mark']
   };
 
-  function ayarOku() {
+  function readSettings() {
     var a = {};
-    Object.keys(ALANLAR).forEach(function (k) {
-      var id = ALANLAR[k][0], tur = ALANLAR[k][1], e = $(id);
-      if (tur === 'isaret') a[k] = e.checked;
-      else if (tur === 'sayi') a[k] = O.sayi(id, NaN);
+    Object.keys(FIELDS).forEach(function (k) {
+      var id = FIELDS[k][0], kind = FIELDS[k][1], e = $(id);
+      if (kind === 'mark') a[k] = e.checked;
+      else if (kind === 'number') a[k] = O.number(id, NaN);
       else a[k] = e.value;
     });
     return a;
   }
 
-  function ayarUygula(a) {
+  function applySettings(a) {
     if (!a) return;
-    Object.keys(ALANLAR).forEach(function (k) {
+    Object.keys(FIELDS).forEach(function (k) {
       if (a[k] === undefined || a[k] === null) return;
-      var id = ALANLAR[k][0], tur = ALANLAR[k][1], e = $(id);
-      if (tur === 'isaret') e.checked = !!a[k];
-      else if (tur === 'sayi') O.sayiYaz(e, a[k]); // dilin ondalık ayracı
+      var id = FIELDS[k][0], kind = FIELDS[k][1], e = $(id);
+      if (kind === 'mark') e.checked = !!a[k];
+      else if (kind === 'number') O.writeNumber(e, a[k]); // dilin ondalık ayracı
       else e.value = a[k];
     });
-    gorunurlukGuncelle();
-    guncelle();
+    updateVisibility();
+    update();
   }
 
-  function gorunurlukGuncelle() {
-    var tur = $('cilt-turu').value;
-    $('forma-alanlari').hidden = tur !== 'formali';
-    var ikili = $('cikti-modu').value === 'ikili';
-    $('arka-ters-alan').hidden = !ikili;
-    var etiket = ikili ? 'duzenle.cevirme.ikili' : 'duzenle.cevirme.tek';
-    $('cevirme-etiket').setAttribute('data-dil', etiket);
-    $('cevirme-etiket').textContent = t(etiket);
-    var gen = O.sayi('kagit-gen', 0), yuk = O.sayi('kagit-yuk', 0);
-    var doner = KC.yerlesim.arkaDondurulsunMu($('cevirme').value, gen, yuk);
-    $('cevirme-ipucu').textContent = t(doner ? 'duzenle.cevirme.ipucu_donuk' : 'duzenle.cevirme.ipucu_duz',
-      { yon: t(gen > yuk ? 'duzenle.yon.yatay' : 'duzenle.yon.dikey') });
-    if (KC.platform && typeof KC.platform.yazdir === 'function') $('yazdir-not').textContent = yazdirNotu();
+  function updateVisibility() {
+    var kind = $('binding-type').value;
+    $('signature-fields').hidden = kind !== 'sewn';
+    var pair = $('output-mode').value === 'pair';
+    $('back-reversed-field').hidden = !pair;
+    var label = pair ? 'impose.duplex.pair' : 'impose.duplex.single';
+    $('duplex-label').setAttribute('data-i18n', label);
+    $('duplex-label').textContent = t(label);
+    var width = O.number('paper-width', 0), height = O.number('paper-height', 0);
+    var rotates = MC.layout.shouldRotateBacks($('duplex').value, width, height);
+    $('duplex-hint').textContent = t(rotates ? 'impose.duplex.hint_rotated' : 'impose.duplex.hint_flat',
+      { direction: t(width > height ? 'impose.direction.landscape' : 'impose.direction.portrait') });
+    if (MC.platform && typeof MC.platform.print === 'function') $('print-note').textContent = printNote();
   }
 
   // ---------------- PDF yükleme ----------------
   function pdfjs() {
-    var p = kok.pdfjsLib;
-    if (!p) throw new Error(t('hata.pdfjs'));
+    var p = root.pdfjsLib;
+    if (!p) throw new Error(t('error.pdfjs'));
     return p;
   }
 
-  function belgeAc(bytes) {
+  function openDocument(bytes) {
     // isEvalSupported:false — kötü niyetli yazı tipi ile kod çalıştırma açığına karşı (pdf.js < 4.2.67)
     // Parola istemi yok (tarayıcı iletişim kutusu kullanılmaz): parolalı PDF PasswordException ile reddedilir, dosyaYukle yakalar.
     return pdfjs().getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
@@ -100,44 +100,44 @@
    * true: şifreli, false: değil, null: DENETLENEMEDİ (pdf-lib yok ya da ayrıştıramadı) → kapalı başarısız:
    * çağıran dışa aktarmayı kapatır.
    */
-  async function sifreliMi(bytes) {
+  async function isEncrypted(bytes) {
     try {
-      if (!kok.PDFLib) throw new Error(t('hata.pdflib'));
-      var d = await kok.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+      if (!root.PDFLib) throw new Error(t('error.pdflib'));
+      var d = await root.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
       return !!d.isEncrypted;
     } catch { return null; }
   }
 
-  function parolaliBelge(ad) {
+  function passwordDocument(name) {
     if (D.pdf) { try { D.pdf.destroy(); } catch { /* yok say */ } }
-    D.yuklemeNo += 1;
-    D.pdf = null; D.kaynakBytes = null; D.kaynakAd = ad;
-    D.sifreli = false; D.denetimYok = false; D.parolali = true; D.eklentiOlcu = null;
-    D.resimler = {}; D.secili = {}; D.sayfalar = [];
-    $('kaynak-bilgi').removeAttribute('data-dil');
-    $('kaynak-bilgi').textContent = t('duzenle.kaynak.parolali', { ad: ad });
-    kartlariCiz();
-    guncelle();
-    O.bildir(ad + ': ' + PAROLALI_UYARI(), 'hata');
+    D.loadNo += 1;
+    D.pdf = null; D.sourceBytes = null; D.sourceName = name;
+    D.encrypted = false; D.uncheckable = false; D.passwordProtected = true; D.pluginSizes = null;
+    D.thumbs = {}; D.selected = {}; D.pages = [];
+    $('source-info').removeAttribute('data-i18n');
+    $('source-info').textContent = t('impose.source.passwordProtected', { name: name });
+    drawCards();
+    update();
+    O.notify(name + ': ' + PASSWORD_WARNING(), 'error');
   }
 
   /**
    * Yeni seçilen dosya açılamadı: önceki belge bırakılmaz (kullanıcı hata gördüğü halde eski belgeyi
    * indiremesin). Belge, kartlar ve eklenti uyarıları temizlenir, dışa aktarma kapanır. PDF ve EPUB için aynı.
    */
-  function hataliBelge(ad) {
+  function failedDocument(name) {
     if (D.pdf) { try { D.pdf.destroy(); } catch { /* yok say */ } }
-    D.yuklemeNo += 1;
-    D.pdf = null; D.kaynakBytes = null; D.kaynakAd = ad;
-    D.sifreli = false; D.denetimYok = false; D.parolali = false; D.eklentiOlcu = null;
-    D.resimler = {}; D.secili = {}; D.sayfalar = [];
-    KC.eklentiler.hepsiniSifirla();
-    $('kaynak-bilgi').removeAttribute('data-dil');
-    $('kaynak-bilgi').textContent = t('duzenle.kaynak.acilamadi', { ad: ad });
-    D.engel = true;
-    ciktiDugmeleri(true);
-    kartlariCiz();
-    guncelle();
+    D.loadNo += 1;
+    D.pdf = null; D.sourceBytes = null; D.sourceName = name;
+    D.encrypted = false; D.uncheckable = false; D.passwordProtected = false; D.pluginSizes = null;
+    D.thumbs = {}; D.selected = {}; D.pages = [];
+    MC.plugins.resetAll();
+    $('source-info').removeAttribute('data-i18n');
+    $('source-info').textContent = t('impose.source.openFailed', { name: name });
+    D.blocked = true;
+    setOutputButtons(true);
+    drawCards();
+    update();
   }
 
   /**
@@ -145,410 +145,410 @@
    * bu (bayat) sonuç atılır, durum ve bildirim değişmez. Yeni yükleme başlarken eklenti uyarıları temizlenir.
    * Güncel istek hata verirse önceki belge temizlenir (hataliBelge) ve hata çağırana iletilir (bildirim).
    */
-  async function dosyaYukle(dosya) {
-    var no = ++D.istekNo;
-    function bayat() { return no !== D.istekNo; }
-    KC.eklentiler.hepsiniSifirla();
+  async function loadFile(file) {
+    var no = ++D.requestNo;
+    function stale() { return no !== D.requestNo; }
+    MC.plugins.resetAll();
     try {
-      return await yukle(dosya, bayat);
+      return await load(file, stale);
     } catch (e) {
-      if (bayat()) return; // eski isteğin hatası yeni seçimin bildirimini ve durumunu bozmaz
-      hataliBelge(dosya.name || t('duzenle.belge'));
+      if (stale()) return; // eski isteğin hatası yeni seçimin bildirimini ve durumunu bozmaz
+      failedDocument(file.name || t('impose.document'));
       throw e;
     }
   }
 
-  async function yukle(dosya, bayat) {
-    var ad = dosya.name || t('duzenle.belge') + '.pdf';
+  async function load(file, stale) {
+    var name = file.name || t('impose.document') + '.pdf';
     var bytes;
-    var pdfMi = /\.pdf$/i.test(ad) || dosya.type === 'application/pdf';
-    var eklentiOlcu = null;
-    if (pdfMi) {
-      bytes = new Uint8Array(await dosya.arrayBuffer());
+    var isPdf = /\.pdf$/i.test(name) || file.type === 'application/pdf';
+    var pluginSizes = null;
+    if (isPdf) {
+      bytes = new Uint8Array(await file.arrayBuffer());
     } else {
-      var d = KC.eklentiler.bul(dosya);
-      if (!d) throw new Error(t('duzenle.tur_desteklenmiyor', { ad: ad }));
-      O.bildir(t('duzenle.donusturuluyor', { ad: d.ad }));
-      eklentiOlcu = guncelOlcu();
-      bytes = await d.donustur(dosya, {
-        kitapGen: eklentiOlcu.kitapGen, kitapYuk: eklentiOlcu.kitapYuk,
-        ciltPayi: eklentiOlcu.ciltPayi, disKenar: eklentiOlcu.disKenar,
-        ilerleme: function (m) { if (!bayat()) O.bildir(m); },
-        guncelMi: function () { return !bayat(); }
+      var d = MC.plugins.find(file);
+      if (!d) throw new Error(t('impose.kind_unsupported', { name: name }));
+      O.notify(t('impose.converting', { name: d.name }));
+      pluginSizes = currentSizes();
+      bytes = await d.convert(file, {
+        bookWidth: pluginSizes.bookWidth, bookHeight: pluginSizes.bookHeight,
+        gutter: pluginSizes.gutter, outerMargin: pluginSizes.outerMargin,
+        progress: function (m) { if (!stale()) O.notify(m); },
+        isCurrent: function () { return !stale(); }
       });
-      if (bayat()) return;
+      if (stale()) return;
       if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
-      ad = ad.replace(/(\.epub\.zip|\.[^.]+)$/i, '') + '.pdf'; // "Kitap.epub.zip" → "Kitap.pdf"
+      name = name.replace(/(\.epub\.zip|\.[^.]+)$/i, '') + '.pdf'; // "Kitap.epub.zip" → "Kitap.pdf"
     }
-    if (bayat()) return;
-    var bas = String.fromCharCode.apply(null, bytes.subarray(0, 1024));
-    if (bas.indexOf('%PDF') < 0) throw new Error(t('duzenle.pdf_degil', { ad: ad }));
+    if (stale()) return;
+    var head = String.fromCharCode.apply(null, bytes.subarray(0, 1024));
+    if (head.indexOf('%PDF') < 0) throw new Error(t('impose.pdf_not', { name: name }));
     var pdf;
-    try { pdf = await belgeAc(bytes); } catch (e) {
-      if (bayat()) return;
-      if (e && e.name === 'PasswordException') return parolaliBelge(ad);
+    try { pdf = await openDocument(bytes); } catch (e) {
+      if (stale()) return;
+      if (e && e.name === 'PasswordException') return passwordDocument(name);
       // pdf.js'in ham (İngilizce) hata metni kullanıcıya gösterilmez
-      var h = new Error(t('duzenle.pdf_bozuk', { ad: ad }));
+      var h = new Error(t('impose.pdf_corrupt', { name: name }));
       h.cause = e;
       throw h;
     }
-    var sifreli = await sifreliMi(bytes);
-    if (bayat()) { try { pdf.destroy(); } catch { /* yok say */ } return; }
+    var encrypted = await isEncrypted(bytes);
+    if (stale()) { try { pdf.destroy(); } catch { /* yok say */ } return; }
     if (D.pdf) { try { D.pdf.destroy(); } catch { /* yok say */ } }
-    D.yuklemeNo += 1;
+    D.loadNo += 1;
     D.pdf = pdf;
-    D.kaynakBytes = bytes;
-    D.kaynakAd = ad;
-    D.sifreli = sifreli === true;
-    D.denetimYok = sifreli === null;
-    D.parolali = false;
-    D.eklentiOlcu = eklentiOlcu;
-    D.resimler = {};
-    D.secili = {};
-    D.sayfalar = [];
-    for (var i = 0; i < pdf.numPages; i++) D.sayfalar.push({ id: yeniId(), tur: 'pdf', kaynak: i, dondur: 0 });
-    var ilk = await pdf.getPage(1);
-    var vp = ilk.getViewport({ scale: 1 });
-    $('kaynak-bilgi').removeAttribute('data-dil');
-    $('kaynak-bilgi').textContent = t('duzenle.kaynak.bilgi', { ad: ad, n: pdf.numPages,
-      gen: Math.round(vp.width / KC.cikti.MM), yuk: Math.round(vp.height / KC.cikti.MM) });
-    ciktiDugmeleri(true);  // onizlemeCiz şifreli/sığmıyor durumuna göre açar
-    D.engel = true;
-    kartlariCiz();
-    guncelle();
-    kucukResimleriUret(D.yuklemeNo);
-    if (sifreli === null) O.bildir(t('duzenle.yuklendi_ama', { ad: ad, uyari: DENETIM_UYARI() }), 'hata');
-    else if (sifreli) O.bildir(t('duzenle.yuklendi_ama', { ad: ad, uyari: SIFRELI_UYARI() }), 'hata');
-    else O.bildir(t('duzenle.yuklendi', { ad: ad, n: pdf.numPages }));
+    D.sourceBytes = bytes;
+    D.sourceName = name;
+    D.encrypted = encrypted === true;
+    D.uncheckable = encrypted === null;
+    D.passwordProtected = false;
+    D.pluginSizes = pluginSizes;
+    D.thumbs = {};
+    D.selected = {};
+    D.pages = [];
+    for (var i = 0; i < pdf.numPages; i++) D.pages.push({ id: newId(), kind: 'pdf', source: i, rotate: 0 });
+    var first = await pdf.getPage(1);
+    var vp = first.getViewport({ scale: 1 });
+    $('source-info').removeAttribute('data-i18n');
+    $('source-info').textContent = t('impose.source.info', { name: name, n: pdf.numPages,
+      width: Math.round(vp.width / MC.output.MM), height: Math.round(vp.height / MC.output.MM) });
+    setOutputButtons(true);  // onizlemeCiz şifreli/sığmıyor durumuna göre açar
+    D.blocked = true;
+    drawCards();
+    update();
+    renderThumbnails(D.loadNo);
+    if (encrypted === null) O.notify(t('impose.loaded_but', { name: name, warning: UNCHECKED_WARNING() }), 'error');
+    else if (encrypted) O.notify(t('impose.loaded_but', { name: name, warning: ENCRYPTED_WARNING() }), 'error');
+    else O.notify(t('impose.loaded', { name: name, n: pdf.numPages }));
   }
 
-  async function kucukResimleriUret(no) {
+  async function renderThumbnails(no) {
     var pdf = D.pdf;
     for (var i = 0; i < pdf.numPages; i++) {
-      if (no !== D.yuklemeNo) return;
+      if (no !== D.loadNo) return;
       try {
-        var sayfa = await pdf.getPage(i + 1);
-        var vp1 = sayfa.getViewport({ scale: 1 });
-        var olcek = Math.min(232 / vp1.height, 200 / vp1.width);
-        var vp = sayfa.getViewport({ scale: olcek });
+        var page = await pdf.getPage(i + 1);
+        var vp1 = page.getViewport({ scale: 1 });
+        var scaling = Math.min(232 / vp1.height, 200 / vp1.width);
+        var vp = page.getViewport({ scale: scaling });
         var c = document.createElement('canvas');
         c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
-        await sayfa.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-        if (no !== D.yuklemeNo) return;
-        D.resimler[i] = c.toDataURL('image/png');
-        var imgs = document.querySelectorAll('#kucuk-resimler img[data-kaynak="' + i + '"]');
-        for (var j = 0; j < imgs.length; j++) imgs[j].src = D.resimler[i];
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        if (no !== D.loadNo) return;
+        D.thumbs[i] = c.toDataURL('image/png');
+        var imgs = document.querySelectorAll('#small-thumbs img[data-source="' + i + '"]');
+        for (var j = 0; j < imgs.length; j++) imgs[j].src = D.thumbs[i];
       } catch (e) {
-        if (no !== D.yuklemeNo) return;
-        O.bildir(t('duzenle.kucuk_resim_hatasi', { n: i + 1, hata: e.message }), 'hata');
+        if (no !== D.loadNo) return;
+        O.notify(t('impose.thumbnail_error', { n: i + 1, error: e.message }), 'error');
       }
     }
-    var izgara = $('kucuk-resimler');
-    if (izgara) izgara.setAttribute('data-resimler-hazir', 'evet');
+    var grid = $('small-thumbs');
+    if (grid) grid.setAttribute('data-thumbs-ready', 'yes');
   }
 
   // ---------------- sayfa ızgarası ----------------
-  function indisBul(id) {
-    for (var i = 0; i < D.sayfalar.length; i++) if (D.sayfalar[i].id === id) return i;
+  function indexOf(id) {
+    for (var i = 0; i < D.pages.length; i++) if (D.pages[i].id === id) return i;
     return -1;
   }
 
-  function degisti() { kartlariCiz(); guncelle(); }
+  function changed() { drawCards(); update(); }
 
-  function tasi(id, yeniIndis) {
-    var i = indisBul(id);
+  function move(id, newIndex) {
+    var i = indexOf(id);
     if (i < 0) return;
-    var s = D.sayfalar.splice(i, 1)[0];
-    if (yeniIndis > i) yeniIndis -= 1;
-    D.sayfalar.splice(Math.max(0, Math.min(D.sayfalar.length, yeniIndis)), 0, s);
-    degisti();
+    var s = D.pages.splice(i, 1)[0];
+    if (newIndex > i) newIndex -= 1;
+    D.pages.splice(Math.max(0, Math.min(D.pages.length, newIndex)), 0, s);
+    changed();
   }
 
-  function kartlariCiz() {
-    var izgara = $('kucuk-resimler');
-    izgara.removeAttribute('data-resimler-hazir');
-    izgara.textContent = '';
-    var parca = document.createDocumentFragment();
-    D.sayfalar.forEach(function (s, i) {
-      var resim;
-      if (s.tur === 'bos') {
-        resim = el('div', { class: 'resim bos-sayfa', text: t('duzenle.kart.bos_sayfa') });
+  function drawCards() {
+    var grid = $('small-thumbs');
+    grid.removeAttribute('data-thumbs-ready');
+    grid.textContent = '';
+    var part = document.createDocumentFragment();
+    D.pages.forEach(function (s, i) {
+      var image;
+      if (s.kind === 'blank') {
+        image = el('div', { class: 'image blank-page', text: t('impose.card.blank_page') });
       } else {
-        var img = el('img', { alt: t('duzenle.kart.kaynak_sayfa', { n: s.kaynak + 1 }), 'data-kaynak': String(s.kaynak), draggable: 'false' });
-        if (D.resimler[s.kaynak]) img.src = D.resimler[s.kaynak];
-        var d = s.dondur || 0;
+        var img = el('img', { alt: t('impose.card.source_page', { n: s.source + 1 }), 'data-source': String(s.source), draggable: 'false' });
+        if (D.thumbs[s.source]) img.src = D.thumbs[s.source];
+        var d = s.rotate || 0;
         img.style.transform = 'rotate(' + d + 'deg)' + (d % 180 ? ' scale(0.7)' : '');
-        resim = el('div', { class: 'resim' }, [img]);
+        image = el('div', { class: 'image' }, [img]);
       }
-      var kart = el('div', {
-        class: 'kart' + (D.secili[s.id] ? ' secili' : ''), draggable: 'true', 'data-id': s.id,
-        'data-sira': String(i + 1), 'data-tur': s.tur, 'data-kaynak': s.tur === 'pdf' ? String(s.kaynak + 1) : ''
+      var card = el('div', {
+        class: 'card' + (D.selected[s.id] ? ' selected' : ''), draggable: 'true', 'data-id': s.id,
+        'data-order': String(i + 1), 'data-kind': s.kind, 'data-source': s.kind === 'pdf' ? String(s.source + 1) : ''
       }, [
-        resim,
-        el('div', { class: 'etiket' }, [
+        image,
+        el('div', { class: 'label' }, [
           el('label', {}, [
-            el('input', { type: 'checkbox', class: 'kart-sec', checked: !!D.secili[s.id], 'aria-label': t('duzenle.kart.sec', { n: i + 1 }) }),
+            el('input', { type: 'checkbox', class: 'card-select', checked: !!D.selected[s.id], 'aria-label': t('impose.card.select', { n: i + 1 }) }),
             ' ' + (i + 1)
           ]),
-          el('span', { class: 'kucuk', text: s.tur === 'pdf' ? t('duzenle.kart.kaynak', { n: s.kaynak + 1 }) + (s.dondur ? ' · ' + s.dondur + '°' : '') : t('duzenle.kart.bos') })
+          el('span', { class: 'small', text: s.kind === 'pdf' ? t('impose.card.source', { n: s.source + 1 }) + (s.rotate ? ' · ' + s.rotate + '°' : '') : t('impose.card.blank') })
         ]),
-        el('div', { class: 'dugmeler' }, [
-          el('button', { type: 'button', 'data-is': 'sol', title: t('duzenle.kart.one_al'), text: '◀' }),
-          el('button', { type: 'button', 'data-is': 'dondur', title: t('duzenle.kart.dondur'), text: '⟳', disabled: s.tur === 'bos' }),
-          el('button', { type: 'button', 'data-is': 'sil', title: t('duzenle.kart.sil'), text: '✕' }),
-          el('button', { type: 'button', 'data-is': 'sag', title: t('duzenle.kart.arkaya_al'), text: '▶' })
+        el('div', { class: 'buttons' }, [
+          el('button', { type: 'button', 'data-is': 'left', title: t('impose.card.move_to_front'), text: '◀' }),
+          el('button', { type: 'button', 'data-is': 'rotate', title: t('impose.card.rotate'), text: '⟳', disabled: s.kind === 'blank' }),
+          el('button', { type: 'button', 'data-is': 'remove', title: t('impose.card.remove'), text: '✕' }),
+          el('button', { type: 'button', 'data-is': 'right', title: t('impose.card.take_later'), text: '▶' })
         ])
       ]);
-      parca.appendChild(kart);
+      part.appendChild(card);
     });
-    izgara.appendChild(parca);
-    if (D.pdf && Object.keys(D.resimler).length >= D.pdf.numPages) izgara.setAttribute('data-resimler-hazir', 'evet');
+    grid.appendChild(part);
+    if (D.pdf && Object.keys(D.thumbs).length >= D.pdf.numPages) grid.setAttribute('data-thumbs-ready', 'yes');
   }
 
-  function kartOlaylari() {
-    var izgara = $('kucuk-resimler');
-    izgara.addEventListener('click', function (e) {
-      var kart = e.target.closest('.kart');
-      if (!kart) return;
-      var id = kart.getAttribute('data-id');
-      var i = indisBul(id);
+  function cardEvents() {
+    var grid = $('small-thumbs');
+    grid.addEventListener('click', function (e) {
+      var card = e.target.closest('.card');
+      if (!card) return;
+      var id = card.getAttribute('data-id');
+      var i = indexOf(id);
       var is = e.target.getAttribute('data-is');
-      if (e.target.classList.contains('kart-sec')) {
-        if (e.target.checked) D.secili[id] = true; else delete D.secili[id];
-        kart.classList.toggle('secili', !!D.secili[id]);
+      if (e.target.classList.contains('card-select')) {
+        if (e.target.checked) D.selected[id] = true; else delete D.selected[id];
+        card.classList.toggle('selected', !!D.selected[id]);
         return;
       }
       if (!is) return;
-      if (is === 'sol') tasi(id, i - 1);
-      else if (is === 'sag') tasi(id, i + 2);
-      else if (is === 'sil') { D.sayfalar.splice(i, 1); delete D.secili[id]; degisti(); }
-      else if (is === 'dondur') { var s = D.sayfalar[i]; s.dondur = ((s.dondur || 0) + 90) % 360; degisti(); }
+      if (is === 'left') move(id, i - 1);
+      else if (is === 'right') move(id, i + 2);
+      else if (is === 'remove') { D.pages.splice(i, 1); delete D.selected[id]; changed(); }
+      else if (is === 'rotate') { var s = D.pages[i]; s.rotate = ((s.rotate || 0) + 90) % 360; changed(); }
     });
-    izgara.addEventListener('dragstart', function (e) {
-      var kart = e.target.closest('.kart');
-      if (!kart) return;
-      D.surukle = kart.getAttribute('data-id');
-      kart.classList.add('surukleniyor');
-      try { e.dataTransfer.setData('text/plain', D.surukle); e.dataTransfer.effectAllowed = 'move'; } catch { /* yok say */ }
+    grid.addEventListener('dragstart', function (e) {
+      var card = e.target.closest('.card');
+      if (!card) return;
+      D.dragging = card.getAttribute('data-id');
+      card.classList.add('dragging');
+      try { e.dataTransfer.setData('text/plain', D.dragging); e.dataTransfer.effectAllowed = 'move'; } catch { /* yok say */ }
     });
-    izgara.addEventListener('dragend', function () {
-      D.surukle = null;
-      var k = izgara.querySelectorAll('.surukleniyor, .hedef');
-      for (var i = 0; i < k.length; i++) k[i].classList.remove('surukleniyor', 'hedef');
+    grid.addEventListener('dragend', function () {
+      D.dragging = null;
+      var k = grid.querySelectorAll('.dragging, .target');
+      for (var i = 0; i < k.length; i++) k[i].classList.remove('dragging', 'target');
     });
-    izgara.addEventListener('dragover', function (e) {
-      var kart = e.target.closest('.kart');
-      if (!kart || !D.surukle) return;
+    grid.addEventListener('dragover', function (e) {
+      var card = e.target.closest('.card');
+      if (!card || !D.dragging) return;
       e.preventDefault();
-      var onceki = izgara.querySelector('.hedef');
-      if (onceki && onceki !== kart) onceki.classList.remove('hedef');
-      kart.classList.add('hedef');
+      var previous = grid.querySelector('.target');
+      if (previous && previous !== card) previous.classList.remove('target');
+      card.classList.add('target');
     });
-    izgara.addEventListener('drop', function (e) {
-      var kart = e.target.closest('.kart');
-      if (!kart || !D.surukle) return;
+    grid.addEventListener('drop', function (e) {
+      var card = e.target.closest('.card');
+      if (!card || !D.dragging) return;
       e.preventDefault();
-      var hedefId = kart.getAttribute('data-id');
-      if (hedefId === D.surukle) return;
-      var r = kart.getBoundingClientRect();
-      var sonra = e.clientX > r.left + r.width / 2;
-      var j = indisBul(hedefId) + (sonra ? 1 : 0);
-      var id = D.surukle;
-      D.surukle = null;
-      tasi(id, j);
+      var targetId = card.getAttribute('data-id');
+      if (targetId === D.dragging) return;
+      var r = card.getBoundingClientRect();
+      var after = e.clientX > r.left + r.width / 2;
+      var j = indexOf(targetId) + (after ? 1 : 0);
+      var id = D.dragging;
+      D.dragging = null;
+      move(id, j);
     });
   }
 
   /** "1-4, 9" → [1,2,3,4,9] (1'den, geçerli sıra numaraları). */
-  function aralikCoz(metin, enCok) {
-    var sonuc = {};
-    String(metin || '').split(/[,;\s]+/).forEach(function (p) {
+  function parseRange(text, max) {
+    var result = {};
+    String(text || '').split(/[,;\s]+/).forEach(function (p) {
       if (!p) return;
       var m = p.match(/^(\d+)(?:-(\d+))?$/);
-      if (!m) throw new Error(t('duzenle.aralik_hatali', { parca: p }));
+      if (!m) throw new Error(t('impose.range_faulty', { part: p }));
       var a = parseInt(m[1], 10), b = m[2] ? parseInt(m[2], 10) : a;
-      if (a > b) { var gecici = a; a = b; b = gecici; }
-      for (var i = Math.max(1, a); i <= Math.min(enCok, b); i++) sonuc[i] = true;
+      if (a > b) { var temp = a; a = b; b = temp; }
+      for (var i = Math.max(1, a); i <= Math.min(max, b); i++) result[i] = true;
     });
-    return Object.keys(sonuc).map(Number);
+    return Object.keys(result).map(Number);
   }
 
-  function seciliIndisler() {
+  function selectedIndices() {
     var l = [];
-    D.sayfalar.forEach(function (s, i) { if (D.secili[s.id]) l.push(i); });
+    D.pages.forEach(function (s, i) { if (D.selected[s.id]) l.push(i); });
     return l;
   }
 
   /** Dosyayı açar; hata bildirime gider (Promise reddedilmez). Menü/Son Açılanlar/Dock'tan da çağrılır. */
-  function dosyaAc(f) {
-    return dosyaYukle(f).catch(function (err) { O.bildir(t('duzenle.dosya_acilamadi', { hata: err.message }), 'hata'); });
+  function openFile(f) {
+    return loadFile(f).catch(function (err) { O.notify(t('impose.file_open_failed', { error: err.message }), 'error'); });
   }
 
-  function aracOlaylari() {
-    $('pdf-sec').addEventListener('click', function () {
+  function toolEvents() {
+    $('pdf-select').addEventListener('click', function () {
       // Tarayıcıda gizli girdi açılır ve seçim aşağıdaki change olayıyla gelir (null döner);
       // yerel diyalog doğrudan File döndürür.
-      KC.platform.dosyaSec({ girdi: $('pdf-dosya'), uzantilar: ['pdf', 'epub'], mime: 'application/pdf' })
-        .then(function (f) { if (f) return dosyaAc(f); }, function (err) { O.bildir(t('duzenle.dosya_acilamadi', { hata: err.message }), 'hata'); });
+      MC.platform.pickFile({ input: $('pdf-file'), extensions: ['pdf', 'epub'], mime: 'application/pdf' })
+        .then(function (f) { if (f) return openFile(f); }, function (err) { O.notify(t('impose.file_open_failed', { error: err.message }), 'error'); });
     });
-    $('pdf-dosya').addEventListener('change', function (e) {
+    $('pdf-file').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];
       if (!f) return;
-      dosyaAc(f).then(function () { e.target.value = ''; });
+      openFile(f).then(function () { e.target.value = ''; });
     });
     // Pencereye/sayfaya dosya bırakma: yalnız dışarıdan dosya sürüklenince; ızgaradaki sayfa
     // sürüklemesine (D.surukle) dokunulmaz. Bırakılmayan yerde tarayıcının dosyayı açıp sayfadan
     // ayrılması da önlenir.
-    function dosyaSurukleniyor(e) {
-      var turler = e.dataTransfer && e.dataTransfer.types;
-      return !D.surukle && !!turler && Array.prototype.indexOf.call(turler, 'Files') >= 0;
+    function isFileDrag(e) {
+      var types = e.dataTransfer && e.dataTransfer.types;
+      return !D.dragging && !!types && Array.prototype.indexOf.call(types, 'Files') >= 0;
     }
     document.addEventListener('dragover', function (e) {
-      if (!dosyaSurukleniyor(e)) return;
+      if (!isFileDrag(e)) return;
       e.preventDefault();
       try { e.dataTransfer.dropEffect = 'copy'; } catch { /* yok say */ }
     });
     document.addEventListener('drop', function (e) {
-      if (e.defaultPrevented || !dosyaSurukleniyor(e)) return;
+      if (e.defaultPrevented || !isFileDrag(e)) return;
       e.preventDefault();
       var f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (!f) return;
-      if (KC.uygulama) KC.uygulama.sekmeAc('duzenle');
-      dosyaAc(f);
+      if (MC.app) MC.app.openTab('impose');
+      openFile(f);
     });
-    $('aralik-sec').addEventListener('click', function () {
+    $('range-select').addEventListener('click', function () {
       try {
-        var l = aralikCoz($('aralik').value, D.sayfalar.length);
-        D.secili = {};
-        l.forEach(function (n) { D.secili[D.sayfalar[n - 1].id] = true; });
-        kartlariCiz();
-        O.bildir(t('duzenle.secildi', { n: l.length }));
-      } catch (err) { O.bildir(err.message, 'hata'); }
+        var l = parseRange($('range').value, D.pages.length);
+        D.selected = {};
+        l.forEach(function (n) { D.selected[D.pages[n - 1].id] = true; });
+        drawCards();
+        O.notify(t('impose.selected', { n: l.length }));
+      } catch (err) { O.notify(err.message, 'error'); }
     });
-    $('tumunu-sec').addEventListener('click', function () {
-      D.secili = {}; D.sayfalar.forEach(function (s) { D.secili[s.id] = true; }); kartlariCiz();
+    $('all-select').addEventListener('click', function () {
+      D.selected = {}; D.pages.forEach(function (s) { D.selected[s.id] = true; }); drawCards();
     });
-    $('secimi-kaldir').addEventListener('click', function () { D.secili = {}; kartlariCiz(); });
-    $('secili-sil').addEventListener('click', function () {
-      var n = seciliIndisler().length;
-      if (!n) return O.bildir(t('duzenle.once_sec'), 'hata');
-      D.sayfalar = D.sayfalar.filter(function (s) { return !D.secili[s.id]; });
-      D.secili = {}; degisti(); O.bildir(t('duzenle.silindi', { n: n }));
+    $('selection-remove').addEventListener('click', function () { D.selected = {}; drawCards(); });
+    $('selected-remove').addEventListener('click', function () {
+      var n = selectedIndices().length;
+      if (!n) return O.notify(t('impose.once_sec'), 'error');
+      D.pages = D.pages.filter(function (s) { return !D.selected[s.id]; });
+      D.selected = {}; changed(); O.notify(t('impose.deleted', { n: n }));
     });
-    $('secili-disini-sil').addEventListener('click', function () {
-      if (!seciliIndisler().length) return O.bildir(t('duzenle.once_sec'), 'hata');
-      D.sayfalar = D.sayfalar.filter(function (s) { return D.secili[s.id]; });
-      degisti();
+    $('selected-unselected-remove').addEventListener('click', function () {
+      if (!selectedIndices().length) return O.notify(t('impose.once_sec'), 'error');
+      D.pages = D.pages.filter(function (s) { return D.selected[s.id]; });
+      changed();
     });
-    $('secili-dondur').addEventListener('click', function () {
-      var l = seciliIndisler();
-      if (!l.length) return O.bildir(t('duzenle.once_sec'), 'hata');
-      l.forEach(function (i) { var s = D.sayfalar[i]; if (s.tur === 'pdf') s.dondur = ((s.dondur || 0) + 90) % 360; });
-      degisti();
+    $('selected-rotate').addEventListener('click', function () {
+      var l = selectedIndices();
+      if (!l.length) return O.notify(t('impose.once_sec'), 'error');
+      l.forEach(function (i) { var s = D.pages[i]; if (s.kind === 'pdf') s.rotate = ((s.rotate || 0) + 90) % 360; });
+      changed();
     });
-    $('bos-basa').addEventListener('click', function () { D.sayfalar.unshift({ id: yeniId(), tur: 'bos' }); degisti(); });
-    $('bos-sona').addEventListener('click', function () { D.sayfalar.push({ id: yeniId(), tur: 'bos' }); degisti(); });
-    $('bos-once').addEventListener('click', function () {
-      var l = seciliIndisler();
-      if (!l.length) return O.bildir(t('duzenle.once_sec'), 'hata');
-      D.sayfalar.splice(l[0], 0, { id: yeniId(), tur: 'bos' });
-      degisti();
+    $('blank-toStart').addEventListener('click', function () { D.pages.unshift({ id: newId(), kind: 'blank' }); changed(); });
+    $('blank-toEnd').addEventListener('click', function () { D.pages.push({ id: newId(), kind: 'blank' }); changed(); });
+    $('blank-once').addEventListener('click', function () {
+      var l = selectedIndices();
+      if (!l.length) return O.notify(t('impose.once_sec'), 'error');
+      D.pages.splice(l[0], 0, { id: newId(), kind: 'blank' });
+      changed();
     });
   }
 
   // ---------------- önizleme ----------------
-  var guncelleBekliyor = false;
-  function guncelle() {
-    if (guncelleBekliyor) return;
-    guncelleBekliyor = true;
-    (kok.requestAnimationFrame || setTimeout)(function () { guncelleBekliyor = false; onizlemeCiz(); });
+  var updatePending = false;
+  function update() {
+    if (updatePending) return;
+    updatePending = true;
+    (root.requestAnimationFrame || setTimeout)(function () { updatePending = false; drawPreview(); });
   }
 
-  function dizilimHesapla() {
-    var a = ayarOku();
-    var dz = KC.dizilim.diz(a.ciltTuru, {
-      sayfaSayisi: D.sayfalar.length, formaYaprak: a.formaYaprak, sonFormaKucult: a.sonFormaKucult,
-      kaymaAcik: a.kayma, kagitKalinlik: a.kagitKalinlik
+  function computeImposition() {
+    var a = readSettings();
+    var dz = MC.imposition.impose(a.bindingType, {
+      pageCount: D.pages.length, sheetsPerSignature: a.sheetsPerSignature, shrinkLastSignature: a.shrinkLastSignature,
+      creepEnabled: a.creep, paperThickness: a.paperThickness
     });
-    return { ayar: a, dizilim: dz, yerlesim: KC.yerlesim.yerlesim(dz, a) };
+    return { settings: a, imposition: dz, layout: MC.layout.layout(dz, a) };
   }
 
   /** Eklentiye verilen ölçüler (mm): Düzenle > Ölçüler. */
-  function guncelOlcu() {
-    return { kitapGen: O.sayi('kitap-gen', 148), kitapYuk: O.sayi('kitap-yuk', 210), ciltPayi: O.sayi('cilt-payi', 0), disKenar: O.sayi('dis-kenar', 0) };
+  function currentSizes() {
+    return { bookWidth: O.number('book-width', 148), bookHeight: O.number('book-height', 210), gutter: O.number('binding-allowance', 0), outerMargin: O.number('outer-margin', 0) };
   }
 
   /** Eklentiyle dönüştürülmüş belge, şimdiki ölçülerden farklı ölçülerle dizildiyse uyarı metni; değilse null. */
-  function eklentiOlcuUyarisi() {
-    var e = D.eklentiOlcu;
+  function pluginSizeWarning() {
+    var e = D.pluginSizes;
     if (!e) return null;
-    var g = guncelOlcu();
-    var ayni = ['kitapGen', 'kitapYuk', 'ciltPayi', 'disKenar'].every(function (k) { return Math.abs(e[k] - g[k]) < 1e-9; });
-    if (ayni) return null;
-    return t('duzenle.uyari.eklenti_olcu', { gen: e.kitapGen, yuk: e.kitapYuk, cilt: e.ciltPayi, dis: e.disKenar });
+    var g = currentSizes();
+    var same = ['bookWidth', 'bookHeight', 'gutter', 'outerMargin'].every(function (k) { return Math.abs(e[k] - g[k]) < 1e-9; });
+    if (same) return null;
+    return t('impose.warning.plugin_size', { width: e.bookWidth, height: e.bookHeight, binding: e.gutter, outer: e.outerMargin });
   }
 
-  function onizlemeCiz() {
-    var kap = $('yaprak-onizleme'), uy = $('uyarilar'), oz = $('dizilim-ozet');
-    kap.textContent = ''; uy.textContent = ''; oz.textContent = '';
-    O.yerelYaz(AYAR_ANAHTAR, JSON.stringify(ayarOku()));
-    var olcuUyari = D.sayfalar.length ? eklentiOlcuUyarisi() : null;
-    if (olcuUyari) uy.appendChild(el('div', { class: 'uyari', id: 'eklenti-olcu-uyari', text: olcuUyari }));
-    if (!D.sayfalar.length) {
-      oz.textContent = t('duzenle.onizleme_icin');
-      if (D.parolali) uy.appendChild(el('div', { class: 'uyari', id: 'parolali-uyari', text: PAROLALI_UYARI() }));
-      D.engel = true; ciktiDugmeleri(true);
+  function drawPreview() {
+    var container = $('sheet-preview'), uy = $('warnings'), oz = $('imposition-summary');
+    container.textContent = ''; uy.textContent = ''; oz.textContent = '';
+    O.writeLocal(SETTINGS_KEY, JSON.stringify(readSettings()));
+    var sizeWarning = D.pages.length ? pluginSizeWarning() : null;
+    if (sizeWarning) uy.appendChild(el('div', { class: 'warning', id: 'plugin-size-warning', text: sizeWarning }));
+    if (!D.pages.length) {
+      oz.textContent = t('impose.preview_for');
+      if (D.passwordProtected) uy.appendChild(el('div', { class: 'warning', id: 'passwordProtected-warning', text: PASSWORD_WARNING() }));
+      D.blocked = true; setOutputButtons(true);
       return;
     }
-    if (D.sifreli) uy.appendChild(el('div', { class: 'uyari', id: 'sifreli-uyari', text: SIFRELI_UYARI() }));
-    if (D.denetimYok) uy.appendChild(el('div', { class: 'uyari', id: 'denetim-uyari', text: DENETIM_UYARI() }));
+    if (D.encrypted) uy.appendChild(el('div', { class: 'warning', id: 'encrypted-warning', text: ENCRYPTED_WARNING() }));
+    if (D.uncheckable) uy.appendChild(el('div', { class: 'warning', id: 'check-warning', text: UNCHECKED_WARNING() }));
     var r;
-    try { r = dizilimHesapla(); } catch (e) {
-      uy.appendChild(el('div', { class: 'uyari', text: e.message }));
-      D.engel = true; ciktiDugmeleri(true);
+    try { r = computeImposition(); } catch (e) {
+      uy.appendChild(el('div', { class: 'warning', text: e.message }));
+      D.blocked = true; setOutputButtons(true);
       return;
     }
     // Şifreli PDF ya da kağıda sığmayan yerleşim: indirme kapalı (uyarı yukarıda/aşağıda görünür)
-    D.engel = D.sifreli || D.denetimYok || !!r.yerlesim.sigmiyor;
-    ciktiDugmeleri(D.engel);
-    var dz = r.dizilim;
-    var parcalar = [t('duzenle.ozet.tamamlandi', { n: D.sayfalar.length, toplam: dz.toplamSayfa, bos: dz.toplamSayfa - D.sayfalar.length })];
-    if (dz.tur === 'formali') parcalar.push(t('duzenle.ozet.forma', { n: dz.formalar.length }));
-    parcalar.push(t('duzenle.ozet.kagit', { n: dz.yapraklar.length, yuz: 2 * dz.yapraklar.length }));
-    oz.textContent = parcalar.join(' · ');
-    r.yerlesim.uyarilar.forEach(function (u) { uy.appendChild(el('div', { class: 'uyari', text: u })); });
+    D.blocked = D.encrypted || D.uncheckable || !!r.layout.doesNotFit;
+    setOutputButtons(D.blocked);
+    var dz = r.imposition;
+    var parts = [t('impose.summary.completed', { n: D.pages.length, total: dz.totalPages, blank: dz.totalPages - D.pages.length })];
+    if (dz.kind === 'sewn') parts.push(t('impose.summary.signature', { n: dz.signatures.length }));
+    parts.push(t('impose.summary.paper', { n: dz.sheets.length, side: 2 * dz.sheets.length }));
+    oz.textContent = parts.join(' · ');
+    r.layout.warnings.forEach(function (u) { uy.appendChild(el('div', { class: 'warning', text: u })); });
 
-    var yuzler = r.yerlesim.yuzler;
-    for (var i = 0; i < yuzler.length; i += 2) {
-      var on = yuzler[i], arka = yuzler[i + 1];
-      var baslik = dz.tur === 'formali'
-        ? t(on.formaIci === 0 ? 'duzenle.yaprak.forma_dis' : 'duzenle.yaprak.forma', { forma: on.forma + 1, yaprak: on.formaIci + 1 })
-        : t('duzenle.yaprak.kagit', { n: on.yaprak + 1 });
-      kap.appendChild(el('div', { class: 'yaprak-kart', 'data-yaprak': String(on.yaprak) }, [
-        el('div', { class: 'baslik' }, [el('span', { text: baslik }), el('span', { text: t('duzenle.yaprak.cikti_sayfa', { a: i + 1, b: i + 2 }) })]),
-        el('div', { class: 'yuzler' }, [
-          el('div', {}, [yuzTuvali(r.yerlesim, on), el('div', { class: 'yuz-adi', text: t('duzenle.yaprak.on', { sayfalar: on.yuvalar.map(sayfaAdi).join(' | ') }) })]),
-          el('div', {}, [yuzTuvali(r.yerlesim, arka), el('div', { class: 'yuz-adi', text: t(arka.dondur180 ? 'duzenle.yaprak.arka_donuk' : 'duzenle.yaprak.arka', { sayfalar: arka.yuvalar.map(sayfaAdi).join(' | ') }) })])
+    var sides = r.layout.sides;
+    for (var i = 0; i < sides.length; i += 2) {
+      var front = sides[i], back = sides[i + 1];
+      var title = dz.kind === 'sewn'
+        ? t(front.indexInSignature === 0 ? 'impose.sheet.signature_outer' : 'impose.sheet.signature', { signature: front.signature + 1, sheet: front.indexInSignature + 1 })
+        : t('impose.sheet.paper', { n: front.sheet + 1 });
+      container.appendChild(el('div', { class: 'sheet-card', 'data-sheet': String(front.sheet) }, [
+        el('div', { class: 'title' }, [el('span', { text: title }), el('span', { text: t('impose.sheet.output_page', { a: i + 1, b: i + 2 }) })]),
+        el('div', { class: 'sides' }, [
+          el('div', {}, [sideCanvas(r.layout, front), el('div', { class: 'side-name', text: t('impose.sheet.front', { pages: front.slots.map(pageLabel).join(' | ') }) })]),
+          el('div', {}, [sideCanvas(r.layout, back), el('div', { class: 'side-name', text: t(back.rotate180 ? 'impose.sheet.back_rotated' : 'impose.sheet.back', { pages: back.slots.map(pageLabel).join(' | ') }) })])
         ])
       ]));
     }
   }
 
-  function sayfaAdi(yv) { return yv.bos ? t('duzenle.yaprak.bos_sayfa', { n: yv.sayfa }) : String(yv.sayfa); }
+  function pageLabel(yv) { return yv.blank ? t('impose.sheet.blank_page', { n: yv.page }) : String(yv.page); }
 
-  function yuzTuvali(yer, yuz) {
-    var W = 280, PW = yer.kagit.gen, PH = yer.kagit.yuk;
+  function sideCanvas(place, side) {
+    var W = 280, PW = place.paper.width, PH = place.paper.height;
     var k = W / PW, H = Math.round(PH * k);
-    var c = el('canvas', { width: W, height: H, 'aria-label': t(yuz.yuz === 'on' ? 'duzenle.yaprak.on_yuz' : 'duzenle.yaprak.arka_yuz', { sayfalar: yuz.yuvalar.map(sayfaAdi).join(', ') }) });
+    var c = el('canvas', { width: W, height: H, 'aria-label': t(side.side === 'front' ? 'impose.sheet.front_side' : 'impose.sheet.back_side', { pages: side.slots.map(pageLabel).join(', ') }) });
     var g = c.getContext('2d');
     function X(x) { return x * k; }
     function Y(y) { return H - y * k; } // PDF: alt sol başlangıç
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
     g.strokeStyle = '#9a8f82'; g.lineWidth = 1; g.strokeRect(0.5, 0.5, W - 1, H - 1);
-    yuz.yuvalar.forEach(function (yv) {
-      var v = yv.yuva;
+    side.slots.forEach(function (yv) {
+      var v = yv.slot;
       var x = X(v.x), y = Y(v.y + v.h), w = v.w * k, h = v.h * k;
-      if (yv.bos) {
+      if (yv.blank) {
         g.fillStyle = '#ebe6de'; g.fillRect(x, y, w, h);
         g.strokeStyle = '#d6cfc4'; g.lineWidth = 1;
         g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
@@ -556,41 +556,41 @@
         g.restore();
       } else {
         g.fillStyle = '#f7efe4'; g.fillRect(x, y, w, h);
-        var ic = yv.icerik;
+        var inner = yv.content;
         g.strokeStyle = '#d9b99b'; g.setLineDash([3, 2]);
-        g.strokeRect(X(ic.x) + 0.5, Y(ic.y + ic.h) + 0.5, ic.w * k - 1, ic.h * k - 1);
+        g.strokeRect(X(inner.x) + 0.5, Y(inner.y + inner.h) + 0.5, inner.w * k - 1, inner.h * k - 1);
         g.setLineDash([]);
       }
       g.strokeStyle = '#7a6f62'; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       // sırt tarafı: kalın çizgi
       g.strokeStyle = '#8a3b12'; g.lineWidth = 3;
-      var sirtSol = (yv.sirtTaraf === 'sol') !== !!yuz.dondur180;
-      g.beginPath(); var sx = sirtSol ? x + 1.5 : x + w - 1.5; g.moveTo(sx, y); g.lineTo(sx, y + h); g.stroke();
+      var spineLeft = (yv.spineSide === 'left') !== !!side.rotate180;
+      g.beginPath(); var sx = spineLeft ? x + 1.5 : x + w - 1.5; g.moveTo(sx, y); g.lineTo(sx, y + h); g.stroke();
       g.save();
       g.translate(x + w / 2, y + h / 2);
-      if (yuz.dondur180) g.rotate(Math.PI);
-      g.fillStyle = yv.bos ? '#9a8f82' : '#2a241d';
+      if (side.rotate180) g.rotate(Math.PI);
+      g.fillStyle = yv.blank ? '#9a8f82' : '#2a241d';
       g.font = '600 ' + Math.round(Math.min(w, h) * 0.32) + 'px system-ui, sans-serif';
       g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(String(yv.sayfa), 0, 0);
-      if (yv.kayma) { g.font = '10px system-ui, sans-serif'; g.fillText(t('duzenle.yaprak.kayma', { mm: yv.kayma }), 0, h * 0.3); }
+      g.fillText(String(yv.page), 0, 0);
+      if (yv.creep) { g.font = '10px system-ui, sans-serif'; g.fillText(t('impose.sheet.creep', { mm: yv.creep }), 0, h * 0.3); }
       g.restore();
     });
     g.strokeStyle = '#333'; g.lineWidth = 1;
-    yuz.cizgiler.forEach(function (cz) {
-      g.setLineDash(cz.kesik ? [3, 3] : []);
+    side.lines.forEach(function (cz) {
+      g.setLineDash(cz.dashed ? [3, 3] : []);
       g.beginPath(); g.moveTo(X(cz.x1), Y(cz.y1)); g.lineTo(X(cz.x2), Y(cz.y2)); g.stroke();
     });
     g.setLineDash([]);
     // forma sırt işareti: önizlemede okunur olsun diye en az 6 px
-    yuz.kareler.forEach(function (kr) {
+    side.squares.forEach(function (kr) {
       var w = Math.max(6, kr.w * k), h = Math.max(6, kr.h * k);
       var cx = X(kr.x + kr.w / 2), cy = Y(kr.y + kr.h / 2);
       g.fillStyle = '#fff'; g.fillRect(cx - w / 2 - 1, cy - h / 2 - 1, w + 2, h + 2); // okunur zemin
       g.fillStyle = '#000';
       // biçim (dolu / çerçeve / küçük kareler) en az 6 × 6 px kutuya ölçeklenir
       var ox = w / (kr.w * k), oy = h / (kr.h * k);
-      KC.yerlesim.isaretParcalari(kr).forEach(function (pr) {
+      MC.layout.markParts(kr).forEach(function (pr) {
         g.fillRect(cx - w / 2 + (pr.x - kr.x) * k * ox, cy - h / 2 + (kr.y + kr.h - pr.y - pr.h) * k * oy, Math.max(1, pr.w * k * ox), Math.max(1, pr.h * k * oy));
       });
     });
@@ -599,196 +599,196 @@
 
   // ---------------- dışa aktarma ----------------
   // Çıktı düğmeleri: Kaydet/İndir, Yazdır…, Önizleme'de Aç (son ikisi yalnız platform.yazdir varsa görünür).
-  var CIKTI_DUGMELERI = ['disa-aktar', 'yazdir', 'onizlemede-ac'];
+  var OUTPUT_BUTTONS = ['export-transfer', 'print', 'inPreview-open'];
   // bir çıktı işi sürerken (PDF üretimi, Kaydet/baskı penceresi) düğmeler kapalı kalır; ayar
   // değişince yeniden çizilen önizleme (onizlemeCiz → ciktiDugmeleri(D.engel)) onları açmaz, ikinci iş başlamaz.
-  var ciktiSuruyor = false;
-  function ciktiDugmeleri(kapali) {
-    CIKTI_DUGMELERI.forEach(function (id) { var b = $(id); if (b) b.disabled = kapali || ciktiSuruyor; });
+  var outputBusy = false;
+  function setOutputButtons(closed) {
+    OUTPUT_BUTTONS.forEach(function (id) { var b = $(id); if (b) b.disabled = closed || outputBusy; });
   }
 
   /** yazdırma düğmeleri yalnız yerel baskı varsa (Mac uygulaması); not araçtaki çift yüz seçimini söyler. */
-  function yazdirmaGorunurlugu() {
-    var var_ = !!(KC.platform && typeof KC.platform.yazdir === 'function');
-    $('yazdir-alani').hidden = !var_;
-    $('yazdir-not').hidden = !var_;
-    $('onizlemede-ac').hidden = !(var_ && typeof KC.platform.onizlemedeAc === 'function');
-    if (var_) $('yazdir-not').textContent = yazdirNotu();
+  function updatePrintVisibility() {
+    var var_ = !!(MC.platform && typeof MC.platform.print === 'function');
+    $('print-field').hidden = !var_;
+    $('print-note').hidden = !var_;
+    $('inPreview-open').hidden = !(var_ && typeof MC.platform.openInPreview === 'function');
+    if (var_) $('print-note').textContent = printNote();
   }
-  function yazdirNotu() {
-    return KC.yazdirma.not({ t: t }, $('cikti-modu').value === 'ikili', $('cevirme').value);
+  function printNote() {
+    return MC.printing.note({ t: t }, $('output-mode').value === 'pair', $('duplex').value);
   }
 
   /**
    * Çıktıyı üretip işe verir (Kaydet/İndir, Yazdır, Önizleme). Çalışırken bütün çıktı düğmeleri kapalı ve tıklanan
    * aria-busy (D10: menü kısayolları bu sırada yok sayılır, "önce PDF açın" denmez). is(sonuc) Promise döner.
    */
-  async function ciktiIsi(dugmeId, is) {
-    if (ciktiSuruyor) return; // aria-busy: iş sürüyor (düğme/menü/kısayol ikinci işi başlatmaz)
-    if (!D.sayfalar.length) return O.bildir(t('duzenle.once_pdf'), 'hata');
-    if (D.sifreli) return O.bildir(SIFRELI_UYARI(), 'hata');
-    if (D.denetimYok) return O.bildir(DENETIM_UYARI(), 'hata');
-    var btn = $(dugmeId);
-    ciktiSuruyor = true;
-    ciktiDugmeleri(true);
-    CIKTI_DUGMELERI.forEach(function (id) { var b = $(id); if (b) b.setAttribute('aria-busy', 'true'); });
-    var eskiYazi = btn.textContent;
-    btn.textContent = t('duzenle.hazirlaniyor');
+  async function runOutputJob(buttonId, is) {
+    if (outputBusy) return; // aria-busy: iş sürüyor (düğme/menü/kısayol ikinci işi başlatmaz)
+    if (!D.pages.length) return O.notify(t('impose.once_pdf'), 'error');
+    if (D.encrypted) return O.notify(ENCRYPTED_WARNING(), 'error');
+    if (D.uncheckable) return O.notify(UNCHECKED_WARNING(), 'error');
+    var btn = $(buttonId);
+    outputBusy = true;
+    setOutputButtons(true);
+    OUTPUT_BUTTONS.forEach(function (id) { var b = $(id); if (b) b.setAttribute('aria-busy', 'true'); });
+    var oldText = btn.textContent;
+    btn.textContent = t('impose.preparing');
     try {
-      var sonuc = await KC.cikti.uret({ kaynakBytes: D.kaynakBytes, sayfalar: D.sayfalar, ayar: ayarOku(), dosyaAdi: D.kaynakAd });
-      await is(sonuc);
+      var result = await MC.output.build({ sourceBytes: D.sourceBytes, pages: D.pages, settings: readSettings(), fileName: D.sourceName });
+      await is(result);
     } catch (e) {
-      O.bildir(t('duzenle.cikti_uretilemedi', { hata: e.message }), 'hata');
+      O.notify(t('impose.output_make_failed', { error: e.message }), 'error');
     } finally {
-      ciktiSuruyor = false;
-      CIKTI_DUGMELERI.forEach(function (id) { var b = $(id); if (b) b.removeAttribute('aria-busy'); });
-      ciktiDugmeleri(D.engel);
-      btn.textContent = eskiYazi;
+      outputBusy = false;
+      OUTPUT_BUTTONS.forEach(function (id) { var b = $(id); if (b) b.removeAttribute('aria-busy'); });
+      setOutputButtons(D.blocked);
+      btn.textContent = oldText;
     }
   }
 
   /** Yazdır… (tek PDF ya da önler → çevir onayı → arkalar); not baskı penceresinden önce gösterilir. */
-  function yazdir() {
-    return ciktiIsi('yazdir', async function (sonuc) {
-      await ciktiOnizle(sonuc.dosyalar[0].bytes);
-      O.bildir(yazdirNotu());
-      var r = await KC.yazdirma.yazdir(sonuc.dosyalar, { platform: KC.platform, t: t });
-      O.bildir(r.metin, r.tur);
+  function print() {
+    return runOutputJob('print', async function (result) {
+      await showOutputPreview(result.files[0].bytes);
+      O.notify(printNote());
+      var r = await MC.printing.print(result.files, { platform: MC.platform, t: t });
+      O.notify(r.text, r.kind);
     });
   }
 
   /** Önizleme'de Aç (açılamazsa Kaydet + "Önizleme'de basın" notu: printing.js). */
-  function onizlemedeAc() {
-    return ciktiIsi('onizlemede-ac', async function (sonuc) {
-      await ciktiOnizle(sonuc.dosyalar[0].bytes);
-      var r = await KC.yazdirma.onizlemedeAc(sonuc.dosyalar, { platform: KC.platform, t: t });
-      O.bildir(r.metin, r.tur);
+  function openInPreview() {
+    return runOutputJob('inPreview-open', async function (result) {
+      await showOutputPreview(result.files[0].bytes);
+      var r = await MC.printing.openInPreview(result.files, { platform: MC.platform, t: t });
+      O.notify(r.text, r.kind);
     });
   }
 
-  function disaAktar() {
-    return ciktiIsi('disa-aktar', async function (sonuc) {
-      if (KC.platform.yerelDosya) {
+  function exportPdf() {
+    return runOutputJob('export-transfer', async function (result) {
+      if (MC.platform.localFile) {
         // Yerel Kaydet penceresi (Tauri): dosyalar sırayla kaydedilir, bildirim gerçek sonucu söyler.
-        await ciktiOnizle(sonuc.dosyalar[0].bytes);
-        var kayit = await KC.platform.hepsiniKaydet(sonuc.dosyalar, 'application/pdf');
-        var m = KC.platform.kayitMesaji(kayit, sonuc.yerlesim.yuzler.length);
-        O.bildir(m.metin, m.tur);
+        await showOutputPreview(result.files[0].bytes);
+        var record = await MC.platform.saveAll(result.files, 'application/pdf');
+        var m = MC.platform.saveMessage(record, result.layout.sides.length);
+        O.notify(m.text, m.kind);
         return;
       }
-      sonuc.dosyalar.forEach(function (d, i) {
+      result.files.forEach(function (d, i) {
         setTimeout(function () {
-          O.indir(d.ad, d.bytes, 'application/pdf').catch(function (err) { O.bildir(t('kayit.kaydedilemedi', { ad: d.ad, hata: err.message }), 'hata'); });
+          O.download(d.name, d.bytes, 'application/pdf').catch(function (err) { O.notify(t('save.saveFailed', { name: d.name, error: err.message }), 'error'); });
         }, i * 600);
       });
-      await ciktiOnizle(sonuc.dosyalar[0].bytes);
-      O.bildir(t('duzenle.hazir', { adlar: sonuc.dosyalar.map(function (d) { return d.ad; }).join(t('uygulama.ve')), n: sonuc.yerlesim.yuzler.length }));
+      await showOutputPreview(result.files[0].bytes);
+      O.notify(t('impose.ready', { names: result.files.map(function (d) { return d.name; }).join(t('app.ve')), n: result.layout.sides.length }));
     });
   }
 
-  async function ciktiOnizle(bytes) {
-    var kap = $('cikti-onizleme');
-    kap.textContent = '';
-    kap.removeAttribute('data-hazir');
-    if (D.ciktiPdf) { try { D.ciktiPdf.destroy(); } catch { /* yok say */ } D.ciktiPdf = null; }
-    var pdf = await belgeAc(bytes);
-    D.ciktiPdf = pdf;
-    var adet = Math.min(2, pdf.numPages);
-    for (var i = 1; i <= adet; i++) {
+  async function showOutputPreview(bytes) {
+    var container = $('output-preview');
+    container.textContent = '';
+    container.removeAttribute('data-ready');
+    if (D.outputPdf) { try { D.outputPdf.destroy(); } catch { /* yok say */ } D.outputPdf = null; }
+    var pdf = await openDocument(bytes);
+    D.outputPdf = pdf;
+    var count = Math.min(2, pdf.numPages);
+    for (var i = 1; i <= count; i++) {
       var s = await pdf.getPage(i);
       var vp1 = s.getViewport({ scale: 1 });
       var vp = s.getViewport({ scale: 520 / vp1.width });
-      var c = el('canvas', { width: Math.ceil(vp.width), height: Math.ceil(vp.height), 'aria-label': t('duzenle.cikti_sayfa', { n: i }) });
+      var c = el('canvas', { width: Math.ceil(vp.width), height: Math.ceil(vp.height), 'aria-label': t('impose.output_page', { n: i }) });
       c.style.width = Math.ceil(vp.width / 1.3) + 'px';
       await s.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-      kap.appendChild(c);
+      container.appendChild(c);
     }
-    kap.setAttribute('data-hazir', 'evet');
+    container.setAttribute('data-ready', 'yes');
   }
 
   // ---------------- kitaba kaydet ----------------
   /** Süreç sekmesinin bellekteki güncel verisi (saklama dolu olsa da en yenisi); yoksa depodan. */
-  function guncelVeri() {
-    var v = (KC.surec && KC.surec.veri && KC.surec.veri()) || KC.depo.oku();
+  function currentData() {
+    var v = (MC.projects && MC.projects.data && MC.projects.data()) || MC.storage.read();
     return JSON.parse(JSON.stringify(v)); // kopya: çağıran canlı veriyi değiştiremez
   }
 
-  function kitapListesiYenile() {
-    var sec = $('ayar-kitap');
-    var onceki = sec.value;
-    var veri = guncelVeri();
-    sec.textContent = '';
-    if (!veri.kitaplar.length) sec.appendChild(el('option', { value: '', text: t('duzenle.kitap_yok_once') }));
-    veri.kitaplar.forEach(function (k) { sec.appendChild(el('option', { value: k.id, text: k.ad })); });
-    if (onceki && KC.surecModel.kitapBul(veri, onceki)) sec.value = onceki;
+  function refreshProjectList() {
+    var select = $('settings-book');
+    var previous = select.value;
+    var data = currentData();
+    select.textContent = '';
+    if (!data.projects.length) select.appendChild(el('option', { value: '', text: t('impose.book_once') }));
+    data.projects.forEach(function (k) { select.appendChild(el('option', { value: k.id, text: k.name })); });
+    if (previous && MC.projectModel.findProject(data, previous)) select.value = previous;
   }
 
-  function kaydetOlaylari() {
-    $('ayar-kaydet').addEventListener('click', function () {
-      var id = $('ayar-kitap').value;
-      if (!id) return O.bildir(t('duzenle.once_kitap'), 'hata');
-      var a = ayarOku();
-      KC.surec.ayarKaydet(id, a, D.kaynakAd);
-      O.bildir(t('duzenle.ayar_kaydedildi'));
+  function saveEvents() {
+    $('settings-save').addEventListener('click', function () {
+      var id = $('settings-book').value;
+      if (!id) return O.notify(t('impose.once_book'), 'error');
+      var a = readSettings();
+      MC.projects.saveSettings(id, a, D.sourceName);
+      O.notify(t('impose.settings_saved'));
     });
-    $('ayar-yukle').addEventListener('click', function () {
-      var id = $('ayar-kitap').value;
-      var veri = guncelVeri();
-      var k = id && KC.surecModel.kitapBul(veri, id);
-      if (!k || !k.ayar) return O.bildir(t('duzenle.ayar_yok'), 'hata');
-      ayarUygula(k.ayar);
-      O.bildir(k.pdfAdi ? t('duzenle.ayar_yuklendi_pdf', { ad: k.ad, pdf: k.pdfAdi }) : t('duzenle.ayar_yuklendi', { ad: k.ad }));
+    $('settings-load').addEventListener('click', function () {
+      var id = $('settings-book').value;
+      var data = currentData();
+      var k = id && MC.projectModel.findProject(data, id);
+      if (!k || !k.settings) return O.notify(t('impose.no_settings'), 'error');
+      applySettings(k.settings);
+      O.notify(k.pdfName ? t('impose.settings_loaded_pdf', { name: k.name, pdf: k.pdfName }) : t('impose.settings_loaded', { name: k.name }));
     });
   }
 
   // ---------------- başlat ----------------
-  function hazirOlcuDoldur(secId, genId, yukId, yatay) {
-    var sec = $(secId);
-    O.HAZIR_OLCULER.forEach(function (o) {
-      sec.appendChild(el('option', { value: o.gen + 'x' + o.yuk, text: t('duzenle.hazir.dikey', { ad: o.ad, gen: o.gen, yuk: o.yuk }) }));
-      if (yatay) sec.appendChild(el('option', { value: o.yuk + 'x' + o.gen, text: t('duzenle.hazir.yatay', { ad: o.ad, gen: o.yuk, yuk: o.gen }) }));
+  function fillPresetSizes(secId, genId, heightId, landscape) {
+    var select = $(secId);
+    O.PRESET_SIZES.forEach(function (o) {
+      select.appendChild(el('option', { value: o.width + 'x' + o.height, text: t('impose.ready.portrait', { name: o.name, width: o.width, height: o.height }) }));
+      if (landscape) select.appendChild(el('option', { value: o.height + 'x' + o.width, text: t('impose.ready.landscape', { name: o.name, width: o.height, height: o.width }) }));
     });
-    sec.addEventListener('change', function () {
-      if (!sec.value) return;
-      var p = sec.value.split('x');
-      O.sayiYaz(genId, Number(p[0])); O.sayiYaz(yukId, Number(p[1]));
-      sec.value = '';
-      guncelle();
+    select.addEventListener('change', function () {
+      if (!select.value) return;
+      var p = select.value.split('x');
+      O.writeNumber(genId, Number(p[0])); O.writeNumber(heightId, Number(p[1]));
+      select.value = '';
+      update();
     });
   }
 
-  function cevir(genId, yukId) {
-    var g = $(genId).value; $(genId).value = $(yukId).value; $(yukId).value = g; guncelle();
+  function swap(genId, heightId) {
+    var g = $(genId).value; $(genId).value = $(heightId).value; $(heightId).value = g; update();
   }
 
-  function baslat() {
-    hazirOlcuDoldur('kagit-hazir', 'kagit-gen', 'kagit-yuk', true);
-    hazirOlcuDoldur('kitap-hazir', 'kitap-gen', 'kitap-yuk', false);
-    $('kagit-cevir').addEventListener('click', function () { cevir('kagit-gen', 'kagit-yuk'); });
-    $('kitap-cevir').addEventListener('click', function () { cevir('kitap-gen', 'kitap-yuk'); });
-    var kayitli = O.yerelOku(AYAR_ANAHTAR);
-    if (kayitli) { try { ayarUygula(JSON.parse(kayitli)); } catch { /* bozuk kayıt: varsayılanlar */ } }
-    $('ayarlar').addEventListener('input', function () { gorunurlukGuncelle(); guncelle(); });
-    $('ayarlar').addEventListener('change', function () { gorunurlukGuncelle(); guncelle(); });
-    $('disa-aktar').addEventListener('click', disaAktar);
-    $('yazdir').addEventListener('click', yazdir);
-    $('onizlemede-ac').addEventListener('click', onizlemedeAc);
-    yazdirmaGorunurlugu();
-    $('pdf-dosya').setAttribute('accept', KC.eklentiler.kabul());
-    if (KC.eklentiler.liste().length > 0) { $('pdf-sec').setAttribute('data-dil', 'duzenle.pdf_epub_sec'); $('pdf-sec').textContent = t('duzenle.pdf_epub_sec'); }
-    KC.eklentiler.arayuzleriKur($('eklenti-ayarlari'));
-    kartOlaylari();
-    aracOlaylari();
-    kaydetOlaylari();
-    kitapListesiYenile();
-    gorunurlukGuncelle();
-    guncelle();
+  function start() {
+    fillPresetSizes('paper-ready', 'paper-width', 'paper-height', true);
+    fillPresetSizes('book-ready', 'book-width', 'book-height', false);
+    $('paper-swap').addEventListener('click', function () { swap('paper-width', 'paper-height'); });
+    $('book-swap').addEventListener('click', function () { swap('book-width', 'book-height'); });
+    var registered = O.readLocal(SETTINGS_KEY);
+    if (registered) { try { applySettings(JSON.parse(registered)); } catch { /* bozuk kayıt: varsayılanlar */ } }
+    $('settings').addEventListener('input', function () { updateVisibility(); update(); });
+    $('settings').addEventListener('change', function () { updateVisibility(); update(); });
+    $('export-transfer').addEventListener('click', exportPdf);
+    $('print').addEventListener('click', print);
+    $('inPreview-open').addEventListener('click', openInPreview);
+    updatePrintVisibility();
+    $('pdf-file').setAttribute('accept', MC.plugins.accept());
+    if (MC.plugins.list().length > 0) { $('pdf-select').setAttribute('data-i18n', 'impose.pdf_epub_sec'); $('pdf-select').textContent = t('impose.pdf_epub_sec'); }
+    MC.plugins.setupInterfaces($('plugin-settings'));
+    cardEvents();
+    toolEvents();
+    saveEvents();
+    refreshProjectList();
+    updateVisibility();
+    update();
   }
 
-  function ozet() {
-    var a = ayarOku();
-    return { sayfaSayisi: D.sayfalar.length, ayar: a };
+  function summary() {
+    var a = readSettings();
+    return { pageCount: D.pages.length, settings: a };
   }
 
-  KC.duzenle = { baslat: baslat, dosyaAc: dosyaAc, ayarOku: ayarOku, ayarUygula: ayarUygula, guncelVeri: guncelVeri, kitapListesiYenile: kitapListesiYenile, ozet: ozet, aralikCoz: aralikCoz };
+  MC.impose = { start: start, openFile: openFile, readSettings: readSettings, applySettings: applySettings, currentData: currentData, refreshProjectList: refreshProjectList, summary: summary, parseRange: parseRange };
 })(typeof self !== 'undefined' ? self : this);

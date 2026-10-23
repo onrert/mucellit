@@ -22,162 +22,165 @@
  * Tarayıcıda KitapCilt.dil; Node'da module.exports (sözlükler dosyadan okunur; öntanımlı dil KC_DIL || 'tr':
  * Node yalnız testler içindir ve mevcut testler Türkçe metni doğrular).
  */
-(function (kok, fabrika) {
-  var dugum = typeof module === 'object' && module.exports;
-  var m = fabrika(kok, dugum);
-  if (dugum) {
+(function (root, factory) {
+  var isNode = typeof module === 'object' && module.exports;
+  var m = factory(root, isNode);
+  if (isNode) {
     module.exports = m;
   } else {
-    kok.KitapCilt = kok.KitapCilt || {};
-    kok.KitapCilt.dil = m;
+    root.Mucellit = root.Mucellit || {};
+    root.Mucellit.i18n = m;
   }
-})(typeof self !== 'undefined' ? self : this, function (kok, dugum) {
+})(typeof self !== 'undefined' ? self : this, function (root, isNode) {
   'use strict';
 
-  var ANA = 'en';
-  var SECIM_ANAHTAR = 'kitapCilt.dil';
-  var ISARET = '/*JSON*/';
-  var sozluk = Object.create(null); // kod → { anahtar: değer }
-  var sira = [];                    // kodlar (en önce)
-  var guncel = ANA;
-  var eksik = [];
+  var MAIN = 'en';
+  var CHOICE_KEY = 'mucellit.language';
+  // legacy-names: begin
+  var LEGACY_CHOICE_KEY = 'kitapCilt.dil'; // the language choice as saved before the English code base
+  // legacy-names: end
+  var MARKER = '/*JSON*/';
+  var dictionary = Object.create(null); // kod → { anahtar: değer }
+  var order = [];                    // kodlar (en önce)
+  var current = MAIN;
+  var missing = [];
 
   /** Sözlük dosyası metninden JSON gövdesini çıkarır ve ayrıştırır (iki işaret arası). Bozuksa hata atar. */
-  function jsonAyikla(metin) {
-    var s = String(metin);
-    var a = s.indexOf(ISARET), b = s.lastIndexOf(ISARET);
-    if (a < 0 || b <= a) throw new Error('dictionary: missing ' + ISARET + ' markers');
-    var nesne = JSON.parse(s.slice(a + ISARET.length, b));
-    if (!nesne || typeof nesne !== 'object' || Array.isArray(nesne)) throw new Error('dictionary: body must be a JSON object');
-    return nesne;
+  function extractJson(text) {
+    var s = String(text);
+    var a = s.indexOf(MARKER), b = s.lastIndexOf(MARKER);
+    if (a < 0 || b <= a) throw new Error('dictionary: missing ' + MARKER + ' markers');
+    var object = JSON.parse(s.slice(a + MARKER.length, b));
+    if (!object || typeof object !== 'object' || Array.isArray(object)) throw new Error('dictionary: body must be a JSON object');
+    return object;
   }
 
-  function sozlukEkle(s) {
-    if (!s || typeof s !== 'object' || typeof s._dil !== 'string' || !s._dil) throw new Error('dictionary: missing _dil');
-    sozluk[s._dil] = s;
-    if (sira.indexOf(s._dil) < 0) sira.push(s._dil);
-    sira.sort(function (x, y) { return (x === ANA ? -1 : 0) - (y === ANA ? -1 : 0) || (x < y ? -1 : x > y ? 1 : 0); });
+  function addDictionary(s) {
+    if (!s || typeof s !== 'object' || typeof s._lang !== 'string' || !s._lang) throw new Error('dictionary: missing _lang');
+    dictionary[s._lang] = s;
+    if (order.indexOf(s._lang) < 0) order.push(s._lang);
+    order.sort(function (x, y) { return (x === MAIN ? -1 : 0) - (y === MAIN ? -1 : 0) || (x < y ? -1 : x > y ? 1 : 0); });
   }
 
-  if (dugum) {
-    var fs = require('node:fs'), yol = require('node:path');
-    var klasor = yol.join(__dirname, '..', 'i18n');
-    fs.readdirSync(klasor).filter(function (a) { return /^[a-z]{2,3}\.js$/.test(a); }).sort().forEach(function (a) {
-      sozlukEkle(jsonAyikla(fs.readFileSync(yol.join(klasor, a), 'utf8')));
+  if (isNode) {
+    var fs = require('node:fs'), path = require('node:path');
+    var folder = path.join(__dirname, '..', 'i18n');
+    fs.readdirSync(folder).filter(function (a) { return /^[a-z]{2,3}\.js$/.test(a); }).sort().forEach(function (a) {
+      addDictionary(extractJson(fs.readFileSync(path.join(folder, a), 'utf8')));
     });
   } else {
     // Tarayıcıda bozuk girdi (geliştirici hatası; testler yakalar) öbür sözlükleri ve arayüzü düşürmez.
-    var kayitli = kok.KitapCiltSozlukleri;
-    (Array.isArray(kayitli) ? kayitli : []).forEach(function (s) {
-      try { sozlukEkle(s); } catch (e) { if (kok.console && kok.console.warn) kok.console.warn('Mücellit: ' + e.message); }
+    var registered = root.MucellitDictionaries;
+    (Array.isArray(registered) ? registered : []).forEach(function (s) {
+      try { addDictionary(s); } catch (e) { if (root.console && root.console.warn) root.console.warn('Mücellit: ' + e.message); }
     });
   }
 
-  function destekli(kod) { return typeof kod === 'string' && Object.prototype.hasOwnProperty.call(sozluk, kod); }
+  function isSupported(code) { return typeof code === 'string' && Object.prototype.hasOwnProperty.call(dictionary, code); }
 
   /**
    * Tercih edilen dil listesinden (ör. navigator.languages) arayüz dili, Apple kuralı: birincil alt etiketi
    * desteklenen ilk dil; yoksa en. Rust i18n::sistem_dili ile aynı (ortak vektörler: test/fixtures/i18n-vectors.json).
    */
-  function sistemDili(liste) {
-    var l = Array.isArray(liste) ? liste : [];
+  function systemLanguage(list) {
+    var l = Array.isArray(list) ? list : [];
     for (var i = 0; i < l.length; i++) {
       if (typeof l[i] !== 'string' || !l[i]) continue;
-      var kod = l[i].toLowerCase().split(/[-_]/)[0];
-      if (destekli(kod)) return kod;
+      var code = l[i].toLowerCase().split(/[-_]/)[0];
+      if (isSupported(code)) return code;
     }
-    return ANA;
+    return MAIN;
   }
 
-  var sistemDis = null; // Tauri: Rust'ın bildirdiği sistem dili (menüyle aynı kaynak)
+  var externalSystem = null; // Tauri: Rust'ın bildirdiği sistem dili (menüyle aynı kaynak)
   // Tauri penceresi sayfa betiklerinden önce `window.__KC_DIL__ = { sistem: "<kod>" }` tanımlar (Rust
   // initialization_script, src-tauri/src/i18n.rs baslangic_betigi): ilk kare de menüdeki "Sistem dili (X)" ile aynı
   // dilde olur (navigator.languages → Rust kararı geçişi yok). Desteklenmeyen/bozuk değer yok sayılır.
   try {
-    var dis = kok.__KC_DIL__;
-    if (dis && typeof dis === 'object' && destekli(dis.sistem)) sistemDis = dis.sistem;
+    var outer = root.__MC_LANG__;
+    if (outer && typeof outer === 'object' && isSupported(outer.system)) externalSystem = outer.system;
   } catch (e) { /* yok say */ }
   /** "Sistem dili" seçiminin karşılığı: Tauri'de Rust'ınki, tarayıcıda navigator.languages + Apple kuralı. */
-  function sistemKodu() { return sistemDis || sistemDili(tarayiciDilleri()); }
+  function systemCode() { return externalSystem || systemLanguage(browserLanguages()); }
   /** Dış (Rust) sistem dilini ayarlar; desteklenmeyen/boş değer yok sayılır (tarayıcı listesi kalır). */
-  function sistemKoduAyarla(kod) { sistemDis = destekli(kod) ? kod : null; return sistemKodu(); }
+  function setSystemCode(code) { externalSystem = isSupported(code) ? code : null; return systemCode(); }
 
-  function tarayiciDilleri() {
-    var n = kok.navigator;
+  function browserLanguages() {
+    var n = root.navigator;
     if (!n) return [];
     if (n.languages && n.languages.length) return Array.prototype.slice.call(n.languages);
     return n.language ? [n.language] : [];
   }
 
   /** Elle seçim (localStorage) ya da null (= sistem dili). */
-  function secimOku() {
-    try { var s = kok.localStorage && kok.localStorage.getItem(SECIM_ANAHTAR); return destekli(s) ? s : null; } catch (e) { return null; }
+  function readChoice() {
+    try { var s = root.localStorage && root.localStorage.getItem(CHOICE_KEY); return isSupported(s) ? s : null; } catch (e) { return null; }
   }
   /** Elle seçimi saklar; null/'sistem' seçimi siler. */
-  function secimYaz(kod) {
+  function writeChoice(code) {
     try {
-      if (destekli(kod)) kok.localStorage.setItem(SECIM_ANAHTAR, kod);
-      else kok.localStorage.removeItem(SECIM_ANAHTAR);
+      if (isSupported(code)) root.localStorage.setItem(CHOICE_KEY, code);
+      else root.localStorage.removeItem(CHOICE_KEY);
     } catch (e) { /* saklama yok: yalnız bu oturum */ }
   }
 
-  function ayarla(kod) {
-    guncel = destekli(kod) ? kod : ANA;
-    if (kok.document && kok.document.documentElement) kok.document.documentElement.setAttribute('lang', guncel);
-    return guncel;
+  function set(code) {
+    current = isSupported(code) ? code : MAIN;
+    if (root.document && root.document.documentElement) root.document.documentElement.setAttribute('lang', current);
+    return current;
   }
 
-  function ham(kod, anahtar) {
-    var s = sozluk[kod];
-    return s && Object.prototype.hasOwnProperty.call(s, anahtar) && anahtar.charAt(0) !== '_' ? s[anahtar] : undefined;
+  function rawValue(code, key) {
+    var s = dictionary[code];
+    return s && Object.prototype.hasOwnProperty.call(s, key) && key.charAt(0) !== '_' ? s[key] : undefined;
   }
 
-  function cogulSec(deger, kod, n) {
-    if (!deger || typeof deger !== 'object') return deger;
-    var kat = 'other';
-    try { kat = new Intl.PluralRules(kod).select(Number(n)); } catch (e) { kat = Number(n) === 1 ? 'one' : 'other'; }
-    if (typeof deger[kat] === 'string') return deger[kat];
-    return typeof deger.other === 'string' ? deger.other : '';
+  function selectPlural(value, code, n) {
+    if (!value || typeof value !== 'object') return value;
+    var fold = 'other';
+    try { fold = new Intl.PluralRules(code).select(Number(n)); } catch (e) { fold = Number(n) === 1 ? 'one' : 'other'; }
+    if (typeof value[fold] === 'string') return value[fold];
+    return typeof value.other === 'string' ? value.other : '';
   }
 
   /** Parametreleri tek geçişte doldurur (değer içindeki {x} yeniden doldurulmaz; Rust i18n::doldur ile aynı). */
-  function doldur(metin, p) {
-    if (!p) return metin;
-    return metin.replace(/\{([a-zA-Z0-9_]+)\}/g, function (tam, ad) {
-      return Object.prototype.hasOwnProperty.call(p, ad) && p[ad] !== undefined && p[ad] !== null ? String(p[ad]) : tam;
+  function fill(text, p) {
+    if (!p) return text;
+    return text.replace(/\{([a-zA-Z0-9_]+)\}/g, function (tam, name) {
+      return Object.prototype.hasOwnProperty.call(p, name) && p[name] !== undefined && p[name] !== null ? String(p[name]) : tam;
     });
   }
 
   /** Metin (verilen dilde). Eksikse en'e, o da yoksa anahtara düşer. */
-  function tDilde(kod, anahtar, p) {
-    var kaynak = kod;
-    var d = ham(kod, anahtar);
-    if (d === undefined && kod !== ANA) { d = ham(ANA, anahtar); kaynak = ANA; }
+  function tIn(code, key, p) {
+    var source = code;
+    var d = rawValue(code, key);
+    if (d === undefined && code !== MAIN) { d = rawValue(MAIN, key); source = MAIN; }
     if (d === undefined) {
-      if (eksik.indexOf(anahtar) < 0) eksik.push(anahtar);
-      return anahtar;
+      if (missing.indexOf(key) < 0) missing.push(key);
+      return key;
     }
-    return doldur(cogulSec(d, kaynak, p && p.n), p);
+    return fill(selectPlural(d, source, p && p.n), p);
   }
 
-  function t(anahtar, p) { return tDilde(guncel, anahtar, p); }
-  function varMi(anahtar) { return ham(guncel, anahtar) !== undefined || ham(ANA, anahtar) !== undefined; }
+  function t(key, p) { return tIn(current, key, p); }
+  function has(key) { return rawValue(current, key) !== undefined || rawValue(MAIN, key) !== undefined; }
 
   /** Sayı biçimi (ondalık ayracı dile göre). */
-  function sayi(n, enCokBasamak) {
-    var y = (sozluk[guncel] && sozluk[guncel]._yerel) || guncel;
+  function number(n, maxStep) {
+    var y = (dictionary[current] && dictionary[current]._locale) || current;
     var x = Number(n);
-    try { return x.toLocaleString(y, { maximumFractionDigits: enCokBasamak === undefined ? 3 : enCokBasamak }); } catch (e) { return String(x); }
+    try { return x.toLocaleString(y, { maximumFractionDigits: maxStep === undefined ? 3 : maxStep }); } catch (e) { return String(x); }
   }
 
   /**
    * Sayı alanına yazılacak biçim: dilin ondalık ayracı (en ".", tr ","), binlik ayracı YOK (alan yeniden
    * okunabilsin), en çok 6 ondalık. Sayı değilse ''.
    */
-  function sayiAlan(n) {
+  function numberField(n) {
     var x = typeof n === 'string' && n.trim() !== '' ? Number(n) : n;
     if (typeof x !== 'number' || !isFinite(x)) return '';
-    var y = (sozluk[guncel] && sozluk[guncel]._yerel) || guncel;
+    var y = (dictionary[current] && dictionary[current]._locale) || current;
     try { return x.toLocaleString(y, { useGrouping: false, maximumFractionDigits: 6 }); } catch (e) { return String(x); }
   }
 
@@ -185,67 +188,80 @@
    * data-dil / data-dil-oz taşıyan öğelere metinleri yazar (kök: document ya da bir öğe). Anahtar hiçbir sözlükte
    * yoksa öğenin mevcut (statik İngilizce) metni korunur; metin yoksa anahtar yazılır (eksik görünür, eksikler()).
    */
-  function uygula(kokOge) {
-    var k = kokOge || kok.document;
+  function apply(rootElement) {
+    var k = rootElement || root.document;
     if (!k || typeof k.querySelectorAll !== 'function') return;
-    var ogeler = k.querySelectorAll('[data-dil]');
-    for (var i = 0; i < ogeler.length; i++) {
-      var a = ogeler[i].getAttribute('data-dil');
+    var elements = k.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < elements.length; i++) {
+      var a = elements[i].getAttribute('data-i18n');
       var m = t(a);
-      if (m !== a || !ogeler[i].textContent) ogeler[i].textContent = m;
+      if (m !== a || !elements[i].textContent) elements[i].textContent = m;
     }
-    var oz = k.querySelectorAll('[data-dil-oz]');
+    var oz = k.querySelectorAll('[data-i18n-oz]');
     for (var j = 0; j < oz.length; j++) {
-      String(oz[j].getAttribute('data-dil-oz')).split(';').forEach(function (cift) {
-        var b = cift.indexOf(':');
+      String(oz[j].getAttribute('data-i18n-oz')).split(';').forEach(function (double) {
+        var b = double.indexOf(':');
         if (b <= 0) return;
-        var ad = cift.slice(0, b).trim(), an = cift.slice(b + 1).trim(), d = t(an);
-        if (d !== an || !oz[j].getAttribute(ad)) oz[j].setAttribute(ad, d);
+        var name = double.slice(0, b).trim(), an = double.slice(b + 1).trim(), d = t(an);
+        if (d !== an || !oz[j].getAttribute(name)) oz[j].setAttribute(name, d);
       });
     }
-    if (kok.document && k === kok.document) kok.document.title = t('uygulama.ad');
+    if (root.document && k === root.document) root.document.title = t('app.name');
   }
 
   /** Başlangıç dili: elle seçim, yoksa sistem (tarayıcı) dili. */
-  function baslangic() {
-    if (dugum) return ayarla(destekli(process.env.KC_DIL) ? process.env.KC_DIL : 'tr');
-    return ayarla(secimOku() || sistemKodu());
+  /** One-time move of the language choice saved by an earlier version (see migrate.js for the other keys). */
+  function migrateLegacyChoice() {
+    try {
+      var ls = root.localStorage;
+      var old = ls && ls.getItem(LEGACY_CHOICE_KEY);
+      if (old === null || old === undefined) return;
+      if (ls.getItem(CHOICE_KEY) !== null) return; // the current choice wins; the legacy one is left alone
+      ls.setItem(CHOICE_KEY, old);
+      if (ls.getItem(CHOICE_KEY) !== null) ls.removeItem(LEGACY_CHOICE_KEY);
+    } catch (e) { /* storage unavailable */ }
   }
-  baslangic();
+
+  function initial() {
+    if (!isNode) migrateLegacyChoice();
+    if (isNode) return set(isSupported(process.env.MC_LANG) ? process.env.MC_LANG : 'tr');
+    return set(readChoice() || systemCode());
+  }
+  initial();
 
   // etiketler hemen (betik gövde sonunda: öğeler ayrıştırılmış) ve DOMContentLoaded'da yazılır;
   // platform.hazir beklenmez. Tauri'nin dil eşitlemesi sonradan dili değiştirirse orada yeniden uygulanır.
-  if (!dugum && kok.document) {
-    try { uygula(kok.document); } catch (e) { /* arayüz statik İngilizceyle kalır */ }
-    if (kok.document.readyState === 'loading' && typeof kok.document.addEventListener === 'function') {
-      kok.document.addEventListener('DOMContentLoaded', function () { try { uygula(kok.document); } catch (e) { /* statik */ } });
+  if (!isNode && root.document) {
+    try { apply(root.document); } catch (e) { /* arayüz statik İngilizceyle kalır */ }
+    if (root.document.readyState === 'loading' && typeof root.document.addEventListener === 'function') {
+      root.document.addEventListener('DOMContentLoaded', function () { try { apply(root.document); } catch (e) { /* statik */ } });
     }
   }
 
   return {
-    ANA: ANA,
-    SECIM_ANAHTAR: SECIM_ANAHTAR,
-    diller: function () { return sira.slice(); },
-    ad: function (kod) { return sozluk[kod] ? sozluk[kod]._ad : kod; },
-    kod: function () { return guncel; },
-    destekli: destekli,
-    ayarla: ayarla,
+    MAIN: MAIN,
+    CHOICE_KEY: CHOICE_KEY,
+    languages: function () { return order.slice(); },
+    name: function (code) { return dictionary[code] ? dictionary[code]._name : code; },
+    code: function () { return current; },
+    isSupported: isSupported,
+    set: set,
     t: t,
-    tDilde: tDilde,
-    var: varMi,
-    sayi: sayi,
-    sayiAlan: sayiAlan,
-    uygula: uygula,
-    sistemDili: sistemDili,
-    sistemKodu: sistemKodu,
-    sistemKoduAyarla: sistemKoduAyarla,
-    tarayiciDilleri: tarayiciDilleri,
-    secimOku: secimOku,
-    secimYaz: secimYaz,
-    eksikler: function () { return eksik.slice(); },
-    sozluk: function (kod) { return sozluk[kod] ? JSON.parse(JSON.stringify(sozluk[kod])) : null; },
-    jsonAyikla: jsonAyikla,
-    sozlukEkle: sozlukEkle,
-    ISARET: ISARET
+    tIn: tIn,
+    has: has,
+    number: number,
+    numberField: numberField,
+    apply: apply,
+    systemLanguage: systemLanguage,
+    systemCode: systemCode,
+    setSystemCode: setSystemCode,
+    browserLanguages: browserLanguages,
+    readChoice: readChoice,
+    writeChoice: writeChoice,
+    missingKeys: function () { return missing.slice(); },
+    dictionary: function (code) { return dictionary[code] ? JSON.parse(JSON.stringify(dictionary[code])) : null; },
+    extractJson: extractJson,
+    addDictionary: addDictionary,
+    MARKER: MARKER
   };
 });

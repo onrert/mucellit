@@ -30,24 +30,24 @@
  * onayla() dönüşü her zaman Promise.resolve ile beklenir: senkron true/false da, eklentinin
  * Promise<boolean>'ı da doğru sonuç verir.
  */
-(function (kok) {
+(function (root) {
   'use strict';
-  var KC = kok.KitapCilt = kok.KitapCilt || {};
-  var D = KC.dil;
+  var MC = root.Mucellit = root.Mucellit || {};
+  var D = MC.i18n;
 
-  function dosyaSec(secenek) {
-    var girdi = secenek && secenek.girdi;
-    if (girdi && typeof girdi.click === 'function') girdi.click();
+  function pickFile(options) {
+    var input = options && options.input;
+    if (input && typeof input.click === 'function') input.click();
     return Promise.resolve(null);
   }
 
-  function kaydet(ad, veri, mime) {
+  function save(name, data, mime) {
     try {
-      var blob = (typeof Blob !== 'undefined' && veri instanceof Blob) ? veri : new Blob([veri], { type: mime || 'application/octet-stream' });
+      var blob = (typeof Blob !== 'undefined' && data instanceof Blob) ? data : new Blob([data], { type: mime || 'application/octet-stream' });
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = url;
-      a.download = ad;
+      a.download = name;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
@@ -58,32 +58,32 @@
     }
   }
 
-  function onayla(mesaj) {
-    var sonuc;
-    try { sonuc = kok.confirm(String(mesaj)); } catch (e) { return Promise.reject(e); }
-    return Promise.resolve(sonuc).then(function (ok) { return ok === true; });
+  function ask(message) {
+    var result;
+    try { result = root.confirm(String(message)); } catch (e) { return Promise.reject(e); }
+    return Promise.resolve(result).then(function (ok) { return ok === true; });
   }
 
-  KC.platform = {
-    ad: 'tarayici',
-    hazir: Promise.resolve(),
-    dosyaSec: dosyaSec,
-    kaydet: kaydet,
-    onayla: onayla,
-    yazdir: null,
-    onizlemedeAc: null,
-    yerelDosya: false,
-    sonAcilanlar: function () { return Promise.resolve([]); },
-    sonAcilaniAc: function () { return Promise.resolve(null); },
-    tamSurum: function () { return Promise.resolve(true); },
-    metin: {}
+  MC.platform = {
+    name: 'browser',
+    ready: Promise.resolve(),
+    pickFile: pickFile,
+    save: save,
+    ask: ask,
+    print: null,
+    openInPreview: null,
+    localFile: false,
+    recentFiles: function () { return Promise.resolve([]); },
+    openRecent: function () { return Promise.resolve(null); },
+    fullVersion: function () { return Promise.resolve(true); },
+    text: {}
   };
   // Ortama göre değişen metinler, okunduğu andaki dilde (platform-tauri.js Mac metinleriyle ezer).
   //   kutuphaneIpucu: app.js kütüphane yüklenemedi bildiriminin sonu
   //   saklamaUyari:   projects.js, saklama alanı kullanılamıyor/dolu uyarısı
   //   denetimUyari:   impose.js, şifre/kısıt durumu denetlenemedi uyarısı
-  [['kutuphaneIpucu', 'uygulama.kutuphane_ipucu'], ['saklamaUyari', 'surec.uyari.saklama'], ['denetimUyari', 'duzenle.uyari.denetim']].forEach(function (m) {
-    Object.defineProperty(KC.platform.metin, m[0], {
+  [['libraryHint', 'app.library_hint'], ['storageWarning', 'projects.warning.storage'], ['checkWarning', 'impose.warning.check']].forEach(function (m) {
+    Object.defineProperty(MC.platform.text, m[0], {
       get: function () { return D.t(m[1]); }, enumerable: true, configurable: true
     });
   });

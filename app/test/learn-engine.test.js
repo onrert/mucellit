@@ -16,34 +16,34 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const UYGULAMA = path.join(__dirname, '..');
-const REPO = path.join(UYGULAMA, '..');
-const OGREN = path.join(UYGULAMA, 'js', 'learn');
-const oku = (y) => fs.readFileSync(y, 'utf8');
-const INDEX = oku(path.join(UYGULAMA, 'index.html'));
-const MOTOR = oku(path.join(OGREN, 'cf-engine.js'));
+const APP = path.join(__dirname, '..');
+const REPO = path.join(APP, '..');
+const LEARN = path.join(APP, 'js', 'learn');
+const read = (y) => fs.readFileSync(y, 'utf8');
+const INDEX = read(path.join(APP, 'index.html'));
+const ENGINE = read(path.join(LEARN, 'cf-engine.js'));
 
-function dosyalar(d = OGREN, l = []) {
-  for (const g of fs.readdirSync(d, { withFileTypes: true })) { const y = path.join(d, g.name); if (g.isDirectory()) dosyalar(y, l); else if (g.name.endsWith('.js')) l.push(y); }
+function files(d = LEARN, l = []) {
+  for (const g of fs.readdirSync(d, { withFileTypes: true })) { const y = path.join(d, g.name); if (g.isDirectory()) files(y, l); else if (g.name.endsWith('.js')) l.push(y); }
   return l.sort();
 }
 
 // ---------------------------------------------------------------- 1. lisans
-const notVar = (metin) => { const bas = String(metin).split('\n').slice(0, 30).join('\n'); return /MIT/.test(bas) && /LICENSE/.test(bas); };
-const notDenetle = (liste, okuFn) => liste.filter((f) => !notVar(okuFn(f))).map((f) => path.relative(UYGULAMA, f));
-function lisansDenetle(metin) {
+const hasNote = (text) => { const head = String(text).split('\n').slice(0, 30).join('\n'); return /MIT/.test(head) && /LICENSE/.test(head); };
+const checkNote = (list, readFn) => list.filter((f) => !hasNote(readFn(f))).map((f) => path.relative(APP, f));
+function checkLicense(text) {
   const s = [];
-  if (!/^MIT License\b/.test(metin)) s.push('MIT başlığı yok');
-  for (const p of ['April Zhu', 'Tolga Cohce', 'Permission is hereby granted', 'The above copyright notice and this permission notice shall be included', 'WITHOUT WARRANTY OF ANY KIND']) if (!metin.includes(p)) s.push('eksik: ' + p);
+  if (!/^MIT License\b/.test(text)) s.push('MIT başlığı yok');
+  for (const p of ['April Zhu', 'Tolga Cohce', 'Permission is hereby granted', 'The above copyright notice and this permission notice shall be included', 'WITHOUT WARRANTY OF ANY KIND']) if (!text.includes(p)) s.push('eksik: ' + p);
   return s;
 }
 
 test('lisans: her rehber dosyasında (js/learn/**, css/learn.css) MIT notu; LICENSE Colorfigures MIT metni; README atfı', () => {
-  const l = [...dosyalar(), path.join(UYGULAMA, 'css', 'learn.css')];
+  const l = [...files(), path.join(APP, 'css', 'learn.css')];
   assert.equal(l.length, 15);
-  assert.deepEqual(notDenetle(l, oku), []);
-  assert.deepEqual(lisansDenetle(oku(path.join(OGREN, 'LICENSE'))), []);
-  const readme = oku(path.join(REPO, 'README.md'));
+  assert.deepEqual(checkNote(l, read), []);
+  assert.deepEqual(checkLicense(read(path.join(LEARN, 'LICENSE'))), []);
+  const readme = read(path.join(REPO, 'README.md'));
   assert.match(readme, /Colorfigures/);
   assert.match(readme, /MIT/);
   assert.match(readme, /April Zhu/);
@@ -52,119 +52,119 @@ test('lisans: her rehber dosyasında (js/learn/**, css/learn.css) MIT notu; LICE
 });
 
 test('lisans: 8 figür credit:false; motor credit:false iken "Made with" bağlantısını çizmez (dış adres yok)', () => {
-  const sekiller = fs.readdirSync(path.join(OGREN, 'figures')).filter((f) => f.endsWith('.js') && f !== 'common.js');
-  assert.equal(sekiller.length, 8);
-  for (const f of sekiller) assert.match(oku(path.join(OGREN, 'figures', f)), /credit:\s*false/, f);
-  assert.match(MOTOR, /cfg\.credit === false \? ''/);
+  const figures = fs.readdirSync(path.join(LEARN, 'figures')).filter((f) => f.endsWith('.js') && f !== 'common.js');
+  assert.equal(figures.length, 8);
+  for (const f of figures) assert.match(read(path.join(LEARN, 'figures', f)), /credit:\s*false/, f);
+  assert.match(ENGINE, /cfg\.credit === false \? ''/);
 });
 
 test('lisans denetleyicileri kusurlu girdiyi yakalar (notsuz dosya, boş dosya, not 30. satırdan sonra, eksik/iskelet LICENSE)', () => {
-  const hedef = path.join(OGREN, 'figures', 'book.js'), asil = oku(hedef);
-  const notsuz = asil.split('\n').filter((s) => !/MIT|LICENSE/.test(s)).join('\n');
-  assert.deepEqual(notDenetle(dosyalar(), (f) => (f === hedef ? notsuz : oku(f))), [path.join('js', 'learn', 'figures', 'book.js')]);
-  assert.equal(notVar(''), false);
-  assert.equal(notVar('\n'.repeat(40) + '// MIT LICENSE'), false);
-  assert.ok(lisansDenetle('').length > 0);
-  assert.ok(lisansDenetle('MIT License\n').length > 0, 'iskelet');
-  assert.ok(lisansDenetle(oku(path.join(OGREN, 'LICENSE')).replace(/Tolga Cohce/g, 'X')).length > 0, 'telif adı eksik');
-  assert.ok(!/credit:\s*false/.test(asil.replace(/credit:\s*false/g, 'credit: true')));
+  const target = path.join(LEARN, 'figures', 'book.js'), original = read(target);
+  const withoutNotes = original.split('\n').filter((s) => !/MIT|LICENSE/.test(s)).join('\n');
+  assert.deepEqual(checkNote(files(), (f) => (f === target ? withoutNotes : read(f))), [path.join('js', 'learn', 'figures', 'book.js')]);
+  assert.equal(hasNote(''), false);
+  assert.equal(hasNote('\n'.repeat(40) + '// MIT LICENSE'), false);
+  assert.ok(checkLicense('').length > 0);
+  assert.ok(checkLicense('MIT License\n').length > 0, 'skeleton');
+  assert.ok(checkLicense(read(path.join(LEARN, 'LICENSE')).replace(/Tolga Cohce/g, 'X')).length > 0, 'telif adı eksik');
+  assert.ok(!/credit:\s*false/.test(original.replace(/credit:\s*false/g, 'credit: true')));
 });
 
 // ---------------------------------------------------------------- 2. motor
-function motorYukle(kaynak) {
-  const dinleyici = [], dataset = {};
+function loadEngine(source) {
+  const listener = [], dataset = {};
   const ctx = { Math, JSON, Object, Array, String, Number, Set, Map, URLSearchParams, isFinite, console,
-    document: { getElementById: () => null, documentElement: { dataset } }, addEventListener: (tip, fn) => dinleyici.push([tip, fn]) };
+    document: { getElementById: () => null, documentElement: { dataset } }, addEventListener: (type, fn) => listener.push([type, fn]) };
   ctx.self = ctx;
   vm.createContext(ctx);
-  vm.runInContext(kaynak, ctx, { filename: 'cf-engine.js' });
-  return { ctx, cf: ctx.KitapCilt && ctx.KitapCilt.ogren && ctx.KitapCilt.ogren.cf, dinleyici, dataset };
+  vm.runInContext(source, ctx, { filename: 'cf-engine.js' });
+  return { ctx, cf: ctx.Mucellit && ctx.Mucellit.learn && ctx.Mucellit.learn.cf, listener, dataset };
 }
-const KOTU = 'A"<b>&x';
-function kacisDenetle(cf) {
-  const sorun = [], t = cf.tag([0, 0, 0], 10, 10, KOTU), y = cf.tx(0, 0, 0, KOTU, 8), y2 = cf.txY(0, 0, 0, KOTU, 8);
-  if (!t.includes('data-t="A&quot;&lt;b&gt;&amp;x"')) sorun.push('tag data-t kaçışsız');
-  if (!t.includes('>A&quot;&lt;b&gt;&amp;x</text>')) sorun.push('tag metni kaçışsız');
-  for (const [ad, s] of [['tag', t], ['tx', y], ['txY', y2]]) if (s.includes('<b>') || /data-t="A"/.test(s)) sorun.push(ad + ': ham < ya da " var');
-  if (!y.includes('A&quot;&lt;b&gt;&amp;x</text>')) sorun.push('tx kaçışsız');
-  if (!y2.includes('A&quot;&lt;b&gt;&amp;x</text>')) sorun.push('txY kaçışsız');
-  return sorun;
+const BAD = 'A"<b>&x';
+function checkEscape(cf) {
+  const problem = [], t = cf.tag([0, 0, 0], 10, 10, BAD), y = cf.tx(0, 0, 0, BAD, 8), y2 = cf.txY(0, 0, 0, BAD, 8);
+  if (!t.includes('data-t="A&quot;&lt;b&gt;&amp;x"')) problem.push('tag data-t kaçışsız');
+  if (!t.includes('>A&quot;&lt;b&gt;&amp;x</text>')) problem.push('tag metni kaçışsız');
+  for (const [name, s] of [['tag', t], ['tx', y], ['txY', y2]]) if (s.includes('<b>') || /data-t="A"/.test(s)) problem.push(name + ': ham < ya da " var');
+  if (!y.includes('A&quot;&lt;b&gt;&amp;x</text>')) problem.push('tx kaçışsız');
+  if (!y2.includes('A&quot;&lt;b&gt;&amp;x</text>')) problem.push('txY kaçışsız');
+  return problem;
 }
 /** Test kalıntısı: pencere 'error' dinleyicisi ya da html[data-errors] yazımı (boş = yok). */
-function kalintiDenetle(kaynak) {
-  const m = motorYukle(kaynak), s = [];
-  if (m.dinleyici.some(([tip]) => tip === 'error')) s.push('window error dinleyicisi');
-  for (const [, fn] of m.dinleyici) { try { fn({ message: 'x' }); } catch (_) { /* yok sayılır */ } }
+function checkLeftover(source) {
+  const m = loadEngine(source), s = [];
+  if (m.listener.some(([type]) => type === 'error')) s.push('window error dinleyicisi');
+  for (const [, fn] of m.listener) { try { fn({ message: 'x' }); } catch (_) { /* yok sayılır */ } }
   if ('errors' in m.dataset) s.push('html[data-errors]');
-  if (/dataset\.errors|_hataDinleyici/.test(kaynak)) s.push('kaynakta hata kaydı');
+  if (/dataset\.errors|_errorListener/.test(source)) s.push('kaynakta hata kaydı');
   return s;
 }
 
 test('motor: etiket ve yazı metinleri kaçışlı; test hata kaydı (error dinleyicisi, data-errors) üründe yok', () => {
-  assert.deepEqual(kacisDenetle(motorYukle(MOTOR).cf), []);
-  assert.deepEqual(kalintiDenetle(MOTOR), []);
+  assert.deepEqual(checkEscape(loadEngine(ENGINE).cf), []);
+  assert.deepEqual(checkLeftover(ENGINE), []);
 });
 
 test('motor denetleyicileri bozuk kopyaları yakalar (kusurlu girdi sınaması)', () => {
-  const deg = (a, b) => { assert.ok(MOTOR.includes(a), 'varyant uygulanamadı: ' + a.slice(0, 40)); return MOTOR.replace(a, b); };
-  const kacisBozuk = {
+  const deg = (a, b) => { assert.ok(ENGINE.includes(a), 'varyant uygulanamadı: ' + a.slice(0, 40)); return ENGINE.replace(a, b); };
+  const escapeCorrupt = {
     'tag data-t kaçışsız': deg('data-t="${esc(text)}"', 'data-t="${text}"'),
     'tag metni kaçışsız': deg('${u ? n : esc(text)}</text></g>`;', '${u ? n : text}</text></g>`;'),
-    'tx kaçışsız (ikisi)': MOTOR.split('letter-spacing=".04em">${esc(str)}</text>').join('letter-spacing=".04em">${str}</text>'),
+    'tx kaçışsız (ikisi)': ENGINE.split('letter-spacing=".04em">${esc(str)}</text>').join('letter-spacing=".04em">${str}</text>'),
     'esc boş işlev': deg('const esc = s => String(s).replace', 'const esc = s => String(s); void String.prototype.replace'),
   };
-  for (const [ad, k] of Object.entries(kacisBozuk)) { assert.notEqual(k, MOTOR, ad); assert.ok(kacisDenetle(motorYukle(k).cf).length > 0, ad + ' yakalanmadı'); }
-  const geriKoy = "if (!KC._hataDinleyici){ KC._hataDinleyici = true; const kayit = [];\n  kok.addEventListener('error', e => { kayit.push(String(e.message)); document.documentElement.dataset.errors = kayit.join(';'); }); }\nfunction mountFigure(cfg){";
-  assert.ok(kalintiDenetle(deg('function mountFigure(cfg){', geriKoy)).length > 0, 'hata kaydı geri gelirse yakalanır');
-  assert.ok(kalintiDenetle(deg('function mountFigure(cfg){', "kok.addEventListener('error', () => {});\nfunction mountFigure(cfg){")).length > 0, 'yalnız dinleyici');
+  for (const [name, k] of Object.entries(escapeCorrupt)) { assert.notEqual(k, ENGINE, name); assert.ok(checkEscape(loadEngine(k).cf).length > 0, name + ' yakalanmadı'); }
+  const putBack = "if (!MC._errorListener){ MC._errorListener = true; const record = [];\n  root.addEventListener('error', e => { record.push(String(e.message)); document.documentElement.dataset.errors = record.join(';'); }); }\nfunction mountFigure(cfg){";
+  assert.ok(checkLeftover(deg('function mountFigure(cfg){', putBack)).length > 0, 'hata kaydı geri gelirse yakalanır');
+  assert.ok(checkLeftover(deg('function mountFigure(cfg){', "root.addEventListener('error', () => {});\nfunction mountFigure(cfg){")).length > 0, 'yalnız dinleyici');
 });
 
 // ---------------------------------------------------------------- 3. ad alanı (bütün rehber betikleri)
-const BETIKLER = [...INDEX.matchAll(/<script\s+src="(js\/learn\/[^"]+)"/g)].map((m) => m[1]);
+const SCRIPTS = [...INDEX.matchAll(/<script\s+src="(js\/learn\/[^"]+)"/g)].map((m) => m[1]);
 /** Rehber betiklerini index.html sırasıyla yükler; küresel kapsama eklenen adlar (özellik + sözcüksel). */
-function adAlani(kaynaklar) {
-  const bos = vm.createContext({});
-  const temel = new Set(vm.runInContext('Object.getOwnPropertyNames(this)', bos));
+function adAlani(sources) {
+  const blank = vm.createContext({});
+  const base = new Set(vm.runInContext('Object.getOwnPropertyNames(this)', blank));
   const ctx = vm.createContext({});
-  vm.runInContext('var self = this; self.KitapCilt = { dil: { t: function (a) { return a; } } };', ctx);
-  temel.add('self');
-  for (const [ad, k] of kaynaklar) vm.runInContext(k, ctx, { filename: ad });
-  const eklenen = Array.from(vm.runInContext('Object.getOwnPropertyNames(this)', ctx)).filter((a) => !temel.has(a) && a !== 'KitapCilt');
+  vm.runInContext('var self = this; self.Mucellit = { i18n: { t: function (a) { return a; } } };', ctx);
+  base.add('self');
+  for (const [name, k] of sources) vm.runInContext(k, ctx, { filename: name });
+  const added = Array.from(vm.runInContext('Object.getOwnPropertyNames(this)', ctx)).filter((a) => !base.has(a) && a !== 'Mucellit');
   // sözcüksel küresel bağlar (const/let/class) Object.getOwnPropertyNames'te görünmez: bildirilen her ad sorulur
-  const aday = new Set();
-  for (const [, k] of kaynaklar) {
+  const candidate = new Set();
+  for (const [, k] of sources) {
     const s = k.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    for (const m of s.matchAll(/\b(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) aday.add(m[1]);
+    for (const m of s.matchAll(/\b(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) candidate.add(m[1]);
   }
-  const sozcuksel = [...aday].filter((a) => !temel.has(a) && a !== 'KitapCilt' && vm.runInContext(`typeof ${a} !== 'undefined'`, ctx));
-  const og = vm.runInContext('KitapCilt.ogren', ctx);
-  return { eklenen, sozcuksel, anahtarlar: og ? Array.from(Object.keys(og)).sort() : [], cfDonmus: !!(og && og.cf && Object.isFrozen(og.cf)) };
+  const lexical = [...candidate].filter((a) => !base.has(a) && a !== 'Mucellit' && vm.runInContext(`typeof ${a} !== 'undefined'`, ctx));
+  const og = vm.runInContext('Mucellit.learn', ctx);
+  return { added, lexical, keys: og ? Array.from(Object.keys(og)).sort() : [], cfFrozen: !!(og && og.cf && Object.isFrozen(og.cf)) };
 }
 
-test('ad alanı: 14 rehber betiği yüklenince küresel kapsama KitapCilt dışında ad eklenmez; KitapCilt.ogren altında; cf donmuş', () => {
-  assert.equal(BETIKLER.length, 14);
-  const r = adAlani(BETIKLER.map((b) => [b, oku(path.join(UYGULAMA, b))]));
-  assert.deepEqual(r.eklenen, [], 'küresel özellik');
-  assert.deepEqual(r.sozcuksel, [], 'küresel sözcüksel ad');
-  assert.ok(r.cfDonmus, 'KitapCilt.ogren.cf donmuş');
-  for (const a of ['olcu', 'cf', 'cfKur', 'sekil', 'dersler', 'sekme']) assert.ok(r.anahtarlar.includes(a), a);
+test('ad alanı: 14 rehber betiği yüklenince küresel kapsama Mucellit dışında ad eklenmez; Mucellit.learn altında; cf donmuş', () => {
+  assert.equal(SCRIPTS.length, 14);
+  const r = adAlani(SCRIPTS.map((b) => [b, read(path.join(APP, b))]));
+  assert.deepEqual(r.added, [], 'küresel özellik');
+  assert.deepEqual(r.lexical, [], 'küresel sözcüksel ad');
+  assert.ok(r.cfFrozen, 'Mucellit.learn.cf donmuş');
+  for (const a of ['size', 'cf', 'cfKur', 'figures', 'lessons', 'tab']) assert.ok(r.keys.includes(a), a);
   // test arayüzü (denetim) üründe yok; yalnız e2e test kopyasına ekler (learn-fixes.test.js O2)
-  assert.ok(!r.anahtarlar.includes('denetim'), 'KitapCilt.ogren.denetim üründe');
+  assert.ok(!r.keys.includes('probe'), 'Mucellit.learn.probe üründe');
 });
 
 test('ad alanı denetleyicisi sızan küresel adı yakalar (kusurlu girdi sınaması)', () => {
-  const temiz = BETIKLER.map((b) => [b, oku(path.join(UYGULAMA, b))]);
-  const boz = (dosya, fn) => temiz.map(([b, k]) => [b, b === dosya ? fn(k) : k]);
-  const ogrenJs = 'js/learn/learn.js';
+  const clean = SCRIPTS.map((b) => [b, read(path.join(APP, b))]);
+  const corrupt = (file, fn) => clean.map(([b, k]) => [b, b === file ? fn(k) : k]);
+  const learnJs = 'js/learn/learn.js';
   const varyant = {
-    'üst düzey const': boz('js/learn/learn-lessons.js', (k) => k + '\nconst SIZAN = 1;'),
-    'üst düzey işlev': boz(ogrenJs, (k) => k + '\nfunction sizanIslev() {}'),
-    'self özelliği': boz('js/learn/figures/common.js', (k) => k + '\nself.__st = {};'),
-    'IIFE kaldırılmış (motor)': boz('js/learn/cf-engine.js', (k) => { const y = k.replace("(function (kok) {\nkok.KitapCilt", 'var kok = self;\nkok.KitapCilt').replace(/\}\)\(typeof self !== 'undefined' \? self : this\);\s*$/, '\n'); assert.notEqual(y, k); return y; }),
-    'cf donmamış': boz('js/learn/cf-engine.js', (k) => { const y = k.replace('KC.cf = Object.freeze({', 'KC.cf = ({'); assert.notEqual(y, k); return y; }),
+    'üst düzey const': corrupt('js/learn/learn-lessons.js', (k) => k + '\nconst LEAKING = 1;'),
+    'üst düzey işlev': corrupt(learnJs, (k) => k + '\nfunction leakingIslev() {}'),
+    'self özelliği': corrupt('js/learn/figures/common.js', (k) => k + '\nself.__st = {};'),
+    'IIFE kaldırılmış (motor)': corrupt('js/learn/cf-engine.js', (k) => { const y = k.replace("(function (root) {\nroot.Mucellit", 'var root = self;\nroot.Mucellit').replace(/\}\)\(typeof self !== 'undefined' \? self : this\);\s*$/, '\n'); assert.notEqual(y, k); return y; }),
+    'cf donmamış': corrupt('js/learn/cf-engine.js', (k) => { const y = k.replace('MC.cf = Object.freeze({', 'MC.cf = ({'); assert.notEqual(y, k); return y; }),
   };
-  for (const [ad, k] of Object.entries(varyant)) {
+  for (const [name, k] of Object.entries(varyant)) {
     const r = adAlani(k);
-    assert.ok(r.eklenen.length > 0 || r.sozcuksel.length > 0 || !r.cfDonmus, ad + ' yakalanmadı');
+    assert.ok(r.added.length > 0 || r.lexical.length > 0 || !r.cfFrozen, name + ' yakalanmadı');
   }
 });

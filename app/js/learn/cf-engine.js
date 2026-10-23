@@ -33,9 +33,9 @@
  *     Öğren prototipindeki motorun sadeleştirilmiş hali.
  */
 'use strict';
-(function (kok) {
-kok.KitapCilt = kok.KitapCilt || {};
-const KC = kok.KitapCilt.ogren = kok.KitapCilt.ogren || {};
+(function (root) {
+root.Mucellit = root.Mucellit || {};
+const MC = root.Mucellit.learn = root.Mucellit.learn || {};
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 let LN = {};   // etiket numaraları (figür başına; asılda window.__ln)
 
@@ -229,7 +229,7 @@ let _clipN = 0;
 // on = that part is working right now (the pill turns the accent colour). Labels can be hidden with the Labels switch.
 function tag(p3, dx, dy, text, on=false){
   // on a phone (LBL_U = drawing units per screen px) the pill is a numbered badge and the names go in a legend under the figure
-  const u = KC.LBL_U ? KC.LBL_U() : 0, n = LN[text] || (LN[text] = Object.keys(LN).length + 1);
+  const u = MC.LBL_U ? MC.LBL_U() : 0, n = LN[text] || (LN[text] = Object.keys(LN).length + 1);
   const k = INK_K, [X,Y] = P(...p3), fs = u ? 10*u : 8.6*k, h = u ? 17*u : fs*1.8, w = u ? h*(n > 9 ? 1.3 : 1) : text.length*fs*.62 + fs*1.5, cx = X + dx*k, cy = Y + dy*k;
   return `<g class="tag${on ? ' on' : ''}" data-n="${n}" data-t="${esc(text)}"><path d="M${f(X)} ${f(Y)}L${f(cx)} ${f(cy)}" fill="none" stroke="${INK}" stroke-width="1"/>`
     + `<circle cx="${f(X)}" cy="${f(Y)}" r="${f(1.3*k)}" fill="${INK}"/>`
@@ -307,11 +307,11 @@ function bakeNoise(svg){
      xr: 0|1, etiket: true|false     // başlangıçta içini gör / etiketler (aşamalar arası korunur)
    }) -> ui = { st, render, animate(step, kamera), flash(text, ms), mesgul(), sok(), camTo } */
 function mountFigure(cfg){
-  const kok = cfg.kok, M = cfg.metin || {}, temizle = [];
-  const on = (h, tip, fn, opt) => { h.addEventListener(tip, fn, opt); temizle.push(() => h.removeEventListener(tip, fn, opt)); };
+  const root = cfg.root, M = cfg.text || {}, clear = [];
+  const on = (h, type, fn, opt) => { h.addEventListener(type, fn, opt); clear.push(() => h.removeEventListener(type, fn, opt)); };
   LN = {};
-  kok.classList.add('cf-kok', 'cf-hareket');
-  kok.innerHTML = `
+  root.classList.add('cf-root', 'cf-motion');
+  root.innerHTML = `
     <div class="stage">
       ${cfg.buttons && cfg.buttons.length ? '<div class="actions" id="btns"></div>' : ''}
       ${cfg.stats ? '<div class="stats" id="stats"></div>' : ''}
@@ -320,11 +320,11 @@ function mountFigure(cfg){
       <svg id="figF" aria-hidden="true" focusable="false"><defs id="fdefsF"></defs><g id="artF" filter="url(#hand)"></g></svg>
     </div>
     <div class="controls">
-      <div class="ctl"><span class="ctl-ad" id="l-gor"></span><div class="row"><button type="button" id="vreset"></button><button type="button" id="vspin" aria-pressed="false"></button></div></div>
+      <div class="ctl"><span class="ctl-name" id="l-see"></span><div class="row"><button type="button" id="vreset"></button><button type="button" id="vspin" aria-pressed="false"></button></div></div>
     </div>
     ${cfg.credit === false ? '' : '<footer class="made-with"><a href="https://april-zhu.com/colorfigures" target="_blank" rel="noopener">Made with Colorfigures ↗</a></footer>'}`;
-  const yaz = (id, s) => { const e = document.getElementById(id); if (e) e.textContent = s || ''; };
-  yaz('l-gor', M.gorunum); yaz('vreset', M.onden); yaz('vspin', M.doner);
+  const write = (id, s) => { const e = document.getElementById(id); if (e) e.textContent = s || ''; };
+  write('l-see', M.view); write('vreset', M.fromFront); write('vspin', M.rotates);
   document.getElementById('fig').setAttribute('aria-label', cfg.title || '');
   const st = cfg.state || {};
   st.pal = 'mustard';   // vurgu rengi sabit: paletteki sarı (renk seçici kalktı)
@@ -339,7 +339,7 @@ function mountFigure(cfg){
   for (const x of [0,W]) for (const y of [0,D]) for (const z of [0,H]) pts.push(P(x,y,z));
   const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
   const bw = Math.max(...xs)-Math.min(...xs), bh = Math.max(...ys)-Math.min(...ys);
-  const PA = KC.FIG_A ? KC.FIG_A() : .75, A = PA === .75 ? .75 : Math.min(PA, Math.max(.75, bh/.88/(bw/.74)*1.08)), vbW = Math.max(bw/.74, bh/.88/A), vbH = vbW*A;
+  const PA = MC.FIG_A ? MC.FIG_A() : .75, A = PA === .75 ? .75 : Math.min(PA, Math.max(.75, bh/.88/(bw/.74)*1.08)), vbW = Math.max(bw/.74, bh/.88/A), vbH = vbW*A;
   OX = (vbW-bw)/2 + (PA === .75 ? vbW*.06 : 0) - Math.min(...xs); OY = (PA === .75 ? vbH*.04 : (vbH - bh)*.3) - Math.min(...ys);
   const svg = document.getElementById('fig'), figF = document.getElementById('figF');
   svg.setAttribute('viewBox', `0 0 ${f(vbW)} ${f(vbH)}`); figF.setAttribute('viewBox', `0 0 ${f(vbW)} ${f(vbH)}`);
@@ -348,26 +348,26 @@ function mountFigure(cfg){
   bakeNoise(figF);
 
   const art = document.getElementById('art'), artF = document.getElementById('artF');
-  const ui = { st, metin: M, kok };
+  const ui = { st, text: M, root };
   /* iki katman (asıldan fark 8): hareket = #fig görünür, #figF sönük; durgun = son kare #figF'te filtreli.
      Geçiş CSS'te (learn.css: .cf-hareket, opaklık geçişi); figF #fig'in kutusuna ve yakınlaştırmasına eşlenir. */
-  let hareket = true, dinT = 0, artHam = null, kopyaHam = null;
-  const esle = () => { const s2 = figF.style; s2.left = svg.offsetLeft + 'px'; s2.top = svg.offsetTop + 'px'; s2.width = svg.offsetWidth + 'px'; s2.height = svg.offsetHeight + 'px'; s2.transform = svg.style.transform; };
-  const harekete = () => { clearTimeout(dinT); if (!hareket){ hareket = true; kok.classList.add('cf-hareket'); } };
-  ui.dinlen = (anlik) => { clearTimeout(dinT); if (olu || steps.size) return;
-    if (kopyaHam !== artHam){ kopyaHam = artHam;   // kırpma adları ikinci katmanda ayrı (aynı id iki kez olmasın)
+  let motion = true, dinT = 0, artHam = null, copyRaw = null;
+  const reconcile = () => { const s2 = figF.style; s2.left = svg.offsetLeft + 'px'; s2.top = svg.offsetTop + 'px'; s2.width = svg.offsetWidth + 'px'; s2.height = svg.offsetHeight + 'px'; s2.transform = svg.style.transform; };
+  const intoMotion = () => { clearTimeout(dinT); if (!motion){ motion = true; root.classList.add('cf-motion'); } };
+  ui.rest = (instant) => { clearTimeout(dinT); if (dead || steps.size) return;
+    if (copyRaw !== artHam){ copyRaw = artHam;   // kırpma adları ikinci katmanda ayrı (aynı id iki kez olmasın)
       artF.innerHTML = art.innerHTML.replace(/id="k(\d+)"/g, 'id="kF$1"').replace(/url\(#k(\d+)\)/g, 'url(#kF$1)'); }
-    esle(); hareket = false;
-    if (anlik){ kok.classList.add('cf-anlik'); kok.classList.remove('cf-hareket'); void figF.getBoundingClientRect(); requestAnimationFrame(() => kok.classList.remove('cf-anlik')); }
-    else kok.classList.remove('cf-hareket'); };
-  ui.durgun = () => !hareket;
-  ui.render = () => { _clipN = 0; kok.style.setProperty('--accent', PALS[st.pal].l); const h = inkScale(cfg.scene(st, PALS[st.pal]));
+    reconcile(); motion = false;
+    if (instant){ root.classList.add('cf-instant'); root.classList.remove('cf-motion'); void figF.getBoundingClientRect(); requestAnimationFrame(() => root.classList.remove('cf-instant')); }
+    else root.classList.remove('cf-motion'); };
+  ui.still = () => !motion;
+  ui.render = () => { _clipN = 0; root.style.setProperty('--accent', PALS[st.pal].l); const h = inkScale(cfg.scene(st, PALS[st.pal]));
     if (ui.drawStats) ui.drawStats();
-    if (h === artHam){ if (hareket){ clearTimeout(dinT); dinT = setTimeout(() => ui.dinlen(false), 160); } return; }
-    art.innerHTML = h; artHam = h; harekete(); dinT = setTimeout(() => ui.dinlen(false), 160); };
-  on(window, 'resize', esle);
-  { const ro = new ResizeObserver(esle); ro.observe(svg); ro.observe(kok); temizle.push(() => ro.disconnect());
-    const mo = new MutationObserver(esle); mo.observe(svg, { attributes: true, attributeFilter: ['style'] }); temizle.push(() => mo.disconnect()); }
+    if (h === artHam){ if (motion){ clearTimeout(dinT); dinT = setTimeout(() => ui.rest(false), 160); } return; }
+    art.innerHTML = h; artHam = h; intoMotion(); dinT = setTimeout(() => ui.rest(false), 160); };
+  on(window, 'resize', reconcile);
+  { const ro = new ResizeObserver(reconcile); ro.observe(svg); ro.observe(root); clear.push(() => ro.disconnect());
+    const mo = new MutationObserver(reconcile); mo.observe(svg, { attributes: true, attributeFilter: ['style'] }); clear.push(() => mo.disconnect()); }
   const statsEl = document.getElementById('stats'), prevStats = {};
   ui.drawStats = () => { if (!statsEl) return;
     const list = cfg.stats(st).filter(Boolean);
@@ -382,27 +382,27 @@ function mountFigure(cfg){
   let flashT = 0;
   const toast = document.getElementById('toast');
   ui.flash = (text, ms=1600) => { ui._flash = true; toast.textContent = text; toast.classList.add('show');
-    clearTimeout(flashT); flashT = setTimeout(() => { ui._flash = false; toast.classList.remove('show'); }, ms / Math.max(1, (KC.hiz || 1) / 2)); };
+    clearTimeout(flashT); flashT = setTimeout(() => { ui._flash = false; toast.classList.remove('show'); }, ms / Math.max(1, (MC.speed || 1) / 2)); };
   // tek kare sürücüsü (asıldaki gibi); kamera animasyonları mesgul() sayımına girmez
-  const steps = new Set(), kamera = new Set(); let driving = false, lastT = 0, fbT = 0, olu = false;
+  const steps = new Set(), camera = new Set(); let driving = false, lastT = 0, fbT = 0, dead = false;
   // hareketi azalt (asıldan fark 9): bütün adımlar bu karede sonuna kadar koşar (zincirlenen alt adımlar dahil), tek kare çizilir
-  const azalt = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;   // (kok burada figür kökü: pencere değil)
-  const frame = () => { if (!driving || olu) return; driving = false; clearTimeout(fbT);
-    const az = azalt(), now = performance.now(), dt = az ? 1e4 : Math.max(0, Math.min(.05, (now - lastT) / 1000)) * (KC.hiz || 1); lastT = now;
-    try { for (let tur = 0; tur < (az ? 400 : 1) && steps.size; tur++) for (const s of [...steps]) if (s(dt) === false){ steps.delete(s); kamera.delete(s); }
+  const reduce = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;   // (kok burada figür kökü: pencere değil)
+  const frame = () => { if (!driving || dead) return; driving = false; clearTimeout(fbT);
+    const az = reduce(), now = performance.now(), dt = az ? 1e4 : Math.max(0, Math.min(.05, (now - lastT) / 1000)) * (MC.speed || 1); lastT = now;
+    try { for (let kind = 0; kind < (az ? 400 : 1) && steps.size; kind++) for (const s of [...steps]) if (s(dt) === false){ steps.delete(s); camera.delete(s); }
       ui.render(); }
-    catch (e) { steps.clear(); kamera.clear(); setTimeout(() => { throw e; }, 0); return; }   // hata gizlenmez, ama animasyon takılı kalmaz
+    catch (e) { steps.clear(); camera.clear(); setTimeout(() => { throw e; }, 0); return; }   // hata gizlenmez, ama animasyon takılı kalmaz
     if (steps.size) drive(); };
-  const drive = () => { if (driving || olu) return; driving = true; requestAnimationFrame(frame); fbT = setTimeout(frame, 60); };
+  const drive = () => { if (driving || dead) return; driving = true; requestAnimationFrame(frame); fbT = setTimeout(frame, 60); };
   // hareketi azalt: adım eklendiği anda (eylem içinde, zincirlenenlerle birlikte) sonuna kadar koşar; ara kare çizilmez
-  let tamamlaniyor = false;
-  const tamamla = () => { if (tamamlaniyor) return; tamamlaniyor = true;
-    try { for (let tur = 0; tur < 400 && steps.size; tur++) for (const s of [...steps]) if (s(1e4) === false){ steps.delete(s); kamera.delete(s); } }
-    finally { tamamlaniyor = false; } };
-  ui.animate = (step, kam) => { if (!steps.size && !driving) lastT = performance.now(); steps.add(step); if (kam) kamera.add(step);
-    if (azalt()){ tamamla(); if (!tamamlaniyor) drive(); return; } drive(); };
+  let completing = false;
+  const complete = () => { if (completing) return; completing = true;
+    try { for (let kind = 0; kind < 400 && steps.size; kind++) for (const s of [...steps]) if (s(1e4) === false){ steps.delete(s); camera.delete(s); } }
+    finally { completing = false; } };
+  ui.animate = (step, kam) => { if (!steps.size && !driving) lastT = performance.now(); steps.add(step); if (kam) camera.add(step);
+    if (reduce()){ complete(); if (!completing) drive(); return; } drive(); };
   ui.invalidate = () => drive();
-  ui.mesgul = () => { for (const s of steps) if (!kamera.has(s)) return true; return false; };
+  ui.busy = () => { for (const s of steps) if (!camera.has(s)) return true; return false; };
 
   on(svg, 'pointerdown', e => { if (e.button) return; const a = e.target.closest('[data-act]'); if (!a || !cfg.acts || !cfg.acts[a.dataset.act]) return;
     e.preventDefault(); cfg.acts[a.dataset.act](st, a, ui); ui.render(); });
@@ -418,29 +418,29 @@ function mountFigure(cfg){
   on(svg, 'pointerup', endDrag); on(svg, 'pointercancel', endDrag);
   on(svg, 'dblclick', e => { if (!e.target.closest('[data-act]')) camTo(YAW0, PITCH0); });
   on(window, 'keydown', e => { const k = { ArrowLeft:[-15,0], ArrowRight:[15,0], ArrowUp:[0,8], ArrowDown:[0,-8] }[e.key];
-    if (!k || !e.target || !e.target.closest || !e.target.closest('.cf-kok') && e.target !== document.body) return;
+    if (!k || !e.target || !e.target.closest || !e.target.closest('.cf-root') && e.target !== document.body) return;
     if (/input|textarea|select/i.test(e.target.tagName)) return; e.preventDefault(); camTo(YAW + k[0], PITCH + k[1], 260); });
   const vsp = document.getElementById('vspin');
   document.getElementById('vreset').onclick = () => { spin = false; vsp.setAttribute('aria-pressed', false); camTo(YAW0, PITCH0); };
-  vsp.onclick = () => { if (azalt()){ spin = false; vsp.setAttribute('aria-pressed', false); return; }   // hareketi azalt: sürekli dönme yok
+  vsp.onclick = () => { if (reduce()){ spin = false; vsp.setAttribute('aria-pressed', false); return; }   // hareketi azalt: sürekli dönme yok
     spin = !spin; vsp.setAttribute('aria-pressed', spin); camAnim++;
     let dir = 1;
-    if (spin) ui.animate(dt => { if (!spin || olu) return false; if (!drag){ let y = YAW + dir*dt*18;
+    if (spin) ui.animate(dt => { if (!spin || dead) return false; if (!drag){ let y = YAW + dir*dt*18;
       if (CAM_LIM != null && Math.abs(y - YAW0) >= CAM_LIM - .5){ dir = -dir; y = YAW + dir*dt*18; } setCam(y, PITCH); } return true; }, true); };
   if (q.has('yaw') || q.has('pitch')) setCam(+(q.get('yaw') ?? YAW0), +(q.get('pitch') ?? PITCH0));
   const btns = document.getElementById('btns');
-  ui.dugmeler = [];
+  ui.buttons = [];
   if (btns) cfg.buttons.forEach(b => {
     const wrap = document.createElement('div'); wrap.className = 'stepwrap';
     const el = document.createElement('button'); el.type = 'button'; el.className = 'act'; el.textContent = b.label;
-    if (b.id) el.dataset.adim = b.id;
-    wrap.appendChild(el); btns.appendChild(wrap); ui.dugmeler.push(el);
+    if (b.id) el.dataset.step = b.id;
+    wrap.appendChild(el); btns.appendChild(wrap); ui.buttons.push(el);
     el.onclick = () => { b.onClick(st, ui); ui.render(); };
   });
-  ui.sok = () => { olu = true; steps.clear(); kamera.clear(); driving = false; clearTimeout(fbT); clearTimeout(flashT); clearTimeout(dinT); camAnim++; spin = false;
-    while (temizle.length) { try { temizle.pop()(); } catch (_) {} }
-    kok.textContent = ''; };
-  ui.temizle = fn => temizle.push(fn);
+  ui.unmount = () => { dead = true; steps.clear(); camera.clear(); driving = false; clearTimeout(fbT); clearTimeout(flashT); clearTimeout(dinT); camAnim++; spin = false;
+    while (clear.length) { try { clear.pop()(); } catch (_) {} }
+    root.textContent = ''; };
+  ui.clear = fn => clear.push(fn);
   setLight(st.az); ui.render();
   return ui;
 }
@@ -455,7 +455,7 @@ function xrCallouts(items, B){
   const pts = []; for (const x of [B[0], B[1]]) for (const y of [B[2], B[3]]) for (const z of [B[4], B[5]]) pts.push(P(x, y, z));
   const xmin = Math.min(...pts.map(p => p[0])), xmax = Math.max(...pts.map(p => p[0])), cx = (xmin + xmax)/2;
   // on a phone (LBL_U = drawing units per screen px) each label is a numbered badge and the names go in a legend under the figure
-  const k = INK_K, u = KC.LBL_U ? KC.LBL_U() : 0, fs = u ? 10*u : 8.6*k, hgt = u ? 17*u : fs*1.8, gap = hgt + (u ? 3*u : 3*k);
+  const k = INK_K, u = MC.LBL_U ? MC.LBL_U() : 0, fs = u ? 10*u : 8.6*k, hgt = u ? 17*u : fs*1.8, gap = hgt + (u ? 3*u : 3*k);
   const L = [], R = [];
   const svgEl = document.getElementById('fig'), vb = svgEl.viewBox.baseVal, btn = document.getElementById('btns');
   const wMax = u ? hgt*1.3 + 12*k : Math.max(...items.map(it => it.text.length))*fs*.62 + fs*1.5 + 12*k;
@@ -491,22 +491,22 @@ function xrGhost(body, mech, k, OUTp, x0, x1, m){
 
 // İçini gör / Etiketler anahtarları (asıl xrMount'un kök öğeli, sözlüklü sürümü; başlangıç durumu cfg.xr / cfg.etiket)
 function xrMount(getUI, cfg = {}){
-  const ui = getUI(), html = ui.kok, M = ui.metin || {}, q = new URLSearchParams(location.search);   // etiket anahtarı .cf-kok kökünde (asılda html)
-  const etiket = q.get('labels') === '1' || !!cfg.etiket;
-  html.classList.toggle('nolabels', !etiket);
+  const ui = getUI(), html = ui.root, M = ui.text || {}, q = new URLSearchParams(location.search);   // etiket anahtarı .cf-kok kökünde (asılda html)
+  const label = q.get('labels') === '1' || !!cfg.label;
+  html.classList.toggle('nolabels', !label);
   if (ui.st.xr == null){ ui.st.xr = 0; ui.st.xrT = 0; }
   if (q.get('xr') === '1' || cfg.xr) ui.st.xr = ui.st.xrT = 1;
   const vset = document.createElement('div'); vset.className = 'vset';
   const row = document.createElement('div'); row.className = 'vrow'; vset.appendChild(row);
   const mk = (id, s) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act'; b.id = id; b.setAttribute('aria-pressed', 'false'); b.textContent = s || ''; row.appendChild(b); return b; };
-  const xrb = mk('xrb', M.icini_gor), lblb = mk('lblb', M.etiketler);
-  document.querySelector('.cf-kok .stage').appendChild(vset);
+  const xrb = mk('xrb', M.see_inside), lblb = mk('lblb', M.labels);
+  document.querySelector('.cf-root .stage').appendChild(vset);
   const place = () => { const sp = document.getElementById('stats'); vset.style.top = sp ? (sp.offsetTop + sp.offsetHeight + 10) + 'px' : ''; };
-  place(); const ro = new ResizeObserver(place); ro.observe(document.getElementById('stats') || vset); ui.temizle(() => ro.disconnect());
+  place(); const ro = new ResizeObserver(place); ro.observe(document.getElementById('stats') || vset); ui.clear(() => ro.disconnect());
   const sync = () => { xrb.setAttribute('aria-pressed', !!getUI().st.xrT); lblb.setAttribute('aria-pressed', !html.classList.contains('nolabels')); };
-  xrb.onclick = () => { const u = getUI(), st = u.st; st.xr = st.xr || 0; st.xrT = st.xrT ? 0 : 1; sync(); if (cfg.degisti) cfg.degisti({ xr: !!st.xrT });
+  xrb.onclick = () => { const u = getUI(), st = u.st; st.xr = st.xr || 0; st.xrT = st.xrT ? 0 : 1; sync(); if (cfg.changed) cfg.changed({ xr: !!st.xrT });
     u.animate(dt => { const g = Math.sign(st.xrT - st.xr); st.xr = Math.min(1, Math.max(0, st.xr + g*dt/.7)); return st.xr !== st.xrT; }, true); };
-  lblb.onclick = () => { html.classList.toggle('nolabels'); sync(); if (cfg.degisti) cfg.degisti({ etiket: !html.classList.contains('nolabels') }); };
+  lblb.onclick = () => { html.classList.toggle('nolabels'); sync(); if (cfg.changed) cfg.changed({ label: !html.classList.contains('nolabels') }); };
   sync();
   ui.render();
 }
@@ -532,7 +532,7 @@ function xrWrap(sceneFn, opts){
 
 /* ---------- dışa açılan arayüz (tek ad alanı: KitapCilt.ogren.cf) ----------
    İşlevler ve sabitler değişmez bağlar; kamera/çizgi ölçeği değişen değerler getter ile okunur. */
-KC.cf = Object.freeze({
+MC.cf = Object.freeze({
   PALS, METAL, CLEAR, CERAMIC, DARK, INK, BOARD, WOOD, YAW0, PITCH0,
   get CAM_V(){ return CAM_V; }, get CAM_R(){ return CAM_R; }, get CAM_U(){ return CAM_U; }, get YAW(){ return YAW; }, get PITCH(){ return PITCH; }, get INK_K(){ return INK_K; },
   setCam, camDot, rotV, P, P0, Dv, depthOf, byDepth, nearHalf, farHalf, openShell, f, pd, sp, arcUV, rrUV, rectUV, ellUV, PX, PY, PZ, on,

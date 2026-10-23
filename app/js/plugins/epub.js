@@ -11,204 +11,204 @@
  *
  * Konsola hiçbir şey yazmaz; hatalar arayüz dilinde mesajla atılır (KitapCilt.dil), çekirdek bildirir.
  */
-(function (kok) {
+(function (root) {
   'use strict';
-  var KC = kok.KitapCilt = kok.KitapCilt || {};
-  function t(a, p) { return KC.dil.t(a, p); }
-  var AYAR_ANAHTAR = 'kitapCilt.epubAyar';
+  var MC = root.Mucellit = root.Mucellit || {};
+  function t(a, p) { return MC.i18n.t(a, p); }
+  var SETTINGS_KEY = 'mucellit.epubSettings';
   var MM = 72 / 25.4;
-  var VARSAYILAN = { boy: 10.5, satirAraligi: 1.35, ust: 15, alt: 18, yan: 15, tireBol: true, sayfaNo: true, kapakAtla: true };
+  var DEFAULTS = { fontSize: 10.5, lineSpacing: 1.35, top: 15, bottom: 18, side: 15, hyphenate: true, pageNumbers: true, skipCover: true };
   var FONTKIT_JS = 'vendor/fontkit/fontkit.umd.min.js';
-  var STIL_DOSYA = { R: 'regular', I: 'italic', B: 'bold', BI: 'bolditalic' };
+  var STYLE_FILE = { R: 'regular', I: 'italic', B: 'bold', BI: 'bolditalic' };
   function E6() { return t('epub.E6'); }
 
   // ---------- tembel yükleme ----------
-  var yuklenen = {};
-  function scriptYukle(src) {
-    if (!yuklenen[src]) {
-      yuklenen[src] = new Promise(function (ok, red) {
+  var loaded = {};
+  function loadScript(src) {
+    if (!loaded[src]) {
+      loaded[src] = new Promise(function (ok, red) {
         var s = document.createElement('script');
         s.src = src;
         s.onload = function () { ok(); };
-        s.onerror = function () { delete yuklenen[src]; s.remove(); red(new Error(E6())); };
+        s.onerror = function () { delete loaded[src]; s.remove(); red(new Error(E6())); };
         document.head.appendChild(s);
       });
     }
-    return yuklenen[src];
+    return loaded[src];
   }
 
-  var kaynak = null;
-  function base64Bayt(b64) {
+  var source = null;
+  function base64Bytes(b64) {
     var s = atob(b64);
     var b = new Uint8Array(s.length);
     for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
     return b;
   }
-  async function kaynaklariYukle() {
-    if (kaynak) return kaynak;
+  async function loadSources() {
+    if (source) return source;
     var e6 = new Error(E6());
     try {
-      await scriptYukle(FONTKIT_JS);
-      await Promise.all(Object.keys(STIL_DOSYA).map(function (k) { return scriptYukle('vendor/literata/literata-' + STIL_DOSYA[k] + '.js'); }));
+      await loadScript(FONTKIT_JS);
+      await Promise.all(Object.keys(STYLE_FILE).map(function (k) { return loadScript('vendor/literata/literata-' + STYLE_FILE[k] + '.js'); }));
     } catch (e) { throw e6; }
-    var yt = KC.yaziTipleri || {};
-    if (!kok.fontkit || Object.keys(STIL_DOSYA).some(function (k) { return typeof yt[STIL_DOSYA[k]] !== 'string'; })) throw e6;
+    var yt = MC.fonts || {};
+    if (!root.fontkit || Object.keys(STYLE_FILE).some(function (k) { return typeof yt[STYLE_FILE[k]] !== 'string'; })) throw e6;
     var ttf = {}, fk = {};
     try {
-      Object.keys(STIL_DOSYA).forEach(function (k) {
-        ttf[k] = base64Bayt(yt[STIL_DOSYA[k]]);
-        fk[k] = kok.fontkit.create(ttf[k]);
+      Object.keys(STYLE_FILE).forEach(function (k) {
+        ttf[k] = base64Bytes(yt[STYLE_FILE[k]]);
+        fk[k] = root.fontkit.create(ttf[k]);
       });
     } catch (e) { throw e6; }
-    kaynak = { ttf: ttf, fk: fk };
-    return kaynak;
+    source = { ttf: ttf, fk: fk };
+    return source;
   }
 
   // ---------- ayarlar ----------
-  function ayarYukle() {
-    var a = Object.assign({}, VARSAYILAN);
-    try { Object.assign(a, JSON.parse(KC.ortak.yerelOku(AYAR_ANAHTAR) || '{}')); } catch (e) { /* bozuk kayıt: varsayılanlar */ }
+  function loadSettings() {
+    var a = Object.assign({}, DEFAULTS);
+    try { Object.assign(a, JSON.parse(MC.common.readLocal(SETTINGS_KEY) || '{}')); } catch (e) { /* bozuk kayıt: varsayılanlar */ }
     return a;
   }
 
   // Etiketler sözlük anahtarı (epub.alan.* / epub.isaret.*), arayüz kurulurken çevrilir.
-  var ALANLAR = [
-    ['boy', 'epub-boy', 'epub.alan.boy', 6, 24, 0.5],
-    ['satirAraligi', 'epub-satir', 'epub.alan.satir', 1, 3, 0.05],
-    ['ust', 'epub-ust', 'epub.alan.ust', 0, 60, 0.5],
-    ['alt', 'epub-alt', 'epub.alan.alt', 0, 60, 0.5],
-    ['yan', 'epub-yan', 'epub.alan.yan', 0, 60, 0.5]
+  var FIELDS = [
+    ['fontSize', 'epub-fontSize', 'epub.field.fontSize', 6, 24, 0.5],
+    ['lineSpacing', 'epub-line', 'epub.field.line', 1, 3, 0.05],
+    ['top', 'epub-top', 'epub.field.top', 0, 60, 0.5],
+    ['bottom', 'epub-bottom', 'epub.field.bottom', 0, 60, 0.5],
+    ['side', 'epub-side', 'epub.field.side', 0, 60, 0.5]
   ];
-  var ISARETLER = [
-    ['tireBol', 'epub-tire', 'epub.isaret.tire', 'epub.isaret.tire_not'],
-    ['sayfaNo', 'epub-sayfa-no', 'epub.isaret.sayfa_no', null],
-    ['kapakAtla', 'epub-kapak-atla', 'epub.isaret.kapak_atla', null]
+  var MARKS = [
+    ['hyphenate', 'epub-hyphen', 'epub.mark.hyphen', 'epub.mark.tire_not'],
+    ['pageNumbers', 'epub-page-no', 'epub.mark.page_no', null],
+    ['skipCover', 'epub-cover-skip', 'epub.mark.skip_cover', null]
   ];
 
-  function ayarArayuzu(kap) {
-    var O = KC.ortak, el = O.el;
-    var a = ayarYukle();
-    var cocuklar = [el('summary', { text: t('epub.ayarlar') })];
-    ALANLAR.forEach(function (f) {
-      cocuklar.push(el('label', { class: 'alan' }, [el('span', { text: t(f[2]) }),
+  function settingsUi(container) {
+    var O = MC.common, el = O.el;
+    var a = loadSettings();
+    var children = [el('summary', { text: t('epub.settings') })];
+    FIELDS.forEach(function (f) {
+      children.push(el('label', { class: 'field' }, [el('span', { text: t(f[2]) }),
         // sayı alanı type=text + data-sayi (dilin ondalık ayracı; ortak.sayiAlanlariKur)
-        el('input', { type: 'text', inputmode: 'decimal', 'data-sayi': '', id: f[1], min: String(f[3]), max: String(f[4]), step: String(f[5]), value: KC.dil.sayiAlan(a[f[0]]) })]));
+        el('input', { type: 'text', inputmode: 'decimal', 'data-number': '', id: f[1], min: String(f[3]), max: String(f[4]), step: String(f[5]), value: MC.i18n.numberField(a[f[0]]) })]));
     });
-    ISARETLER.forEach(function (f) {
-      cocuklar.push(el('label', { class: 'secim' }, [el('input', { type: 'checkbox', id: f[1], checked: !!a[f[0]] }), ' ' + t(f[2])]));
-      if (f[3]) cocuklar.push(el('p', { class: 'kucuk', id: f[1] + '-not', text: t(f[3]) }));
+    MARKS.forEach(function (f) {
+      children.push(el('label', { class: 'choice' }, [el('input', { type: 'checkbox', id: f[1], checked: !!a[f[0]] }), ' ' + t(f[2])]));
+      if (f[3]) children.push(el('p', { class: 'small', id: f[1] + '-note', text: t(f[3]) }));
     });
-    cocuklar.push(el('p', { class: 'kucuk', text: t('epub.olcu_notu') }));
-    cocuklar.push(el('div', { id: 'epub-uyari' }));
-    var d = el('details', { id: 'epub-ayarlari' }, cocuklar);
-    d.addEventListener('change', function () { try { ayarOku(); } catch (e) { /* kaydetme yalnız geçerliyse */ } });
-    kap.appendChild(d);
+    children.push(el('p', { class: 'small', text: t('epub.size_note') }));
+    children.push(el('div', { id: 'epub-warning' }));
+    var d = el('details', { id: 'epub-settings' }, children);
+    d.addEventListener('change', function () { try { readSettings(); } catch (e) { /* kaydetme yalnız geçerliyse */ } });
+    container.appendChild(d);
   }
 
   /** Arayüzden okur, doğrular, saklar. Geçersizse anlaşılır hata atar. */
-  function ayarOku() {
-    var O = KC.ortak, $ = O.$;
-    var a = ayarYukle();
-    if ($('epub-ayarlari')) {
-      ALANLAR.forEach(function (f) {
-        var v = O.sayi(f[1], NaN);
-        if (!(v >= f[3] && v <= f[4])) throw new Error(t('epub.ayar_aralik', { ad: t(f[2]), enaz: f[3], encok: f[4] }));
+  function readSettings() {
+    var O = MC.common, $ = O.$;
+    var a = loadSettings();
+    if ($('epub-settings')) {
+      FIELDS.forEach(function (f) {
+        var v = O.number(f[1], NaN);
+        if (!(v >= f[3] && v <= f[4])) throw new Error(t('epub.settings_range', { name: t(f[2]), min: f[3], max: f[4] }));
         a[f[0]] = v;
       });
-      ISARETLER.forEach(function (f) { a[f[0]] = !!$(f[1]).checked; });
-      O.yerelYaz(AYAR_ANAHTAR, JSON.stringify(a));
+      MARKS.forEach(function (f) { a[f[0]] = !!$(f[1]).checked; });
+      O.writeLocal(SETTINGS_KEY, JSON.stringify(a));
     }
     return a;
   }
 
   /** U1 uyarısı #epub-uyari kutusunda; kutu kapalı "EPUB ayarları" bölümündeyse bölüm açılır (uyarı görünür olsun). */
-  function uyariGoster(metin) {
-    var u = KC.ortak.$('epub-uyari');
+  function showWarning(text) {
+    var u = MC.common.$('epub-warning');
     if (!u) return;
     u.textContent = '';
-    if (metin) {
-      u.appendChild(KC.ortak.el('div', { class: 'uyari', text: metin }));
-      var d = KC.ortak.$('epub-ayarlari');
+    if (text) {
+      u.appendChild(MC.common.el('div', { class: 'warning', text: text }));
+      var d = MC.common.$('epub-settings');
       if (d) d.open = true;
     }
   }
 
-  function nefes() { return new Promise(function (ok) { setTimeout(ok, 0); }); }
+  function breath() { return new Promise(function (ok) { setTimeout(ok, 0); }); }
 
   /** İlk spine belgesi yalnız manifestteki kapak resmiyse kapak sayılır. */
-  function kapakMi(bloklar, kapakYolu) {
-    var icerik = bloklar.filter(function (b) { return b.tur !== 'sayfaSonu'; });
-    return !!kapakYolu && icerik.length === 1 && icerik[0].tur === 'resim' && icerik[0].resim.anahtar === kapakYolu;
+  function isCover(blocks, coverPath) {
+    var content = blocks.filter(function (b) { return b.kind !== 'pageEnd'; });
+    return !!coverPath && content.length === 1 && content[0].kind === 'image' && content[0].image.key === coverPath;
   }
 
   // ---------- dönüştürücü ----------
-  async function donustur(dosya, secenek) {
-    var ilerleme = (secenek && secenek.ilerleme) || function () {};
+  async function convert(file, options) {
+    var progress = (options && options.progress) || function () {};
     // çekirdek bu dönüşümden sonra başka bir dosya seçildiyse false döner: bayat uyarı yazılmaz
-    var guncelMi = (secenek && typeof secenek.guncelMi === 'function') ? secenek.guncelMi : function () { return true; };
-    uyariGoster('');
-    var a = ayarOku();
-    if (!kok.PDFLib) throw new Error(t('hata.pdflib'));
-    var kitapGen = secenek.kitapGen, kitapYuk = secenek.kitapYuk;
-    var ciltPayi = secenek.ciltPayi || 0, disKenar = secenek.disKenar || 0;
-    var sayfaGenMm = kitapGen - ciltPayi - disKenar;
-    var sayfaYukMm = kitapYuk - 2 * disKenar;
-    if (!(sayfaGenMm > 60) || !(sayfaYukMm > 60)) {
-      throw new Error(t('epub.sayfa_kucuk', { gen: Math.round(sayfaGenMm), yuk: Math.round(sayfaYukMm) }));
+    var isCurrent = (options && typeof options.isCurrent === 'function') ? options.isCurrent : function () { return true; };
+    showWarning('');
+    var a = readSettings();
+    if (!root.PDFLib) throw new Error(t('error.pdflib'));
+    var bookWidth = options.bookWidth, bookHeight = options.bookHeight;
+    var gutter = options.gutter || 0, outerMargin = options.outerMargin || 0;
+    var pageWidthMm = bookWidth - gutter - outerMargin;
+    var pageHeightMm = bookHeight - 2 * outerMargin;
+    if (!(pageWidthMm > 60) || !(pageHeightMm > 60)) {
+      throw new Error(t('epub.page_small', { width: Math.round(pageWidthMm), height: Math.round(pageHeightMm) }));
     }
-    if (sayfaGenMm - 2 * a.yan < 20 || sayfaYukMm - a.ust - a.alt < 20) throw new Error(t('epub.kenar_sigmiyor'));
+    if (pageWidthMm - 2 * a.side < 20 || pageHeightMm - a.top - a.bottom < 20) throw new Error(t('epub.margin_too_large'));
 
-    ilerleme(t('epub.ilerleme.yazi_tipi'));
-    var k = await kaynaklariYukle();
-    var bayt = new Uint8Array(await dosya.arrayBuffer());
-    var zip = KC.epubZip.oku(bayt);
-    var paket = await KC.epubPaket.paketOku(zip);
-    var ortam = { zip: zip, dil: paket.dil, cssOnbellek: new Map(), resimler: {}, sayac: { atlananResim: 0, tablo: 0 } };
-    var bloklar = [];
-    var n = paket.spine.length;
+    progress(t('epub.progress.font'));
+    var k = await loadSources();
+    var bytes = new Uint8Array(await file.arrayBuffer());
+    var zip = MC.epubZip.read(bytes);
+    var pkg = await MC.epubPackage.readPackage(zip);
+    var env = { zip: zip, i18n: pkg.i18n, cssCache: new Map(), thumbs: {}, counter: { skippedImage: 0, table: 0 } };
+    var blocks = [];
+    var n = pkg.spine.length;
     for (var i = 0; i < n; i++) {
-      ilerleme(t('epub.ilerleme.bolum', { i: i + 1, n: n }));
-      var yol = paket.spine[i].yol;
-      var r = await KC.xhtmlBlok.belgeyiBloklara(await zip.metin(yol), yol, ortam);
-      if (i === 0 && a.kapakAtla && kapakMi(r.bloklar, paket.kapakYolu)) continue;
-      if (!r.bloklar.length) continue;
-      bloklar.push({ tur: 'bolumBasi' });
-      for (var j = 0; j < r.bloklar.length; j++) bloklar.push(r.bloklar[j]);
-      await nefes();
+      progress(t('epub.progress.chapter', { i: i + 1, n: n }));
+      var path = pkg.spine[i].path;
+      var r = await MC.xhtmlBlock.documentToBlocks(await zip.text(path), path, env);
+      if (i === 0 && a.skipCover && isCover(r.blocks, pkg.coverPath)) continue;
+      if (!r.blocks.length) continue;
+      blocks.push({ kind: 'chapterStart' });
+      for (var j = 0; j < r.blocks.length; j++) blocks.push(r.blocks[j]);
+      await breath();
     }
-    if (!bloklar.length) { var e5 = new Error(KC.epubPaket.MESAJ.E5); e5.kod = 'E5'; throw e5; }
-    var eksikKarakter = KC.pdfYaz.kapsamDuzelt(bloklar, function (cp) { return k.fk.R.hasGlyphForCodePoint(cp); });
+    if (!blocks.length) { var e5 = new Error(MC.epubPackage.MESSAGE.E5); e5.code = 'E5'; throw e5; }
+    var missingChar = MC.writePdf.fixScope(blocks, function (cp) { return k.fk.R.hasGlyphForCodePoint(cp); });
 
-    ilerleme(t('epub.ilerleme.dizgi'));
-    var genPt = sayfaGenMm * MM, yukPt = sayfaYukMm * MM;
-    var dz = await KC.epubDizgi.dizAsync(bloklar, {
-      sayfaGen: genPt, sayfaYuk: yukPt,
-      kenar: { ust: a.ust * MM, alt: a.alt * MM, ic: a.yan * MM, dis: a.yan * MM },
-      boy: a.boy, satirAraligi: a.satirAraligi, tireBol: a.tireBol, sayfaNo: a.sayfaNo
-    }, KC.epubDizgi.fontkitOlcer(k.fk));
-    if (!dz.sayfalar.length) { var e = new Error(KC.epubPaket.MESAJ.E5); e.kod = 'E5'; throw e; }
+    progress(t('epub.progress.typeset'));
+    var genPt = pageWidthMm * MM, heightPt = pageHeightMm * MM;
+    var dz = await MC.epubTypeset.imposeAsync(blocks, {
+      pageWidth: genPt, pageHeight: heightPt,
+      margin: { top: a.top * MM, bottom: a.bottom * MM, inner: a.side * MM, outer: a.side * MM },
+      fontSize: a.fontSize, lineSpacing: a.lineSpacing, hyphenate: a.hyphenate, pageNumbers: a.pageNumbers
+    }, MC.epubTypeset.fontkitMeasurer(k.fk));
+    if (!dz.pages.length) { var e = new Error(MC.epubPackage.MESSAGE.E5); e.code = 'E5'; throw e; }
 
-    ilerleme(t('epub.ilerleme.pdf_yaz', { n: dz.sayfalar.length }));
-    var ekUyari = [];
-    var pdf = await KC.pdfYaz.pdfYaz(dz.sayfalar, { genPt: genPt, yukPt: yukPt, baslik: paket.baslik, yazar: paket.yazar, dil: paket.dil },
-      { PDFLib: kok.PDFLib, fontkit: kok.fontkit, fontlar: k.ttf, resimler: ortam.resimler, uyarilar: ekUyari, sayac: ortam.sayac });
+    progress(t('epub.progress.write_pdf', { n: dz.pages.length }));
+    var ekWarning = [];
+    var pdf = await MC.writePdf.writePdf(dz.pages, { genPt: genPt, heightPt: heightPt, title: pkg.title, writes: pkg.writes, i18n: pkg.i18n },
+      { PDFLib: root.PDFLib, fontkit: root.fontkit, fonts: k.ttf, thumbs: env.thumbs, warnings: ekWarning, counter: env.counter });
 
-    var s = ortam.sayac;
-    var metin = [];
-    if (s.atlananResim || s.tablo || dz.uyarilar.dusukDpi) {
-      metin.push(t('epub.uyari.resim_tablo', { resim: s.atlananResim, tablo: s.tablo, dpi: dz.uyarilar.dusukDpi }));
+    var s = env.counter;
+    var text = [];
+    if (s.skippedImage || s.table || dz.warnings.lowDpi) {
+      text.push(t('epub.warning.image_table', { image: s.skippedImage, table: s.table, dpi: dz.warnings.lowDpi }));
     }
-    if (eksikKarakter) metin.push(t('epub.uyari.eksik_karakter', { n: eksikKarakter }));
-    var desteksiz = zip.desteksizKodlamalar ? zip.desteksizKodlamalar() : [];
-    if (desteksiz.length) metin.push(t('epub.uyari.kodlama', { kodlamalar: desteksiz.join(', ') }));
-    metin = metin.concat(ekUyari);
-    if (guncelMi()) uyariGoster(metin.join(' '));
+    if (missingChar) text.push(t('epub.warning.missing_char', { n: missingChar }));
+    var unsupported = zip.unsupportedEncodings ? zip.unsupportedEncodings() : [];
+    if (unsupported.length) text.push(t('epub.warning.encoding', { encodings: unsupported.join(', ') }));
+    text = text.concat(ekWarning);
+    if (isCurrent()) showWarning(text.join(' '));
     return pdf;
   }
 
   // '.epub.zip': Apple Kitaplar'ın klasör paketi EPUB'u Safari/WebKit dosya girişinde klasörün ZIP'i olarak gelir;
   // zip.js tek üst klasör önekini atar (tekKlasorOneki), içerik sıradan EPUB gibi işlenir.
-  KC.eklentiler.kaydet({ ad: 'EPUB → PDF', uzantilar: ['.epub', '.epub.zip'], mime: ['application/epub+zip'], ayarArayuzu: ayarArayuzu, donustur: donustur,
-    sifirla: function () { uyariGoster(''); } });
-  KC.epub = { donustur: donustur, ayarOku: ayarOku, VARSAYILAN: VARSAYILAN };
+  MC.plugins.register({ name: 'EPUB → PDF', extensions: ['.epub', '.epub.zip'], mime: ['application/epub+zip'], settingsUi: settingsUi, convert: convert,
+    reset: function () { showWarning(''); } });
+  MC.epub = { convert: convert, readSettings: readSettings, DEFAULTS: DEFAULTS };
 })(typeof self !== 'undefined' ? self : this);
