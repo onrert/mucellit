@@ -234,7 +234,7 @@ pub fn init_script() -> String {
 
 /// Görünüm > Dil menüsündeki "Sistem Dili (X)" öğesinin etiketi (şu anki dilde).
 pub fn system_label() -> String {
-    text("menu.i18n_system", &[("name", &name(&system_code()))])
+    text("menu.language_system", &[("name", &name(&system_code()))])
 }
 
 /// İşletim sisteminin tercih ettiği diller (macOS: `NSLocale.preferredLanguages`, uygulamaya özel dil ayarı
@@ -518,11 +518,11 @@ mod tests {
         assert!(is_supported(&b.system));
         assert_eq!(
             system_label(),
-            text("menu.i18n_system", &[("name", &name(&b.system))])
+            text("menu.language_system", &[("name", &name(&b.system))])
         );
         assert_eq!(language_info(Some("tr".into())).choice, "tr");
         assert_eq!(
-            text_in("en", "menu.i18n_system", &[("name", "English")]),
+            text_in("en", "menu.language_system", &[("name", "English")]),
             "System Language (English)",
             "menü Title Case"
         );

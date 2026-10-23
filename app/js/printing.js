@@ -1,15 +1,17 @@
 /*
- * printing.js — Mac uygulamasında yazdırma ve Önizleme'de Aç akışları. Arayüzden bağımsız:
- * platform (KitapCilt.platform), metin (t) ve bildirim işlevi dışarıdan verilir; birim testleri sahte platformla sınar.
+ * printing.js — the Print and Open in Preview flows of the Mac app. Independent of the interface:
+ * platform (Mucellit.platform), text (t) and the notice function are passed in; unit tests use a fake platform.
  *
- *   yazdir(dosyalar, ortam)        Tek PDF: baskı penceresi. İki PDF (önler + arkalar, elle çift yüz): önce önler; basıldıysa
- *                                  "desteyi çevirip geri koyun" onayı; onaylanırsa arkalar. Vazgeç/hata nerede olduysa
- *                                  bildirim ona göre (yarıda kaldıysa hangi dosyanın basıldığı söylenir).
- *   onizlemedeAc(dosyalar, ortam)  Her dosya sırayla Önizleme'de açılır. Biri açılamazsa (ör. sandbox) seçenek E:
- *                                  "PDF kaydedilsin mi?" onayı → Kaydet penceresi(leri) + "Önizleme'de basın" notu.
+ *   print(files, env)              One PDF: the print window. Two PDFs (fronts + backs, manual duplex): fronts first;
+ *                                  when printed, the "flip the stack and put it back" confirmation; when confirmed, the
+ *                                  backs. The notice matches wherever a cancel/error happened (when it stopped halfway
+ *                                  it says which file was printed).
+ *   openInPreview(files, env)      Every file is opened in Preview in turn. When one cannot be opened (e.g. sandbox),
+ *                                  option E: "Save the PDF instead?" confirmation → Save window(s) + "print from
+ *                                  Preview" note.
  *
- * ortam: { platform, t(anahtar, p), bildir(metin, tur) }. Dönüş Promise<{ metin, tur }> (tur 'hata' = istenen iş
- * tamamlanmadı); hiç reddedilmez. dosyalar: cikti.uret'in dosyaları ([{ ad, bytes, yuz }], ikili modda [önler, arkalar]).
+ * env: { platform, t(key, p), notify(text, kind) }. Returns Promise<{ text, kind }> (kind 'error' = the requested job
+ * did not finish); never rejected. files: the files of output.build ([{ name, bytes, side }], [fronts, backs] in pair mode).
  */
 (function (root) {
   'use strict';
@@ -17,11 +19,11 @@
 
   function errorText(e) { return String(e && e.message ? e.message : e); }
 
-  /** Baskı penceresinden önce gösterilen not (çift yüz ayarı = araçtaki seçim; ölçek %100). */
+  /** The note shown before the print window (duplex setting = the choice in the tool; scale 100%). */
   /**
-   * Baskı öncesi not. cevirme: araçtaki seçim değeri ('kisa' | 'uzun'). seçenek macOS baskı
-   * penceresinin kendi adıyla söylenir (ana pencere: Çift Taraflı → Açık / Açık (Kısa Kenar); Düzen bölümü: Uzun/Kısa
-   * Kenardan Ciltli — PrintingPrivate loctable'ları, printing.test.js), araçtaki ad ayrıca anılır.
+   * Note before printing. duplex: the value chosen in the tool ('short' | 'long'). The option is given with the macOS
+   * print window's own names (main window: Two-Sided → On / On (Short Edge); Layout section: Long-/Short-Edge
+   * binding — the PrintingPrivate loctables, printing.test.js); the name in the tool is mentioned as well.
    */
   function note(env, pair, duplex) {
     var t = env.t, short = duplex === 'short';
@@ -30,7 +32,7 @@
     p.options = t(short ? 'print.panel.short' : 'print.panel.long');
     p.layout = t(short ? 'print.panel.short_layout' : 'print.panel.long_layout');
     p.duplex = t(short ? 'impose.duplex.short' : 'impose.duplex.long');
-    return t('print.not_tek', p);
+    return t('print.note_single', p);
   }
 
   function print(files, env) {
@@ -64,10 +66,10 @@
     return l.reduce(function (z, d) {
       return z.then(function () { return P.openInPreview(d.name, d.bytes).then(function (r) { opened.push((r && r.name) || d.name); }); });
     }, Promise.resolve()).then(function () {
-      return { text: t('preview.opened', { names: opened.join(t('app.ve')) }) };
+      return { text: t('preview.opened', { names: opened.join(t('app.and')) }) };
     }, function (e) {
       var error = errorText(e);
-      // Seçenek E: açılamadı → Kaydet + "Önizleme'de basın" notu (açılabilenler zaten açık kalır)
+      // Option E: could not open → Save + "print from Preview" note (the ones that opened stay open)
       return P.ask(t('preview.save_open_failed', { error: error })).then(function (save) {
         if (!save || typeof P.saveAll !== 'function') return { text: t('preview.openFailed', { error: error }), kind: 'error' };
         return P.saveAll(l, 'application/pdf').then(function (s) {

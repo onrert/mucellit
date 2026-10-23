@@ -1,26 +1,29 @@
 /*
- * i18n.js — arayüz dili. Sözlükler app/i18n/<kod>.js dosyalarındadır; her biri iki /*JSON*\/ işareti
- * arasında KATI JSON bir nesne taşır (Rust aynı dosyayı derlemede gömer: src-tauri/build.rs, src/i18n.rs).
- * Yeni dil = app/i18n/<kod>.js + index.html'de bir <script> satırı (test unutulanı yakalar: i18n.test.js).
+ * i18n.js — interface language. The dictionaries are in app/i18n/<code>.js; each one carries a STRICT JSON object
+ * between two /*JSON*\/ markers (Rust embeds the same file at build time: src-tauri/build.rs, src/i18n.rs).
+ * A new language = app/i18n/<code>.js + one <script> line in index.html (a test catches a forgotten one: i18n.test.js).
  *
- * Sözlük biçimi: { "_dil": "en", "_ad": "English", "_yerel": "en-US", "anahtar": "metin {ad}" | { "one": …, "other": … } }
- *   - {ad}: parametre (t(anahtar, { ad: … })); tekil/çoğul nesnede seçim `n` parametresiyle
- *     (Intl.PluralRules; kategori yoksa "other").
- *   - Eksik anahtar İngilizceye (en) düşer; en'de de yoksa anahtarın kendisi döner ve eksikler()'e yazılır.
+ * Dictionary format: { "_lang": "en", "_name": "English", "_locale": "en-US", "key": "text {name}" | { "one": …, "other": … } }
+ *   - {name}: parameter (t(key, { name: … })); in a singular/plural object the form is chosen by the `n` parameter
+ *     (Intl.PluralRules; "other" when the category is missing).
+ *   - A missing key falls back to English (en); when en has none either, the key itself is returned and recorded in
+ *     missingKeys().
  *
- * Dil seçimi: elle seçim localStorage 'kitapCilt.dil' ('en' | 'tr'; yoksa sistem dili). Sistem dili Apple
- * kuralıyla: tercih edilen diller listesinde birincil alt etiketi desteklenen İLK dil
- * ([de-DE, tr-TR] → tr; bölge kodu eşleşir); listede hiçbiri yoksa en. Tarayıcıda liste navigator.languages;
- * Tauri'de sistem dili Rust'tan gelir (NSLocale.preferredLanguages, aynı kural; menüdeki "Sistem dili (X)" ile
- * aynı kaynak: sistemKoduAyarla, platform-tauri.js; ilk karede de, Rust ön betiği window.__KC_DIL__.sistem ile).
- * Tauri'de seçim ayrıca Rust'a bildirilir (menü, pencereler).
+ * Language choice: a manual choice in localStorage 'mucellit.language' ('en' | 'tr'; otherwise the system language).
+ * System language by the Apple rule: the FIRST language in the preferred languages list whose primary subtag is
+ * supported ([de-DE, tr-TR] → tr; a region code matches); en when none is. In the browser the list is
+ * navigator.languages; in Tauri the system language comes from Rust (NSLocale.preferredLanguages, same rule; same source
+ * as "System Language (X)" in the menu: setSystemCode, platform-tauri.js; also on the first frame, through the Rust
+ * init script window.__MC_LANG__.system). In Tauri the choice is also reported to Rust (menu, windows).
+ * A choice saved by an earlier version is moved once (migrateLegacyChoice).
  *
- * Arayüz: data-dil="anahtar" (textContent), data-dil-oz="aria-label:anahtar;title:anahtar" (öznitelikler).
- * etiketler i18n.js yüklenir yüklenmez yazılır (platform.hazir beklenmez; reddedilse de arayüz
- * metinli). index.html'deki statik metin en sözlüğüyle aynıdır (tools/i18n-html.mjs): i18n.js hiç çalışmasa da
- * arayüz İngilizce görünür; uygula() sözlükte olmayan anahtarla statik metni ezmez. Bozuk sözlük girdisi atlanır.
- * Tarayıcıda KitapCilt.dil; Node'da module.exports (sözlükler dosyadan okunur; öntanımlı dil KC_DIL || 'tr':
- * Node yalnız testler içindir ve mevcut testler Türkçe metni doğrular).
+ * Interface: data-i18n="key" (textContent), data-i18n-attr="aria-label:key;title:key" (attributes).
+ * Labels are written as soon as i18n.js loads (platform.ready is not awaited; the interface has text even when it is
+ * rejected). The static text in index.html is the same as the en dictionary (tools/i18n-html.mjs): even when i18n.js
+ * does not run at all, the interface shows English; apply() does not overwrite static text with a key missing from
+ * the dictionaries. A broken dictionary entry is skipped.
+ * Browser: Mucellit.i18n; Node: module.exports (dictionaries are read from the files; default language MC_LANG || 'tr':
+ * Node is only for tests and the existing tests check the Turkish text).
  */
 (function (root, factory) {
   var isNode = typeof module === 'object' && module.exports;
@@ -40,12 +43,12 @@
   var LEGACY_CHOICE_KEY = 'kitapCilt.dil'; // the language choice as saved before the English code base
   // legacy-names: end
   var MARKER = '/*JSON*/';
-  var dictionary = Object.create(null); // kod → { anahtar: değer }
-  var order = [];                    // kodlar (en önce)
+  var dictionary = Object.create(null); // code → { key: value }
+  var order = [];                    // codes (en first)
   var current = MAIN;
   var missing = [];
 
-  /** Sözlük dosyası metninden JSON gövdesini çıkarır ve ayrıştırır (iki işaret arası). Bozuksa hata atar. */
+  /** Extracts and parses the JSON body of a dictionary file (between the two markers). Throws when it is broken. */
   function extractJson(text) {
     var s = String(text);
     var a = s.indexOf(MARKER), b = s.lastIndexOf(MARKER);
@@ -69,7 +72,7 @@
       addDictionary(extractJson(fs.readFileSync(path.join(folder, a), 'utf8')));
     });
   } else {
-    // Tarayıcıda bozuk girdi (geliştirici hatası; testler yakalar) öbür sözlükleri ve arayüzü düşürmez.
+    // In the browser a broken entry (a developer error; caught by tests) does not bring down the other dictionaries or the interface.
     var registered = root.MucellitDictionaries;
     (Array.isArray(registered) ? registered : []).forEach(function (s) {
       try { addDictionary(s); } catch (e) { if (root.console && root.console.warn) root.console.warn('Mücellit: ' + e.message); }
@@ -79,8 +82,9 @@
   function isSupported(code) { return typeof code === 'string' && Object.prototype.hasOwnProperty.call(dictionary, code); }
 
   /**
-   * Tercih edilen dil listesinden (ör. navigator.languages) arayüz dili, Apple kuralı: birincil alt etiketi
-   * desteklenen ilk dil; yoksa en. Rust i18n::sistem_dili ile aynı (ortak vektörler: test/fixtures/i18n-vectors.json).
+   * Interface language from a preferred languages list (e.g. navigator.languages), Apple rule: the first language whose
+   * primary subtag is supported; otherwise en. Same as Rust i18n::system_language (shared vectors:
+   * test/fixtures/i18n-vectors.json).
    */
   function systemLanguage(list) {
     var l = Array.isArray(list) ? list : [];
@@ -92,17 +96,17 @@
     return MAIN;
   }
 
-  var externalSystem = null; // Tauri: Rust'ın bildirdiği sistem dili (menüyle aynı kaynak)
-  // Tauri penceresi sayfa betiklerinden önce `window.__KC_DIL__ = { sistem: "<kod>" }` tanımlar (Rust
-  // initialization_script, src-tauri/src/i18n.rs baslangic_betigi): ilk kare de menüdeki "Sistem dili (X)" ile aynı
-  // dilde olur (navigator.languages → Rust kararı geçişi yok). Desteklenmeyen/bozuk değer yok sayılır.
+  var externalSystem = null; // Tauri: the system language reported by Rust (same source as the menu)
+  // The Tauri window defines `window.__MC_LANG__ = { system: "<code>" }` before the page scripts (Rust
+  // initialization_script, src-tauri/src/i18n.rs init_script): the first frame is in the same language as "System Language (X)"
+  // in the menu (no switch from navigator.languages to the Rust decision). An unsupported or broken value is ignored.
   try {
     var outer = root.__MC_LANG__;
     if (outer && typeof outer === 'object' && isSupported(outer.system)) externalSystem = outer.system;
-  } catch (e) { /* yok say */ }
-  /** "Sistem dili" seçiminin karşılığı: Tauri'de Rust'ınki, tarayıcıda navigator.languages + Apple kuralı. */
+  } catch (e) { /* ignore */ }
+  /** What the "System language" choice means: Rust's in Tauri, navigator.languages + the Apple rule in the browser. */
   function systemCode() { return externalSystem || systemLanguage(browserLanguages()); }
-  /** Dış (Rust) sistem dilini ayarlar; desteklenmeyen/boş değer yok sayılır (tarayıcı listesi kalır). */
+  /** Sets the external (Rust) system language; an unsupported or empty value is ignored (the browser list stays). */
   function setSystemCode(code) { externalSystem = isSupported(code) ? code : null; return systemCode(); }
 
   function browserLanguages() {
@@ -112,16 +116,16 @@
     return n.language ? [n.language] : [];
   }
 
-  /** Elle seçim (localStorage) ya da null (= sistem dili). */
+  /** The manual choice (localStorage) or null (= system language). */
   function readChoice() {
     try { var s = root.localStorage && root.localStorage.getItem(CHOICE_KEY); return isSupported(s) ? s : null; } catch (e) { return null; }
   }
-  /** Elle seçimi saklar; null/'sistem' seçimi siler. */
+  /** Stores the manual choice; a null/'system' choice removes it. */
   function writeChoice(code) {
     try {
       if (isSupported(code)) root.localStorage.setItem(CHOICE_KEY, code);
       else root.localStorage.removeItem(CHOICE_KEY);
-    } catch (e) { /* saklama yok: yalnız bu oturum */ }
+    } catch (e) { /* no storage: this session only */ }
   }
 
   function set(code) {
@@ -143,7 +147,7 @@
     return typeof value.other === 'string' ? value.other : '';
   }
 
-  /** Parametreleri tek geçişte doldurur (değer içindeki {x} yeniden doldurulmaz; Rust i18n::doldur ile aynı). */
+  /** Fills the parameters in a single pass ({x} inside a value is not filled again; same as Rust i18n::fill). */
   function fill(text, p) {
     if (!p) return text;
     return text.replace(/\{([a-zA-Z0-9_]+)\}/g, function (tam, name) {
@@ -151,7 +155,7 @@
     });
   }
 
-  /** Metin (verilen dilde). Eksikse en'e, o da yoksa anahtara düşer. */
+  /** Text (in the given language). Falls back to en when missing, and to the key when en has none either. */
   function tIn(code, key, p) {
     var source = code;
     var d = rawValue(code, key);
@@ -166,7 +170,7 @@
   function t(key, p) { return tIn(current, key, p); }
   function has(key) { return rawValue(current, key) !== undefined || rawValue(MAIN, key) !== undefined; }
 
-  /** Sayı biçimi (ondalık ayracı dile göre). */
+  /** Number format (decimal separator by language). */
   function number(n, maxStep) {
     var y = (dictionary[current] && dictionary[current]._locale) || current;
     var x = Number(n);
@@ -174,8 +178,8 @@
   }
 
   /**
-   * Sayı alanına yazılacak biçim: dilin ondalık ayracı (en ".", tr ","), binlik ayracı YOK (alan yeniden
-   * okunabilsin), en çok 6 ondalık. Sayı değilse ''.
+   * The format written into a number field: the language's decimal separator (en ".", tr ","), NO thousands separator
+   * (so that the field can be read back), at most 6 decimals. '' when it is not a number.
    */
   function numberField(n) {
     var x = typeof n === 'string' && n.trim() !== '' ? Number(n) : n;
@@ -185,8 +189,9 @@
   }
 
   /**
-   * data-dil / data-dil-oz taşıyan öğelere metinleri yazar (kök: document ya da bir öğe). Anahtar hiçbir sözlükte
-   * yoksa öğenin mevcut (statik İngilizce) metni korunur; metin yoksa anahtar yazılır (eksik görünür, eksikler()).
+   * Writes the texts into the elements carrying data-i18n / data-i18n-attr (root: document or an element). When a key is
+   * in no dictionary, the element's existing (static English) text is kept; when there is no text, the key is written
+   * (the gap shows, missingKeys()).
    */
   function apply(rootElement) {
     var k = rootElement || root.document;
@@ -197,19 +202,19 @@
       var m = t(a);
       if (m !== a || !elements[i].textContent) elements[i].textContent = m;
     }
-    var oz = k.querySelectorAll('[data-i18n-oz]');
-    for (var j = 0; j < oz.length; j++) {
-      String(oz[j].getAttribute('data-i18n-oz')).split(';').forEach(function (double) {
-        var b = double.indexOf(':');
+    var attrs = k.querySelectorAll('[data-i18n-attr]');
+    for (var j = 0; j < attrs.length; j++) {
+      String(attrs[j].getAttribute('data-i18n-attr')).split(';').forEach(function (pair) {
+        var b = pair.indexOf(':');
         if (b <= 0) return;
-        var name = double.slice(0, b).trim(), an = double.slice(b + 1).trim(), d = t(an);
-        if (d !== an || !oz[j].getAttribute(name)) oz[j].setAttribute(name, d);
+        var name = pair.slice(0, b).trim(), an = pair.slice(b + 1).trim(), d = t(an);
+        if (d !== an || !attrs[j].getAttribute(name)) attrs[j].setAttribute(name, d);
       });
     }
     if (root.document && k === root.document) root.document.title = t('app.name');
   }
 
-  /** Başlangıç dili: elle seçim, yoksa sistem (tarayıcı) dili. */
+  /** Initial language: the manual choice, otherwise the system (browser) language. */
   /** One-time move of the language choice saved by an earlier version (see migrate.js for the other keys). */
   function migrateLegacyChoice() {
     try {
@@ -229,12 +234,12 @@
   }
   initial();
 
-  // etiketler hemen (betik gövde sonunda: öğeler ayrıştırılmış) ve DOMContentLoaded'da yazılır;
-  // platform.hazir beklenmez. Tauri'nin dil eşitlemesi sonradan dili değiştirirse orada yeniden uygulanır.
+  // labels right away (end of the script body: the elements are parsed) and on DOMContentLoaded;
+  // platform.ready is not awaited. When the Tauri language sync later changes the language, they are applied again there.
   if (!isNode && root.document) {
-    try { apply(root.document); } catch (e) { /* arayüz statik İngilizceyle kalır */ }
+    try { apply(root.document); } catch (e) { /* the interface keeps its static English */ }
     if (root.document.readyState === 'loading' && typeof root.document.addEventListener === 'function') {
-      root.document.addEventListener('DOMContentLoaded', function () { try { apply(root.document); } catch (e) { /* statik */ } });
+      root.document.addEventListener('DOMContentLoaded', function () { try { apply(root.document); } catch (e) { /* static */ } });
     }
   }
 

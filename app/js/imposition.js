@@ -1,11 +1,11 @@
 /*
- * imposition.js — sayfa dizilimi (imposition), DOM'suz saf modül.
- * Tarayıcıda klasik <script> olarak yüklenir (KitapCilt.dizilim),
- * Node'da require() ile (module.exports) kullanılır.
+ * imposition.js — page imposition, a pure module without DOM.
+ * Loaded as a classic <script> in the browser (Mucellit.imposition),
+ * used through require() (module.exports) in Node.
  *
- * Sayfa numaraları 1'den başlar. Toplam sayfa, cilt türünün gerektirdiği
- * katına boş sayfayla tamamlanır; numarası sayfaSayisi'ndan büyük olan
- * sayfa boştur (bosMu).
+ * Page numbers start at 1. The total page count is padded with blank pages to
+ * the multiple the binding type needs; a page whose number is greater than
+ * pageCount is blank (isBlank).
  */
 (function (root, factory) {
   var m = factory();
@@ -17,7 +17,7 @@
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  var root = typeof self !== 'undefined' ? self : globalThis; // Mucellit.i18n is found in a vm context too
   function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('./i18n.js'); }
   function t(a, p) { return I18n().t(a, p); }
 
@@ -34,7 +34,7 @@
     return Math.round(x * 1e6) / 1e6;
   }
 
-  /** Forma içindeki yaprak i (0'dan) için kayma: i × kalınlık (mm). */
+  /** Creep for sheet i (from 0) inside a signature: i × thickness (mm). */
   function creep(i, thickness) {
     var k = Number(thickness) || 0;
     if (k < 0) throw new RangeError(t('imposition.thickness_negative'));
@@ -46,12 +46,12 @@
   }
 
   /**
-   * Formalı (signature) dizilim.
-   * ayar: { sayfaSayisi, formaYaprak=4 (1–8), sonFormaKucult=false,
-   *         kaymaAcik=false, kagitKalinlik=0 }
-   * Forma içinde n sayfa, yaprak i (0'dan):
-   *   ön  [sol, sağ] = [n−2i, 1+2i]
-   *   arka[sol, sağ] = [2+2i, n−1−2i]
+   * Sewn signatures imposition.
+   * settings: { pageCount, sheetsPerSignature=4 (1–8), shrinkLastSignature=false,
+   *             creepEnabled=false, paperThickness=0 }
+   * Inside a signature of n pages, sheet i (from 0):
+   *   front [left, right] = [n−2i, 1+2i]
+   *   back  [left, right] = [2+2i, n−1−2i]
    */
   function sewn(settings) {
     settings = settings || {};
@@ -95,7 +95,7 @@
     };
   }
 
-  /** Tek yaprak, 1'li: her baskı yaprağı ön = 2i+1, arka = 2i+2. */
+  /** Single leaves, 1-up: every printer sheet has front = 2i+1, back = 2i+2. */
   function single1(settings) {
     settings = settings || {};
     var pageCount = integer(settings.pageCount, 'page_count', 1);
@@ -111,9 +111,9 @@
   }
 
   /**
-   * Tek yaprak, 2'li kes-üst üste koy. N yaprak, toplam 4N.
-   * yaprak i: ön [2i+1, 2N+2i+1], arka [2N+2i+2, 2i+2].
-   * Ortadan kesip sağ desteyi sol destenin altına koyunca sıra 1..4N olur.
+   * Single leaves, 2-up cut and stack. N sheets, 4N pages in total.
+   * sheet i: front [2i+1, 2N+2i+1], back [2N+2i+2, 2i+2].
+   * After cutting down the middle and putting the right stack under the left one, the order is 1..4N.
    */
   function single2(settings) {
     settings = settings || {};
@@ -134,7 +134,7 @@
     };
   }
 
-  /** ciltTuru: 'formali' | 'tek1' | 'tek2' */
+  /** bindingType: 'sewn' | 'single1' | 'single2' */
   function impose(bindingType, settings) {
     if (bindingType === 'sewn') return sewn(settings);
     if (bindingType === 'single1') return single1(settings);
@@ -142,7 +142,7 @@
     throw new Error(t('error.binding_type', { kind: bindingType }));
   }
 
-  /** Bir dizilimin her sayfayı tam bir kez kullandığını doğrular (öz-denetim). */
+  /** Verifies that an imposition uses every page exactly once (self-check). */
   function verify(result) {
     var seen = {};
     result.sheets.forEach(function (y) {

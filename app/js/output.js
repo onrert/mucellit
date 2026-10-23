@@ -1,7 +1,7 @@
 /*
- * output.js — dizilmiş baskı PDF'ini pdf-lib ile üretir (tarayıcıda, PDFLib global).
- * Girdi: kaynak PDF bytes, düzenlenmiş sayfa listesi, ayarlar.
- * Hiçbir ağ isteği yapmaz; her şey bellekte.
+ * output.js — builds the imposed print PDF with pdf-lib (in the browser, PDFLib global).
+ * Input: source PDF bytes, the edited page list, settings.
+ * Makes no network request; everything stays in memory.
  */
 (function (root) {
   'use strict';
@@ -12,12 +12,12 @@
   function pt(mm) { return mm * MM; }
 
   /**
-   * secenek: {
-   *   kaynakBytes: Uint8Array | null,
-   *   sayfalar: [{ tur: 'pdf', kaynak: <0'dan sayfa indisi>, dondur: 0|90|180|270 } | { tur: 'bos' }],
-   *   ayar: Düzenle ayarları (ciltTuru, kagitGen, ..., ciktiModu, arkaTers),
+   * options: {
+   *   sourceBytes: Uint8Array | null,
+   *   pages: [{ kind: 'pdf', source: <page index from 0>, rotate: 0|90|180|270 } | { kind: 'blank' }],
+   *   settings: Imposition settings (bindingType, paperWidth, ..., outputMode, backsReversed),
    * }
-   * Döner: { dizilim, yerlesim, dosyalar: [{ ad, bytes, yuz }] } (yuz: o dosyadaki yüz/sayfa sayısı)
+   * Returns: { imposition, layout, files: [{ name, bytes, side }] } (side: number of sides/pages in that file)
    */
   async function build(options) {
     var PDFLib = root.PDFLib;
@@ -51,13 +51,13 @@
         indices.forEach(function (i) {
           var sf = sourceDoc.getPage(i);
           var content = sf.node.Contents();
-          // /Contents'siz (ya da boş dizili) kaynak sayfa pdf-lib'de gömülemez ("missing Contents"): boş sayfa sayılır.
+          // A source page without /Contents (or with an empty array) cannot be embedded by pdf-lib ("missing Contents"): it counts as blank.
           if (!content || (content instanceof PDFLib.PDFArray && content.size() === 0)) {
             map[i] = { blank: true };
             return;
           }
-          // Gömme kutusu CropBox (yoksa MediaBox): kutu verilmezse MediaBox kökeni (0,0) değilse içerik kayar,
-          // CropBox'ın dışındaki taşma payı da basılırdı. Önizleme (pdf.js) de CropBox'ı kullanır.
+          // The embedding box is the CropBox (MediaBox when missing): without a box, content shifts when the MediaBox origin is not (0,0)
+          // and the bleed outside the CropBox would be printed too. The preview (pdf.js) uses the CropBox as well.
           var cb = sf.getCropBox();
           toEmbed.push(sf);
           boxes.push({ left: cb.x, bottom: cb.y, right: cb.x + cb.width, top: cb.y + cb.height });
@@ -109,7 +109,7 @@
       });
     }
 
-    // Dosya adı ekleri ve PDF başlığı arayüz dilinde (en: -imposed, -fronts, -backs; tr: -dizilmis, -onler, -arkalar).
+    // File name suffixes and the PDF title are in the interface language (en: -imposed, -fronts, -backs; tr: -dizilmis, -onler, -arkalar).
     var base = (options.fileName || t('output.name.book')).replace(/\.[^.]+$/, '');
     var files = [];
     if (settings.outputMode === 'pair') {
@@ -122,14 +122,14 @@
       backs.forEach(function (y) { drawSide(backDoc, hBack, y); });
       frontDoc.setTitle(t('output.title.fronts', { name: base }));
       backDoc.setTitle(t('output.title.backs', { name: base }));
-      files.push({ name: base + t('output.ek.fronts') + '.pdf', bytes: await frontDoc.save(), side: fronts.length });
-      files.push({ name: base + t('output.ek.backs') + (settings.backsReversed ? t('output.ek.reversed') : '') + '.pdf', bytes: await backDoc.save(), side: backs.length });
+      files.push({ name: base + t('output.suffix.fronts') + '.pdf', bytes: await frontDoc.save(), side: fronts.length });
+      files.push({ name: base + t('output.suffix.backs') + (settings.backsReversed ? t('output.suffix.reversed') : '') + '.pdf', bytes: await backDoc.save(), side: backs.length });
     } else {
       var doc = await newDocument();
       var h = await prepare(doc);
       place.sides.forEach(function (y) { drawSide(doc, h, y); });
       doc.setTitle(t('output.title.imposed', { name: base }));
-      files.push({ name: base + t('output.ek.imposed') + '.pdf', bytes: await doc.save(), side: place.sides.length });
+      files.push({ name: base + t('output.suffix.imposed') + '.pdf', bytes: await doc.save(), side: place.sides.length });
     }
     return { imposition: imposition, layout: place, files: files };
   }

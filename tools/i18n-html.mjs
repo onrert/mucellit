@@ -28,11 +28,11 @@ const escapeAttribute = (s) => metinKac(s).replace(/"/g, '&quot;');
 export function update(html, en) {
   const problem = [];
   let changed = 0;
-  const OZ = '(?:[^>"\']|"[^"]*"|\'[^\']*\')*';
+  const ATTRS = '(?:[^>"\']|"[^"]*"|\'[^\']*\')*';
   // 1) data-dil: <etiket … data-dil="a" …>METİN</etiket>  (iç içe öğe yok)
   const total = (html.match(/\sdata-i18n="/g) || []).length;
   let found = 0;
-  let h = html.replace(new RegExp(`(<([a-z][a-z0-9]*)\\b${OZ}\\sdata-i18n="([^"]+)"${OZ}>)([^<]*)(</\\2\\s*>)`, 'gi'), (tam, open, et, a, inner, close) => {
+  let h = html.replace(new RegExp(`(<([a-z][a-z0-9]*)\\b${ATTRS}\\sdata-i18n="([^"]+)"${ATTRS}>)([^<]*)(</\\2\\s*>)`, 'gi'), (tam, open, et, a, inner, close) => {
     found++;
     if (typeof en[a] !== 'string') { problem.push(`${a}: en sözlüğünde düz metin değil`); return tam; }
     const fresh = metinKac(en[a]);
@@ -41,12 +41,12 @@ export function update(html, en) {
   });
   if (found !== total) problem.push(`${total - found} data-i18n öğesi yazılamadı (içinde başka öğe var ya da kapanışı yok)`);
   // 2) data-dil-oz: her "öznitelik:anahtar" için öznitelik değeri (yoksa eklenir)
-  h = h.replace(new RegExp(`<[a-z][a-z0-9]*\\b${OZ}\\sdata-i18n-oz="([^"]+)"${OZ}>`, 'gi'), (label, list) => {
+  h = h.replace(new RegExp(`<[a-z][a-z0-9]*\\b${ATTRS}\\sdata-i18n-attr="([^"]+)"${ATTRS}>`, 'gi'), (label, list) => {
     let e = label;
-    for (const double of list.split(';')) {
-      const b = double.indexOf(':');
+    for (const pair of list.split(';')) {
+      const b = pair.indexOf(':');
       if (b <= 0) continue;
-      const name = double.slice(0, b).trim(), a = double.slice(b + 1).trim();
+      const name = pair.slice(0, b).trim(), a = pair.slice(b + 1).trim();
       if (typeof en[a] !== 'string') { problem.push(`${name}:${a}: en sözlüğünde düz metin değil`); continue; }
       const value = escapeAttribute(en[a]);
       const re = new RegExp(`\\s${name}="[^"]*"`);
@@ -55,7 +55,7 @@ export function update(html, en) {
         e = e.replace(re, ` ${name}="${value}"`);
         if (e !== once) changed++;
       } else {
-        e = e.replace(/\sdata-i18n-oz="/, ` ${name}="${value}" data-i18n-oz="`);
+        e = e.replace(/\sdata-i18n-attr="/, ` ${name}="${value}" data-i18n-attr="`);
         changed++;
       }
     }

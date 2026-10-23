@@ -1,17 +1,18 @@
 /*
- * pdf-writer.js — dizilmiş SAYFA listesini (typeset.js) pdf-lib ile vektör ve aranabilir PDF'e yazar
- * (KitapCilt.pdfYaz / module.exports; Node'da da çalışır).
+ * pdf-writer.js — writes the typeset PAGE list (typeset.js) with pdf-lib into a vector, searchable PDF
+ * (Mucellit.pdfWriter / module.exports; works in Node too).
  *
- *   await pdfYaz(sayfalar, { genPt, yukPt, baslik, yazar, dil }, kaynaklar) → Uint8Array
- *   kaynaklar: { PDFLib, fontkit, fontlar: { R, I, B, BI } (TTF baytları), resimler: { anahtar: { tur, bytes } }, uyarilar: [],
- *                sayac: { atlananResim } (isteğe bağlı; gömülemeyen bozuk resim sayısı buna eklenir) }
- *   kapsamDuzelt(bloklar, varMi) → yazı tipinde olmayan karakter sayısı (yerlerine '?' konur)
+ *   await writePdf(pages, { widthPt, heightPt, title, author, lang }, sources) → Uint8Array
+ *   sources: { PDFLib, fontkit, fonts: { R, I, B, BI } (TTF bytes), images: { key: { kind, bytes } }, warnings: [],
+ *              counter: { skippedImage } (optional; the number of broken images that could not be embedded is added) }
+ *   fixScope(blocks, has) → number of characters missing from the font (replaced by '?')
  *
- * Yazı tipi: Literata, alt küme (subset) olarak gömülür, 'liga' kapalı (Türkçede fi bağı i noktasını yutar).
- * Her kelime ayrı drawText ile ve satır içindeyse sonuna bir boşlukla yazılır: pdf.js ve görüntüleyiciler
- * kelime aralarını bu boşluktan tanır. Yalnız yazı tipi gömme hata verirse belge alt kümesiz yeniden yazılır (uyarı).
- * Gömülemeyen (bozuk) resim atlanır ve sayac.atlananResim'e eklenir; yeri boş kalır.
- * Kullanıcıya kütüphanenin ham (İngilizce) hata metni gösterilmez; özgün hata .cause'dadır.
+ * Font: Literata, embedded as a subset, 'liga' off (in Turkish the fi ligature swallows the dot of the i).
+ * Every word is written with its own drawText and, inside a line, followed by one space: pdf.js and viewers
+ * recognise the word gaps from that space. Only when embedding the font fails is the document written again
+ * without subsetting (warning).
+ * An image that cannot be embedded (broken) is skipped and added to counter.skippedImage; its place stays empty.
+ * The library's raw (English) error text is not shown to the user; the original error is in .cause.
  */
 (function (root, factory) {
   var m = factory();
@@ -26,12 +27,12 @@
 
   var STYLES = ['R', 'I', 'B', 'BI'];
 
-  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  var root = typeof self !== 'undefined' ? self : globalThis; // Mucellit.i18n is found in a vm context too
   function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('../../i18n.js'); }
   function t(a, p) { return I18n().t(a, p); }
 
   function fontError(e) { var h = new Error(t('pdfwriter.embedFailed')); h.font = true; h.cause = e; return h; }
-  /** Beklenmeyen hata anlaşılır metne çevrilir (kodlu hatalar olduğu gibi). */
+  /** An unexpected error is turned into a clear text (coded errors stay as they are). */
   function turkishError(e) { if (e && e.code) return e; var h = new Error(t('pdfwriter.writeFailed')); h.cause = e; return h; }
 
   async function write(pages, info, sources, subset) {
@@ -48,24 +49,24 @@
         fonts[st] = await doc.embedFont(sources.fonts[st], { subset: subset, features: { liga: false } });
       } catch (e) { throw fontError(e); }
     }
-    var thumbs = {};
+    var images = {};
     var skipped = 0;
     async function image(key) {
-      if (key in thumbs) return thumbs[key];
-      var r = sources.thumbs && sources.thumbs[key];
+      if (key in images) return images[key];
+      var r = sources.images && sources.images[key];
       var img = null;
       if (r) {
         try {
           img = r.kind === 'jpg' ? await doc.embedJpg(r.bytes) : await doc.embedPng(r.bytes);
           await img.embed();
-        } catch (e) { img = null; skipped += 1; } // bozuk resim: atlanır, sayılır
+        } catch (e) { img = null; skipped += 1; } // broken image: skipped, counted
       }
-      thumbs[key] = img;
+      images[key] = img;
       return img;
     }
     for (var n = 0; n < pages.length; n++) {
       var s = pages[n];
-      var page = doc.addPage([info.genPt, info.heightPt]);
+      var page = doc.addPage([info.widthPt, info.heightPt]);
       for (var j = 0; j < s.elements.length; j++) {
         var o = s.elements[j];
         if (o.kind === 'text') {
@@ -78,13 +79,13 @@
         }
       }
     }
-    // yazı tipi alt kümesi burada (kaydetmeden önce) gömülür: hata kaynağı ayrılabilsin
+    // the font subset is embedded here (before saving): so that the source of an error can be told apart
     for (var k in fonts) {
       try { await fonts[k].embed(); } catch (e) { throw fontError(e); }
     }
     if (info.title) doc.setTitle(info.title);
-    if (info.writes) doc.setAuthor(info.writes);
-    if (info.i18n) doc.setLanguage(info.i18n);
+    if (info.author) doc.setAuthor(info.author);
+    if (info.lang) doc.setLanguage(info.lang);
     doc.setProducer('Mücellit EPUB');
     doc.setCreator('Mücellit');
     var bytes = await doc.save();
@@ -97,7 +98,7 @@
       return await write(pages, info, sources, true);
     } catch (e) {
       if (!e || !e.font) throw turkishError(e);
-      // pdf-lib alt küme hataları (ör. #1396) için yedek yol, yalnız yazı tipi hatasında: alt kümesiz gömme
+      // fallback path for pdf-lib subset errors (e.g. #1396), only on a font error: embedding without subsetting
       if (sources.warnings) sources.warnings.push(t('pdfwriter.subset_warning'));
       try {
         return await write(pages, info, sources, false);
@@ -105,7 +106,7 @@
     }
   }
 
-  /** Yazı tipinde glifi olmayan karakterleri '?' yapar (U+FFFD / boş glif çıkmasın); değiştirilen karakter sayısı. */
+  /** Replaces characters without a glyph in the font by '?' (so that no U+FFFD / empty glyph appears); the number of replaced characters. */
   function fixScope(blocks, has) {
     var number = 0;
     var cache = {};

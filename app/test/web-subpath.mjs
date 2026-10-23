@@ -188,12 +188,12 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
 
         // ---- Öğren
         await page.click('#tab-button-learn');
-        await page.waitForFunction(() => document.getElementById('og-stage').childElementCount > 0 && document.getElementById('og-root').dataset.state === 'ready', null, { timeout: Math.min(time, 15000) });
-        await page.selectOption('#og-speed', '4');
-        await page.click('#og-play');
-        await page.waitForFunction(() => document.querySelectorAll('#og-steps li.finished').length === 1 && document.getElementById('og-root').dataset.state === 'ready', null, { timeout: Math.min(time, 15000) });
-        const o = await page.evaluate(() => ({ stage: document.querySelectorAll('#og-stages li').length, tab: document.getElementById('tab-button-learn').textContent.trim(),
-          license: document.getElementById('og-license-text').textContent.trim() }));
+        await page.waitForFunction(() => document.getElementById('guide-stage').childElementCount > 0 && document.getElementById('guide-root').dataset.state === 'ready', null, { timeout: Math.min(time, 15000) });
+        await page.selectOption('#guide-speed', '4');
+        await page.click('#guide-play');
+        await page.waitForFunction(() => document.querySelectorAll('#guide-steps li.finished').length === 1 && document.getElementById('guide-root').dataset.state === 'ready', null, { timeout: Math.min(time, 15000) });
+        const o = await page.evaluate(() => ({ stage: document.querySelectorAll('#guide-stages li').length, tab: document.getElementById('tab-button-learn').textContent.trim(),
+          license: document.getElementById('guide-license-text').textContent.trim() }));
         const learnLicense = existsSync(join(root, 'js/learn/LICENSE')) ? readFileSync(join(root, 'js/learn/LICENSE'), 'utf8').trim() : null;
         check(o.stage === 10 && o.tab === PROMISE[i18n].tab[3] && learnLicense !== null && o.license === learnLicense,
           `${et} Öğren: rehber kurulur (10 aşama), bir adım oynar, lisans paneli js/learn/LICENSE ile birebir`, JSON.stringify({ ...o, license: o.license.slice(0, 30) }));

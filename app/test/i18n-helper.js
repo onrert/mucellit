@@ -1,9 +1,9 @@
 'use strict';
 /*
- * i18n-helper.js — testler için arayüz dili. `.test.js` değildir (index.js yüklemez).
- *   dilKur(ctx, kod)  vm bağlamına sözlükleri ve i18n.js'i yükler (tarayıcıdaki sırayla), dili ayarlar.
- *   SOZLUK_DOSYALARI  app/i18n/*.js adları (alfabetik).
- * Mevcut testler Türkçe metni doğrular: öntanımlı kod 'tr'.
+ * i18n-helper.js — interface language for the tests. Not a `.test.js` (index.js does not load it).
+ *   setupI18n(ctx, code)  loads the dictionaries and i18n.js into a vm context (in the browser's order), sets the language.
+ *   DICTIONARY_FILES      names of app/i18n/*.js (alphabetical).
+ * The tests check the Turkish texts: the default code is 'tr'.
  */
 const fs = require('node:fs');
 const path = require('node:path');

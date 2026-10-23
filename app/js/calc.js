@@ -1,10 +1,10 @@
 /*
- * calc.js — cilt hesapları, DOM'suz saf modül (KitapCilt.hesap / module.exports).
- * Bütün ölçüler mm. Bütün varsayılanlar VARSAYILAN içinde ve düzenlenebilir.
+ * calc.js — binding calculations, a pure module without DOM (Mucellit.calc / module.exports).
+ * All sizes in mm. All defaults are in DEFAULTS and can be changed.
  *
- * Terimler:
- *  - kitap yaprağı: kitaptaki tek bir yaprak (2 sayfa: ön + arka).
- *  - baskı kağıdı: yazıcıdan geçen fiziksel kağıt.
+ * Terms:
+ *  - leaf: a single leaf of the book (2 pages: front + back).
+ *  - printer sheet: the physical sheet that goes through the printer.
  */
 (function (root, factory) {
   var m = factory();
@@ -16,28 +16,28 @@
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  var root = typeof self !== 'undefined' ? self : globalThis; // Mucellit.i18n is found in a vm context too
   function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('./i18n.js'); }
   function t(a, p) { return I18n().t(a, p); }
-  /** Alan adı (hata metinleri için): sözlükte "hesap.ad.<anahtar>". */
+  /** Field name (for error texts): "calc.name.<key>" in the dictionary. */
   function name(key) { return t('calc.name.' + key); }
 
   var DEFAULTS = {
-    bindingType: 'sewn',   // 'formali' | 'tek1' | 'tek2'
+    bindingType: 'sewn',   // 'sewn' | 'single1' | 'single2'
     sheetsPerSignature: 4,
     shrinkLastSignature: false,
-    paperThickness: 0.1,    // mm, tek kitap yaprağı
-    endpaperAllowance: 0,          // mm, sırta eklenecek forza/ön-arka kağıt payı
+    paperThickness: 0.1,    // mm, one leaf
+    endpaperAllowance: 0,          // mm, allowance added to the spine for endpapers/front-back sheets
     bookWidth: 148,
     bookHeight: 210,
     boardThickness: 2,    // t, mm
-    spineShape: 'flat',       // 'duz' | 'yuvarlak'
-    spineRule: 'twoT',    // 'ikiT': sırt şeridi S + 2t | 'yalnizS': S (mafsal t kadar artar)
-    curveLength: undefined,   // yuvarlak sırtta ölçülen sırt eğri boyu (mm); boşsa S + 2t
-    square: 3,              // k, mm: mukavvanın kitap bloğundan taşması (baş, kuyruk, ön)
-    jointGap: 'auto',    // f: 'otomatik' (mukavva kalınlığına göre) ya da elle mm
-    turnIn: 15,           // e, mm: kaplamanın her kenardan içe kıvrılan payı
-    spareSheets: 0          // test baskısı / fire için ek baskı kağıdı
+    spineShape: 'flat',       // 'flat' | 'rounded'
+    spineRule: 'twoT',    // 'twoT': spine strip S + 2t | 'onlyS': S (the joint gap grows by t)
+    curveLength: undefined,   // spine curve length measured on a rounded spine (mm); S + 2t when empty
+    square: 3,              // k, mm: how far the board overhangs the book block (head, tail, fore edge)
+    jointGap: 'auto',    // f: 'auto' (by board thickness) or manual mm
+    turnIn: 15,           // e, mm: how much of the covering is turned in at each edge
+    spareSheets: 0          // extra printer sheets for a test print / spoilage
   };
 
   function roundOff(x) { return Math.round(x * 1000) / 1000; }
@@ -50,23 +50,23 @@
     return n;
   }
 
-  /** Mafsal (oluk) genişliği, mukavva kalınlığına göre: t ≤ 1 → 6, ≤ 2 → 7, ≤ 3 → 8, > 3 → 9 (kaynaksız). */
+  /** Joint gap (groove) width by board thickness: t ≤ 1 → 6, ≤ 2 → 7, ≤ 3 → 8, > 3 → 9 (no source). */
   function autoJointGap(tm) {
     return tm <= 1 ? 6 : tm <= 2 ? 7 : tm <= 3 ? 8 : 9;
   }
 
-  /** Sayfa sayısından kitap yaprağı sayısı (tek sayıda sayfa yukarı yuvarlanır). */
+  /** Number of leaves from the page count (an odd page count is rounded up). */
   function leafCount(page) {
     return Math.ceil(checkNumber(page, 'page_count', 0) / 2);
   }
 
-  /** Sırt kalınlığı = yaprak × kağıt kalınlığı (+ forza payı). */
+  /** Spine thickness = leaves × paper thickness (+ endpaper allowance). */
   function spineThicknessOf(sheet, thickness, endpaperAllowance) {
     return roundOff(checkNumber(sheet, 'sheet', 0) * checkNumber(thickness, 'paper_thickness', 0) +
       checkNumber(endpaperAllowance || 0, 'endpaper_allowance', 0));
   }
 
-  /** Cilt türüne göre boş sayfayla tamamlanmış toplam sayfa ve forma bilgisi. */
+  /** Total pages padded with blank pages for the binding type, and the signature info. */
   function padded(bindingType, page, sheetsPerSignature, shrinkLastSignature) {
     var p = Math.ceil(checkNumber(page, 'page_count', 1));
     if (bindingType === 'sewn') {
@@ -90,9 +90,9 @@
   }
 
   /**
-   * Tüm hesap. girdi: { sayfaSayisi, ...VARSAYILAN alanları }
-   * Sırt kalınlığı tamamlanmış (boş sayfalar dahil) yaprak sayısıyla hesaplanır,
-   * çünkü boş sayfalar da kağıttır.
+   * The whole calculation. input: { pageCount, ...the DEFAULTS fields }
+   * The spine thickness is computed with the padded number of leaves (blank pages included),
+   * because blank pages are paper too.
    */
   function calculate(input) {
     var g = {};
@@ -107,13 +107,13 @@
     var spine = spineThicknessOf(leaves, g.paperThickness, g.endpaperAllowance);
     var bookWidth = checkNumber(g.bookWidth, 'book_width', 1);
     var bookHeight = checkNumber(g.bookHeight, 'book_height', 1);
-    var tm = checkNumber(g.boardThickness, 'board_thickness', 0); // t (mukavva); t() metin işlevi
+    var tm = checkNumber(g.boardThickness, 'board_thickness', 0); // t (board); t() is the text function
     var k = checkNumber(g.square, 'square', 0);
     var e = checkNumber(g.turnIn, 'turn_in', 0);
     [['board_thickness', tm], ['turn_in', e]].forEach(function (c) {
       if (!(c[1] > 0)) throw new RangeError(t('calc.positive', { name: name(c[0]), value: c[1] }));
     });
-    // taşma 0 olabilir (mukavva blokla aynı hizada); negatif olamaz
+    // the square can be 0 (board flush with the block); it cannot be negative
     if (!(k >= 0)) throw new RangeError(t('calc.square_negative', { value: k }));
     if (g.spineShape !== 'flat' && g.spineShape !== 'rounded') throw new Error(t('calc.spine_shape', { value: g.spineShape }));
     if (g.spineRule !== 'twoT' && g.spineRule !== 'onlyS') throw new Error(t('calc.spine_rule', { value: g.spineRule }));

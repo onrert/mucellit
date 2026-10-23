@@ -1,34 +1,34 @@
 /*
- * platform.js — ortam farkları tek yerde.
- * Bu dosya TARAYICI uygulamasıdır ve bugünkü davranışı birebir korur: dosya seçimi gizli
- * <input type=file>, kaydetme <a download>, onay window.confirm. Tauri penceresinde
- * platform-tauri.js (bu dosyadan sonra yüklenir) yalnız farklı olan işlevleri ezer.
+ * platform.js — environment differences in one place.
+ * This file is the BROWSER app and keeps today's behaviour exactly: file choice through a hidden
+ * <input type=file>, saving through <a download>, confirmation through window.confirm. In a Tauri window
+ * platform-tauri.js (loaded after this file) overrides only the functions that differ.
  *
- * Sözleşme (KitapCilt.platform):
- *   ad                     'tarayici' | 'tauri'
- *   hazir                  Promise<void>; app.js başlatmayı bunu bekleyerek yapar
- *   dosyaSec({ girdi, uzantilar, mime })  Promise<File|null>
- *                          Tarayıcıda gizli girdiyi açar ve null döner: seçilen dosya girdinin kendi
- *                          `change` olayıyla gelir (e2e'deki setInputFiles da bu yolu kullanır).
- *                          null = "çağırana yapacak iş yok". Yerel diyalog File döndürür.
- *   kaydet(ad, veri, mime) Promise<true | false | { ad, yol }>; veri Blob | Uint8Array | string.
- *                          Tarayıcıda her zaman true (indirme başlatıldı; sonucu bilinmez). Yerel Kaydet
- *                          penceresi (Tauri) false = vazgeçildi, { ad, yol } = yazıldı.
- *   yerelDosya             false; Tauri'de true: Aç/Kaydet yerel pencerelerle, kaydetme sonucu gerçek
- *                          (impose.js dizilmiş PDF'i sırayla kaydedip bildirimi sonuca göre yazar)
- *   sonAcilanlar()         Promise<[{ kimlik, ad, tur, tarih }]>; tarayıcıda boş (yer imi Tauri'de)
- *   sonAcilaniAc(kimlik)   Promise<File|null>; tarayıcıda null
- *   onayla(mesaj)          Promise<boolean>; ASLA senkron confirm sonucuna güvenilmez (bkz. aşağı)
- *   yazdir                 null (tarayıcıda yerel baskı yok). Tauri: yazdir(ad, veri) → Promise<boolean>
- *                          (true = yazdırıldı/PDF olarak kaydedildi, false = vazgeçildi); Yazdır düğmesi yalnız bu varsa
- *   onizlemedeAc           null; Tauri: onizlemedeAc(ad, veri) → Promise<{ ad }> (açılamazsa reddedilir)
- *   tamSurum()             Promise<boolean>; tarayıcıda true
- *   metin                  ortama göre değişen kullanıcı metinleri (okununca o anki dilde; KitapCilt.dil)
+ * Contract (Mucellit.platform):
+ *   name                   'browser' | 'tauri'
+ *   ready                  Promise<void>; app.js starts after waiting for it
+ *   pickFile({ input, extensions, mime })  Promise<File|null>
+ *                          In the browser it opens the hidden input and returns null: the chosen file arrives through
+ *                          the input's own `change` event (setInputFiles in e2e uses the same path).
+ *                          null = "nothing for the caller to do". The native dialog returns a File.
+ *   save(name, data, mime) Promise<true | false | { name, path }>; data Blob | Uint8Array | string.
+ *                          Always true in the browser (the download started; its outcome is unknown). The native Save
+ *                          window (Tauri): false = cancelled, { name, path } = written.
+ *   localFile              false; true in Tauri: Open/Save through native windows, the save result is real
+ *                          (impose.js saves the imposed PDFs one by one and writes the notice from the result)
+ *   recentFiles()          Promise<[{ id, name, kind, date }]>; empty in the browser (bookmarks are in Tauri)
+ *   openRecent(id)         Promise<File|null>; null in the browser
+ *   ask(message)           Promise<boolean>; NEVER rely on a synchronous confirm result (see below)
+ *   print                  null (no native printing in the browser). Tauri: print(name, data) → Promise<boolean>
+ *                          (true = printed/saved as PDF, false = cancelled); the Print button exists only when it is set
+ *   openInPreview          null; Tauri: openInPreview(name, data) → Promise<{ name }> (rejected when it cannot open)
+ *   fullVersion()          Promise<boolean>; true in the browser
+ *   text                   user texts that depend on the environment (in the current language when read; Mucellit.i18n)
  *
- * Onay notu: Tauri'nin dialog eklentisi window.confirm'ü Promise döndüren işlevle ezer; Promise
- * nesnesi doğru sayıldığı için `if (!confirm(...)) return;` kalıbı onaysız siler. Bu yüzden
- * onayla() dönüşü her zaman Promise.resolve ile beklenir: senkron true/false da, eklentinin
- * Promise<boolean>'ı da doğru sonuç verir.
+ * Note on confirmation: Tauri's dialog plug-in replaces window.confirm with a function returning a Promise; since a
+ * Promise object is truthy, the `if (!confirm(...)) return;` pattern deletes without confirmation. So the result of
+ * ask() is always awaited through Promise.resolve: a synchronous true/false and the plug-in's Promise<boolean> both
+ * give the right answer.
  */
 (function (root) {
   'use strict';
@@ -78,10 +78,10 @@
     fullVersion: function () { return Promise.resolve(true); },
     text: {}
   };
-  // Ortama göre değişen metinler, okunduğu andaki dilde (platform-tauri.js Mac metinleriyle ezer).
-  //   kutuphaneIpucu: app.js kütüphane yüklenemedi bildiriminin sonu
-  //   saklamaUyari:   projects.js, saklama alanı kullanılamıyor/dolu uyarısı
-  //   denetimUyari:   impose.js, şifre/kısıt durumu denetlenemedi uyarısı
+  // Texts that depend on the environment, in the language current when read (platform-tauri.js overrides them with Mac texts).
+  //   libraryHint:    end of the "library could not be loaded" notice in app.js
+  //   storageWarning: projects.js, storage unavailable/full warning
+  //   checkWarning:   impose.js, warning that the encryption/restriction state could not be checked
   [['libraryHint', 'app.library_hint'], ['storageWarning', 'projects.warning.storage'], ['checkWarning', 'impose.warning.check']].forEach(function (m) {
     Object.defineProperty(MC.platform.text, m[0], {
       get: function () { return D.t(m[1]); }, enumerable: true, configurable: true

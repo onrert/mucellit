@@ -6,7 +6,7 @@ const y = require('../js/layout.js');
 
 const SETTINGS = { paperWidth: 297, paperHeight: 210, bookWidth: 148, bookHeight: 210 };
 
-test('formalı 297×210 / 148×210: iki yuva ortada bitişik, sırt ortada', () => {
+test('sewn 297×210 / 148×210: two slots side by side in the middle, the spine in the middle', () => {
   const r = y.layout(d.sewn({ pageCount: 16 }), SETTINGS);
   assert.equal(r.sides.length, 8);
   const front = r.sides[0];
@@ -19,27 +19,27 @@ test('formalı 297×210 / 148×210: iki yuva ortada bitişik, sırt ortada', () 
   assert.deepEqual(r.warnings, []);
 });
 
-test('cilt payı sırt tarafına, dış kenar diğer tarafa; kayma sırta doğru', () => {
+test('gutter on the spine side, outer margin on the other side; creep towards the spine', () => {
   const impose = d.sewn({ pageCount: 16, creepEnabled: true, paperThickness: 0.1 });
   const r = y.layout(impose, Object.assign({}, SETTINGS, { outerMargin: 5, gutter: 10 }));
-  const yaprak3on = r.sides.find((f) => f.sheet === 3 && f.side === 'front');
-  const [left, right] = yaprak3on.slots;
-  // sol yuva: sırt sağda → içerik x = yuva.x + dis + kayma(0.3)
+  const sheet3front = r.sides.find((f) => f.sheet === 3 && f.side === 'front');
+  const [left, right] = sheet3front.slots;
+  // left slot: spine on the right → content x = slot.x + outer + creep(0.3)
   assert.equal(left.content.x, 0.5 + 5 + 0.3);
   assert.equal(left.content.w, 133);
-  // sağ yuva: sırt solda → içerik x = yuva.x + cilt − kayma
+  // right slot: spine on the left → content x = slot.x + gutter − creep
   assert.equal(right.content.x, 148.5 + 10 - 0.3);
   assert.equal(left.content.y, 5);
   assert.equal(left.content.h, 200);
 });
 
-test('çevirme: yatay kağıtta uzun kenar → arka yüzler 180° döner, kısa kenar → düz', () => {
+test('duplex: on landscape paper long edge → the backs turn 180°, short edge → straight', () => {
   const impose = d.sewn({ pageCount: 16 });
   const r = y.layout(impose, Object.assign({}, SETTINGS, { duplex: 'long', outerMargin: 5, gutter: 10 }));
   const front = r.sides[0], back = r.sides[1];
-  assert.equal(front.rotate180, false, 'ön yüz hiç dönmez');
+  assert.equal(front.rotate180, false, 'the front never turns');
   assert.equal(back.rotate180, true);
-  // arka [2,15]: 2 normalde solda (x=0.5); döndükten sonra sağda
+  // back [2,15]: 2 is normally on the left (x=0.5); on the right after turning
   assert.equal(back.slots[0].page, 2);
   assert.equal(back.slots[0].slot.x, 148.5);
   const short = y.layout(impose, Object.assign({}, SETTINGS, { duplex: 'short' }));
@@ -47,37 +47,37 @@ test('çevirme: yatay kağıtta uzun kenar → arka yüzler 180° döner, kısa 
   assert.equal(short.sides[1].slots[0].slot.x, 0.5);
 });
 
-test('shouldRotateBacks: kağıt yönüne göre (dikey kağıtta kısa kenar döner)', () => {
+test('shouldRotateBacks: by paper orientation (on portrait paper the short edge turns)', () => {
   assert.equal(y.shouldRotateBacks('short', 297, 210), false);
   assert.equal(y.shouldRotateBacks('long', 297, 210), true);
   assert.equal(y.shouldRotateBacks('short', 210, 297), true);
   assert.equal(y.shouldRotateBacks('long', 210, 297), false);
-  assert.equal(y.shouldRotateBacks('short', 200, 200), true, 'kare kağıt dikey sayılır');
+  assert.equal(y.shouldRotateBacks('short', 200, 200), true, 'square paper counts as portrait');
 });
 
-test('forma sırt işareti: her formanın dış yaprağının ön yüzünde, basamaklı', () => {
+test('signature spine mark: on the front of the outer sheet of every signature, stepped', () => {
   const r = y.layout(d.sewn({ pageCount: 48 }), SETTINGS);
   const squares = r.sides.filter((f) => f.squares.length).map((f) => ({ signature: f.signature, side: f.side, inner: f.indexInSignature, k: f.squares[0] }));
   assert.equal(squares.length, 3);
   squares.forEach((k) => { assert.equal(k.side, 'front'); assert.equal(k.inner, 0); assert.equal(k.k.x, 148.5 - 1.5); });
-  assert.ok(squares[0].k.y > squares[1].k.y && squares[1].k.y > squares[2].k.y, 'basamak aşağı iner');
+  assert.ok(squares[0].k.y > squares[1].k.y && squares[1].k.y > squares[2].k.y, 'the step goes down');
   const closed = y.layout(d.sewn({ pageCount: 48 }), Object.assign({}, SETTINGS, { spineMarks: false }));
   assert.equal(closed.sides.filter((f) => f.squares.length).length, 0);
 });
 
-test('sığmayan ölçü uyarı verir; geçersiz ölçü hata', () => {
+test('a size that does not fit gives a warning; an invalid size is an error', () => {
   const r = y.layout(d.sewn({ pageCount: 4 }), { paperWidth: 210, paperHeight: 297, bookWidth: 148, bookHeight: 210 });
   assert.equal(r.warnings.length, 1);
   assert.throws(() => y.layout(d.sewn({ pageCount: 4 }), { paperWidth: 0, paperHeight: 210, bookWidth: 148, bookHeight: 210 }), RangeError);
 });
 
-test('tek2: yuvaların sırt tarafı sayfa tek/çiftliğine göre', () => {
+test('single2: the spine side of the slots by odd/even page', () => {
   const r = y.layout(d.single2({ pageCount: 8 }), SETTINGS);
   assert.deepEqual(r.sides[0].slots.map((v) => v.spineSide), ['left', 'left']); // 1, 5
   assert.deepEqual(r.sides[1].slots.map((v) => v.spineSide), ['right', 'right']); // 6, 2
 });
 
-test('fitPage: sığdır / gerçek / doldur ve 90° döndürme', () => {
+test('fitPage: fit / actual / fill and 90° rotation', () => {
   const box = { x: 0, y: 0, w: 100, h: 200 };
   const s = y.fitPage(box, 50, 50, 0, 'fit');
   assert.equal(s.s, 2); assert.equal(s.width, 100); assert.equal(s.centerY, 100);
@@ -89,27 +89,27 @@ test('fitPage: sığdır / gerçek / doldur ve 90° döndürme', () => {
   assert.equal(r90.s, 1); assert.equal(r90.width, 100); assert.equal(r90.height, 200);
 });
 
-test('drawOrigin: döndürülmüş kutunun merkezi istenen noktaya gelir', () => {
+test('drawOrigin: the centre of the rotated box comes to the requested point', () => {
   for (const angle of [0, 90, 180, 270, -90]) {
     const w = 40, h = 10, mx = 100, my = 50;
     const k = y.drawOrigin(mx, my, w, h, angle);
     const r = angle * Math.PI / 180;
     const cx = k.x + (w / 2) * Math.cos(r) - (h / 2) * Math.sin(r);
     const cy = k.y + (w / 2) * Math.sin(r) + (h / 2) * Math.cos(r);
-    assert.ok(Math.abs(cx - mx) < 1e-6 && Math.abs(cy - my) < 1e-6, 'açı ' + angle);
+    assert.ok(Math.abs(cx - mx) < 1e-6 && Math.abs(cy - my) < 1e-6, 'angle ' + angle);
   }
 });
 
-// ---- D6: 180° arka dönüş (kısa/uzun kenar × yatay/dikey) ----
-test('shouldRotateBacks: yatay/dikey × kısa/uzun kenar dört birleşim', () => {
-  assert.equal(y.shouldRotateBacks('short', 297, 210), false); // yatay + kısa: dönüş yok
-  assert.equal(y.shouldRotateBacks('long', 297, 210), true);  // yatay + uzun: 180°
-  assert.equal(y.shouldRotateBacks('short', 210, 297), true);  // dikey + kısa: 180°
-  assert.equal(y.shouldRotateBacks('long', 210, 297), false); // dikey + uzun: dönüş yok
-  assert.equal(y.shouldRotateBacks('short', 210, 210), true);  // kare dikey sayılır
+// ---- D6: 180° back rotation (short/long edge × landscape/portrait) ----
+test('shouldRotateBacks: landscape/portrait × short/long edge, four combinations', () => {
+  assert.equal(y.shouldRotateBacks('short', 297, 210), false); // landscape + short: no rotation
+  assert.equal(y.shouldRotateBacks('long', 297, 210), true);  // landscape + long: 180°
+  assert.equal(y.shouldRotateBacks('short', 210, 297), true);  // portrait + short: 180°
+  assert.equal(y.shouldRotateBacks('long', 210, 297), false); // portrait + long: no rotation
+  assert.equal(y.shouldRotateBacks('short', 210, 210), true);  // square counts as portrait
 });
 
-test('yerlesim: yalnız arka yüzler döner, ön yüzler dönmez (dört birleşim)', () => {
+test('layout: only the backs turn, the fronts do not (four combinations)', () => {
   const impose = d.sewn({ pageCount: 4, sheetsPerSignature: 1 });
   [[297, 210, 148, 210, 'short', false], [297, 210, 148, 210, 'long', true],
     [210, 297, 100, 150, 'short', true], [210, 297, 100, 150, 'long', false]].forEach(([pg, py, bg, by, cev, expected]) => {
@@ -119,7 +119,7 @@ test('yerlesim: yalnız arka yüzler döner, ön yüzler dönmez (dört birleşi
   });
 });
 
-test('180° dönen arka yüzde sayfa yuvaları kağıt merkezine göre yansır', () => {
+test('on a back turned 180° the page slots are mirrored around the paper centre', () => {
   const impose = d.sewn({ pageCount: 4, sheetsPerSignature: 1 });
   const settings = { paperWidth: 297, paperHeight: 210, bookWidth: 148, bookHeight: 210, duplex: 'long', outerMargin: 3, gutter: 5 };
   const r = y.layout(impose, settings);
@@ -132,23 +132,23 @@ test('180° dönen arka yüzde sayfa yuvaları kağıt merkezine göre yansır',
 });
 
 // ---- D7 / D8 ----
-test('kağıda sığmayan yerleşim: sigmiyor işareti ve açık uyarı', () => {
+test('a layout that does not fit the paper: the doesNotFit flag and a clear warning', () => {
   const impose = d.sewn({ pageCount: 16 });
   const r = y.layout(impose, { paperWidth: 200, paperHeight: 210, bookWidth: 148, bookHeight: 210 });
   assert.equal(r.doesNotFit, true);
-  assert.match(r.warnings[0], /sığmıyor/);
+  assert.match(r.warnings[0], /sığmıyor/);  // turkish-ok: expected Turkish UI text
   assert.equal(y.layout(impose, SETTINGS).doesNotFit, false);
 });
 
-test('negatif dış kenar / cilt payı sessizce 0 yapılmaz, reddedilir', () => {
+test('a negative outer margin / gutter is not silently made 0, it is rejected', () => {
   const impose = d.sewn({ pageCount: 16 });
-  assert.throws(() => y.layout(impose, Object.assign({}, SETTINGS, { outerMargin: -2 })), /negatif/);
-  assert.throws(() => y.layout(impose, Object.assign({}, SETTINGS, { gutter: -0.5 })), /negatif/);
+  assert.throws(() => y.layout(impose, Object.assign({}, SETTINGS, { outerMargin: -2 })), /negatif/);  // turkish-ok: expected Turkish UI text
+  assert.throws(() => y.layout(impose, Object.assign({}, SETTINGS, { gutter: -0.5 })), /negatif/);  // turkish-ok: expected Turkish UI text
   assert.doesNotThrow(() => y.layout(impose, Object.assign({}, SETTINGS, { outerMargin: 0, gutter: 0 })));
 });
 
-// ---- AR: sırt işareti hep katlama çizgisinde; yeni turda biçim değişir ----
-test('sırt işareti: 130 formada (tur, basamak) benzersiz, x merkezi hep middleX, biçim tura göre değişir', () => {
+// ---- AR: the spine mark is always on the fold line; the style changes in a new round ----
+test('spine mark: on 130 signatures (round, step) unique, x centre always middleX, style changes by round', () => {
   const impose = d.sewn({ pageCount: 130 * 16, sheetsPerSignature: 4 });
   const r = y.layout(impose, SETTINGS);
   const middleX = r.paper.width / 2;
@@ -157,17 +157,17 @@ test('sırt işareti: 130 formada (tur, basamak) benzersiz, x merkezi hep middle
   assert.equal(Object.keys(signatures).length, 130);
   const double = new Set();
   Object.values(signatures).forEach((k) => {
-    assert.ok(Math.abs(k.x + k.w / 2 - middleX) < 1e-9, 'işaret merkezi middleX: ' + k.x);
+    assert.ok(Math.abs(k.x + k.w / 2 - middleX) < 1e-9, 'mark centre middleX: ' + k.x);
     double.add(k.kind + ',' + k.step);
     assert.ok(k.x >= 0 && k.x + k.w <= 297 && k.y >= 0 && k.y + k.h <= 210);
-    // parçalar da merkezde (yatay ortalı) ve işaret kutusunda
+    // the parts are in the centre too (horizontally centred) and inside the mark box
     const p = y.markParts(k);
     const minX = Math.min(...p.map((q) => q.x)), maxX = Math.max(...p.map((q) => q.x + q.w));
-    assert.ok(Math.abs((minX + maxX) / 2 - middleX) < 1e-9, 'parçalar ortalı');
+    assert.ok(Math.abs((minX + maxX) / 2 - middleX) < 1e-9, 'parts centred');
   });
-  assert.equal(double.size, 130, '(tur, basamak) çiftleri benzersiz');
-  assert.ok(Object.values(signatures).some((k) => k.kind >= 3), 'en az 4 tur');
-  // aynı basamaktaki ardışık turların biçimi farklı (40. forma ile 0. forma ayırt edilir)
+  assert.equal(double.size, 130, '(round, step) pairs unique');
+  assert.ok(Object.values(signatures).some((k) => k.kind >= 3), 'at least 4 rounds');
+  // consecutive rounds on the same step have different styles (signature 40 is told apart from signature 0)
   const partCount = (k) => y.markParts(k).length;
   assert.notEqual(`${signatures[40].style}`, `${signatures[0].style}`);
   assert.notEqual(partCount(signatures[80]), partCount(signatures[0]));

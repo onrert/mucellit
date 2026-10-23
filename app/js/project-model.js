@@ -1,17 +1,19 @@
 /*
- * project-model.js — süreç (kitap/proje) veri modeli, DOM'suz saf modül
- * (KitapCilt.surecModel / module.exports).
+ * project-model.js — data model of the projects (books being bound), a pure module without DOM
+ * (Mucellit.projectModel / module.exports).
  *
- * Veri biçimi (JSON yedeğiyle aynı):
- * { surum: 1, kitaplar: [ { id, ad, ciltTuru: 'formali'|'tek', kitapGen, kitapYuk,
- *   kagit, kagitKalinlik, pdfAdi, olusturma, adimlar: [ { id, ad, tamam, tarih, not, istegeBagli, sablon? } ],
- *   ayar: null | { ...Düzenle sekmesi ayarları } } ] }
- * PDF dosyasının kendisi saklanmaz; yalnız adı.
+ * Data format (the same as the JSON backup):
+ * { version: 2, projects: [ { id, name, bindingType: 'sewn'|'single', bookWidth, bookHeight,
+ *   paper, paperThickness, pdfName, created, steps: [ { id, name, done, date, note, optional, template? } ],
+ *   settings: null | { ...Imposition tab settings } } ] }
+ * The PDF file itself is not stored; only its name.
+ * Data saved by earlier versions (version 1, Turkish field names) is converted by migrate.js before it gets here.
  *
- * (dil): şablondan gelen adımın `sablon` anahtarı vardır (ör. "dikis"); `ad` oluşturulduğu andaki dilde yazılır
- * (eski sürümler ve JSON yedeği için). Görünen ad `adimAdi(adim)`: şablon anahtarı varsa o anki dilde; eski
- * (öncesi, anahtarsız) kayıtta ad bir Türkçe şablon adıyla birebir aynıysa yine o anki dilde; değilse (kullanıcının
- * eklediği adım) olduğu gibi. Eski kayıt değiştirilmez (geçiş yazmadan, okurken).
+ * (i18n): a step from a template has a `template` key (e.g. "sewing"); `name` is written in the language current when
+ * it was created (for older versions and the JSON backup). The name shown is `stepName(step)`: in the current language
+ * when there is a template key; for the oldest records (without keys) also in the current language when the name is
+ * exactly a Turkish template name; otherwise (a step the user added) as it is. Such records are not rewritten
+ * (resolved when read).
  */
 (function (root, factory) {
   var m = factory();
@@ -23,13 +25,13 @@
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  var root = typeof self !== 'undefined' ? self : globalThis; // Mucellit.i18n is found in a vm context too
   function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('./i18n.js'); }
   function t(a, p) { return I18n().t(a, p); }
 
   var VERSION = 2;
 
-  // Adım şablonları: anahtar → sözlükte "adim.<anahtar>".
+  // Step templates: key → "step.<key>" in the dictionary.
   var TEMPLATES = {
     sewn: [
       { key: 'prep_pdf' },
@@ -58,12 +60,12 @@
     ]
   };
 
-  /** Bir şablon adımının adı (verilen dilde; yoksa o anki dilde). */
+  /** The name of a template step (in the given language; otherwise in the current one). */
   function templateName(key, code) {
     return code ? I18n().tIn(code, 'step.' + key) : t('step.' + key);
   }
 
-  /** Görünen adım adı (bkz. üstteki notu). */
+  /** The step name shown (see the note above). */
   function stepName(step) {
     if (!step) return '';
     var a = step.template;
@@ -72,7 +74,7 @@
     return old ? templateName(old) : String(step.name);
   }
 
-  /** Eski (anahtarsız) kayıt: Türkçe şablon adı → anahtar; değilse null. */
+  /** Old record (without keys): Turkish template name → key; otherwise null. */
   function legacyTemplate(name) {
     var found = null;
     Object.keys(TEMPLATES).forEach(function (kind) {
@@ -82,7 +84,7 @@
   }
 
   function kindName(bindingType) { return t('binding.kind.' + (bindingType === 'single' ? 'single' : 'sewn')); }
-  // Geriye uyum: TUR_ADI[tur] okunduğu andaki dilde.
+  // Backward compatibility: KIND_NAME[kind] in the language current when read.
   var KIND_NAME = {};
   ['sewn', 'single'].forEach(function (k) {
     Object.defineProperty(KIND_NAME, k, { get: function () { return kindName(k); }, enumerable: true });
@@ -167,11 +169,11 @@
     return { done: done, total: total, ratio: total ? done / total : 0 };
   }
 
-  /** İçe aktarılan JSON'u doğrular; geçersizse açıklamalı hata atar. */
+  /** Validates imported JSON; throws an explanatory error when it is invalid. */
   function validate(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(t('validate.object'));
     if (data.version !== VERSION) throw new Error(t('validate.version', { version: data.version }));
-    if (!Array.isArray(data.projects)) throw new Error(t('validate.no_books'));
+    if (!Array.isArray(data.projects)) throw new Error(t('validate.no_projects'));
     var idler = Object.create(null);
     data.projects.forEach(function (k, i) {
       var place = t('validate.book_place', { n: i + 1 });
@@ -193,7 +195,7 @@
         if (!a.id) throw ha('validate.step_id_blank');
         if (a.id in stepIds) throw ha('validate.step_id_repeat', { id: a.id });
         stepIds[a.id] = true;
-        if (a.note !== undefined && typeof a.note !== 'string') throw ha('validate.not_metin');
+        if (a.note !== undefined && typeof a.note !== 'string') throw ha('validate.note_text');
         if (a.date !== undefined && typeof a.date !== 'string') throw ha('validate.date_text');
         if (a.template !== undefined && typeof a.template !== 'string') throw ha('validate.template_text');
       });

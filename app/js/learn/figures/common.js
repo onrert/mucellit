@@ -1,18 +1,19 @@
 /*
- * figures/common.js — figürlerin ortak yardımcıları (Mücellit Öğren, Colorfigures yöntemi).
- * LİSANS NOTU (MIT): Colorfigures motoru ve yöntemiyle yapıldı. MIT License. Copyright (c) 2026 April Zhu
- * (Colorfigures; iso-glow) ve Tolga Cohce (iso-figure). Tam metin: LICENSE.
+ * figures/common.js — shared helpers of the figures (Mucellit Learn, Colorfigures method).
+ * LICENSE NOTE (MIT): made with the Colorfigures engine and method. MIT License. Copyright (c) 2026 April Zhu
+ * (Colorfigures; iso-glow) and Tolga Cohce (iso-figure). Full text: LICENSE.
  *
- * Bütün figürler KitapCilt.ogren.sekil.<ad>(o) biçiminde bir kurucu yazar; o = { olcu, t, sayi, adimlar } (learn.js verir).
- * Kurucu { cfg, adim: { <id>: { eylem(st, ui) -> bool (başladı mı), son(st) } } } döner. cfg mountFigure'a gider.
- * Ölçüler kitabın sayılarından (learn-measure.js → KitapCilt.hesap) gelir; hiçbir kitap ölçüsü burada sabit değildir.
+ * Every figure writes a constructor Mucellit.learn.figures.<name>(o); o = the book's numbers (learn-measure.js
+ * calculate(), learn.js passes it). The constructor returns { cfg, step: { <id>: { action(st, ui) -> bool (did it
+ * start), last(st) } } }. cfg goes to mountFigure.
+ * The measurements come from the book's numbers (learn-measure.js → Mucellit.calc); no book measurement is fixed here.
  */
 'use strict';
 (function (root) {
   const MC = root.Mucellit.learn, { PALS, INK, P, Dv, f, pd, rrUV, PX, on, cross, norm, vis, tone, toneI, matOf, ease, ink, fill, face, shape, line, loft, hullInk, box, rod, txM, board } = MC.cf;
   MC.figures = MC.figures || {};
 
-  /* x boyunca uzanan parçalar için 2B ressam sıralaması: (y, z) kesitinde doğru parçası (a, b) ya da yarıçaplı nokta (a, r) */
+  /* 2D painter's sort for parts that run along x: in the (y, z) section a line segment (a, b) or a point with a radius (a, r) */
   function xSort(items){
     const CV = MC.cf.CAM_V, L0 = Math.hypot(CV[1], CV[2]) || 1, vy = CV[1]/L0, vz = CV[2]/L0;
     const open = p => -p[0]*vz + p[1]*vy, dp = p => p[0]*vy + p[1]*vz, n = items.length;
@@ -33,7 +34,7 @@
     return order.map(i => items[i].svg).join('');
   }
   const kOp = (op, svg) => op != null && op < 1 ? (op <= .01 ? '' : `<g opacity="${f(op)}">${svg}</g>`) : svg;
-  /* x boyunca dışbükey prizma (kesit poly: [y, z] dizisi); uç kapağı ayrı öğe */
+  /* a convex prism along x (section poly: an array of [y, z]); the end cap is a separate item */
   function xPrism(poly, x0, x1, m, items, o = {}){
     const sh = o.shade || toneI, cy = poly.reduce((a, p) => a + p[0], 0)/poly.length, cz = poly.reduce((a, p) => a + p[1], 0)/poly.length, faces = [];
     for (let i = 0; i < poly.length; i++){ const a = poly[i], b = poly[(i + 1) % poly.length], t = [b[0] - a[0], b[1] - a[1]], tl = Math.hypot(...t); if (tl < 1e-6) continue;
@@ -69,12 +70,12 @@
     for (let y = 20; y < D; y += 20) g += pd([[6, y, h + .05], [W - 6, y, h + .05]], false);
     return s + `<path d="${g}" fill="none" stroke="#b5dcc0" stroke-width=".6" opacity=".8"/>`;
   }
-  // tek animasyon: st[key] 0..T saniye; adım (u 0..1); bitince done
+  // one animation: st[key] 0..T seconds; step (u 0..1); done at the end
   function kRun(st, ui, key, T, step, done){ const id = ++st.anim; st[key] = 0;
     ui.animate(dt => { if (id !== st.anim) return false; st[key] += dt; step(Math.min(1, st[key]/T)); if (st[key] >= T){ st[key] = -1; if (done) done(); return false; } return true; }); }
-  // ardışık animasyonlar: [[key, T, step], ...] sırayla
+  // animations in a row: [[key, T, step], ...] one after the other
   function kOrder(st, ui, list, done){ const go = i => { if (i >= list.length){ if (done) done(); return; } const [k, T, s] = list[i]; kRun(st, ui, k, T, s, () => go(i + 1)); }; go(0); }
-  // kemik (bone folder): x0..x0+L boyunca yassı çubuk, uçları yuvarlak
+  // bone folder: a flat bar along x0..x0+L with rounded ends
   function kBone(x0, y0, z0, L = 150, w = 22, h = 4){
     const prof = rrUV(y0, z0, y0 + w, z0 + h, 1.9, 4), x1 = x0 + L, A = on(PX(x0), prof), B = on(PX(x1), prof);
     let s = loft(A, B, n => tone(n, kBONE));
@@ -83,16 +84,16 @@
     if (vis([0, 0, 1])) s += line([[x0 + 12, y0 + w/2, z0 + h + .05], [x1 - 12, y0 + w/2, z0 + h + .05]], .5);
     return { svg: s + hullInk([...A, ...B], 1.6), box: [[x0, y0, z0], [x1, y0 + w, z0 + h]], pts: [...A, ...B] };
   }
-  // fırça (tutkal): ucu (x, y, z) noktasında, sap yukarı
+  // brush (glue): its tip at the point (x, y, z), the handle up
   const kBrush = (x, y, z, along = 'x') => along === 'x'
     ? box(x - 8, y - 6, z, x + 8, y + 6, z + 6, matOf('#e9d9a6'), toneI, 1) + rod([x, y, z + 6], [x - 26, y, z + 36], 2.6, kWOOD, toneI, 1, 2.6, 12)
     : box(x - 60, y - 5, z, x + 60, y + 5, z + 6, matOf('#e9d9a6'), toneI, 1) + box(x - 30, y - 4, z + 6, x + 30, y + 4, z + 22, kWOOD, toneI, 1.2);
 
-  /* ---------- kitap geometrisi (Şekil: forza, sırt, kapak, takma, pres, bitmiş kitap) ----------
-     x = sırt boyu, y = genişlik, z = yukarı; 1 birim = 1 mm. Açık (düz) kapakta: sağ mukavva RB0..RB1, mafsal, sırt
-     şeridi S0..S1, mafsal, sol mukavva LB0..LB1. Modelde mafsal boşluğu g = f + t: kapak iki düz menteşeyle kapanır
-     (gerçekte bez oluğa çöker); böylece kapalı kitapta taşma tam k olur. Blok kapalıyken sırtı şeridin iç yüzüne
-     (S0 - t) dayanır. */
+  /* ---------- book geometry (figures: endpapers, spine, cover, casing-in, press, finished book) ----------
+     x = spine length, y = width, z = up; 1 unit = 1 mm. On an open (flat) case: right board RB0..RB1, joint, spine
+     stiffener S0..S1, joint, left board LB0..LB1. In the model the joint gap is g = f + t: the case closes on two flat
+     hinges (in reality the cloth sinks into the groove); so the square is exactly k on the closed book. With the
+     block closed its spine rests against the inner face of the stiffener (S0 - t). */
   function kGeo(o, ek = {}){
     const T = o.t, g = o.f + T, BH = 4;
     const G = { T, TH: o.S, W: o.W, H: o.H, N: o.N, BH, zc: ek.zc ?? BH + .4, g, f: o.f, k: o.k, R: o.R, Db: o.Db, Dh: o.Dh, e: o.e };
@@ -105,7 +106,7 @@
   function kChain(G, f1, f2){ const H1 = [G.S0, G.zc], H2 = kRot([G.S1, G.zc], H1, f1);
     const R1 = p => kRot(p, H1, f1), Rl = p => kRot(kRot(p, H1, f1), H2, f2);
     return { f1, f2, H2, R1, Rl }; }
-  // kapak: iki mukavva + şerit (dış yüz bez; iç yüzde çıplak mukavva, kıvırma payı bantları: önce baş/etek, üstte ağız)
+  // case: two boards + stiffener (outer face cloth; on the inner face bare board, turn-in bands: first head/tail, fore-edge on top)
   function kCaseItems(G, ch, m, items, o = {}){
     const zc = G.zc, zt = zc + G.T, op = o.op, pts = [], e = G.e;
     const inner = (spineAtB, isStrip) => (i, n, Q) => {
@@ -114,8 +115,8 @@
       const tF = spineAtB ? 1 : 0, w = Math.hypot(Q[3][1] - Q[0][1], Q[3][2] - Q[0][2]), ee = e/w;
       let s = shape(Q, toneI(n, kBOARD), 1);
       const band = (x0, x1, t0, t1) => fill(pd([at(x0, t0), at(x1, t0), at(x1, t1), at(x0, t1)]), tone(n, m));
-      s += band(G.XB0, G.XB0 + e, 0, 1) + band(G.XB1 - e, G.XB1, 0, 1);                       // 1. baş ve etek (uzun kenarlar)
-      if (!isStrip) s += band(G.XB0, G.XB1, tF ? 1 - ee : 0, tF ? 1 : ee) + ink(pd([at(G.XB0 + e, tF ? 1 - ee : ee), at(G.XB1 - e, tF ? 1 - ee : ee)], false), .5);   // 2. ağız, üstte
+      s += band(G.XB0, G.XB0 + e, 0, 1) + band(G.XB1 - e, G.XB1, 0, 1);                       // 1. head and tail (long edges)
+      if (!isStrip) s += band(G.XB0, G.XB1, tF ? 1 - ee : 0, tF ? 1 : ee) + ink(pd([at(G.XB0 + e, tF ? 1 - ee : ee), at(G.XB1 - e, tF ? 1 - ee : ee)], false), .5);   // 2. fore-edge, on top
       if (o.paste && !isStrip){ const m3 = 3/w, a0 = tF ? 0 : m3, a1 = tF ? 1 - m3 : 1;
         s += shape([at(G.XB0 + 3, a0), at(G.XB1 - 3, a0), at(G.XB1 - 3, a1), at(G.XB0 + 3, a1)], toneI(n, kENDP), .7); }
       return s; };
@@ -131,7 +132,7 @@
         const U = norm([0, b[1] - a[1], b[2] - a[2]]), V = [1, 0, 0], xm = (G.XB0 + G.XB1)/2;
         s += kText([xm - 27, mid[0], mid[1]], U, V, o.title, 13, '#f3d98a', 800) + (o.title2 ? kText([xm - 9, mid[0], mid[1]], U, V, o.title2, 7, '#f3d98a', 700) : ''); }
       return s; }, shade: tone, op, bias: o.bias }));
-    // mafsallardaki bez (dış yüz bez, iç yüz astar); oluk bastırıldıysa koyu çizgi
+    // cloth at the joints (outer face cloth, inner face lining); a dark line when the groove is pressed
     for (const [p, q] of [[[G.RB1, zc - .25], [G.S0, zc - .25]], [ch.R1([G.S1, zc - .25]), ch.Rl([G.LB0, zc - .25])]]){
       const t = [q[0] - p[0], q[1] - p[1]], tl = Math.hypot(...t); let n = [0, t[1]/tl, -t[0]/tl];
       const Q = [[G.XB0, p[0], p[1]], [G.XB1, p[0], p[1]], [G.XB1, q[0], q[1]], [G.XB0, q[0], q[1]]];
@@ -140,7 +141,7 @@
       items.push({ a: p, b: q, bias: (o.bias || 0) - .01, svg: kOp(op, sv) }); }
     return pts;
   }
-  // blok: üst/alt forza, sırt (sırt bezi), ön kenar, baş/kuyruk kesitleri. tr: kesit dönüşümü (çevirme), N forma katı.
+  // block: top/bottom endpaper, spine (mull), fore-edge, head/tail sections. tr: section transform (turning over), N signature layers.
   function kBlockItems(G, y0, z0, items, o = {}){
     const TH = o.th || G.TH, W = G.W, y1 = y0 + W, z1 = z0 + TH, k = o.k || 0, N = G.N, tr = o.tr || (p => p);
     const lines = (at, n) => { let d = ''; for (let j = 1; j < N; j++) d += pd([at(G.XK0 + 6, j/N), at(G.XK1 - 6, j/N)], false); return d; };
@@ -150,7 +151,7 @@
         return s + `<path d="${lines(at, n)}" fill="none" stroke="#a89a78" stroke-width=".35"/>`; }
       if (i === 3){ let s = shape(Q, toneI(n, kEDGE), 1), d = ''; for (let j = 1; j < N; j++) d += pd([at(G.XK0, j/N), at(G.XK1, j/N)], false);
         return s + `<path d="${d}" fill="none" stroke="#b9ad92" stroke-width=".3"/>`; }
-      const fz = i === 2 ? (o.endpaperTop ?? o.endpapers) : (o.endpaperAlt ?? o.endpapers);
+      const fz = i === 2 ? (o.endpaperTop ?? o.endpapers) : (o.endpaperBottom ?? o.endpapers);
       let s = shape(Q, toneI(n, fz === false ? kPAPER : kENDP), 1);
       if (i === 2 && o.mull !== false && o.mullKanat !== false){
         const w = Math.hypot(Q[3][1] - Q[0][1], Q[3][2] - Q[0][2]), ee = 25/w;
@@ -178,8 +179,8 @@
     return pts;
   }
 
-  // sırttaki dikiş izi: her formada dış dikişler (delik 1-2, 3-4, …) ve iki uçta kettle zinciri. at(x, t): sırt yüzünde
-  // nokta (t 0..1 kalınlık boyunca), ST: delik x konumları, N: forma sayısı
+  // sewing marks on the spine: on every signature the outside stitches (holes 1-2, 3-4, …) and the kettle chain at both ends. at(x, t): a
+  // point on the spine face (t 0..1 across the thickness), ST: x positions of the holes, N: number of signatures
   function kSpineSewing(at, N, ST, w = .9){
     let s = '';
     for (let j = 0; j < N; j++){ const tm = (j + .5)/N;

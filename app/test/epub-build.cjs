@@ -1,18 +1,17 @@
 /*
- * epub-build.cjs — YALNIZ TEST: tanım nesnesinden ZIP / EPUB baytı üretir.
+ * epub-build.cjs — TEST ONLY: builds ZIP / EPUB bytes from a definition object.
  *
- * Birim testler (require) ve e2e.mjs (createRequire) kullanır; fixture'lar test sırasında
- * üretilir, repoya ikili EPUB girmez, lisans sorunu yoktur (metinler burada yazılmış).
+ * Used by the unit tests (require) and e2e.mjs (createRequire); the fixtures are built during the test, no binary EPUB
+ * goes into the repository, there is no licence issue (the texts are written here).
  *
- * Uzantı .cjs: dosya CommonJS'tir ve uygulama kodu değildir. XML ad alanı tanımlayıcıları
- * (xmlns değerleri) içerir; A paketinin "app altında http(s) adresi yok" denetimi yalnız
- * tarayıcıda çalışan *.js / *.html dosyalarına bakar.
+ * Extension .cjs: the file is CommonJS and not app code. It contains XML namespace identifiers (xmlns values); the
+ * "no http(s) address under app" check of package A only looks at the *.js / *.html files that run in the browser.
  *
  *   const U = require('./epub-build.cjs');
- *   U.zipUret([{ ad, veri, yontem?, bayrak? }]) → Buffer
- *   U.epub(tanim) → Buffer
- *   U.hazir.trMini() / enMini() / drm() / fontGizli() / fxl() / containerYok() / bozuk() / uzun()
- *   U.B3_CUMLE: trMini'de birebir geçen Türkçe cümle
+ *   U.makeZip([{ name, data, method?, flag? }]) → Buffer
+ *   U.epub(definition) → Buffer
+ *   U.ready.trMini() / enMini() / drm() / fontHidden() / fxl() / noContainer() / corrupt() / long()
+ *   U.B3_SENTENCE: a Turkish sentence that appears exactly in trMini
  */
 'use strict';
 const zlib = require('node:zlib');
@@ -38,11 +37,11 @@ function bytes(data) {
 }
 
 /**
- * girdiler: [{ ad, veri, yontem = 8 (0 stored, 8 deflate, başka sayı: veri olduğu gibi yazılır),
- *              bayrak = 0x800 (UTF-8 ad), crcBoz = false,
- *              veriTanimlayici: true → bayrak bit 3; yerel başlıkta CRC/boyutlar 0, veriden sonra imzalı tanımlayıcı,
- *              bildirilenBoyut: sayı → merkezi dizin ve yerel başlıkta açılmış boyut bu yazılır (gerçeği değil) }]
- * secenek: { zip64Bulucu: true → EOCD'den önce ZIP64 bulucu imzası yazılır, yorum: EOCD sonuna ZIP yorumu (metin) }
+ * inputs: [{ name, data, method = 8 (0 stored, 8 deflate, any other number: data is written as it is),
+ *            flag = 0x800 (UTF-8 name), corruptCrc = false,
+ *            dataIdentifier: true → flag bit 3; CRC/sizes 0 in the local header, a signed descriptor after the data,
+ *            reportedSize: number → this unpacked size is written in the central directory and the local header (not the real one) }]
+ * options: { zip64Locator: true → a ZIP64 locator signature is written before the EOCD, comment: ZIP comment at the end of the EOCD (text) }
  */
 function makeZip(inputs, options) {
   const local = [];
@@ -57,22 +56,22 @@ function makeZip(inputs, options) {
     const flag = (g.flag === undefined ? 0x800 : g.flag) | (identifier ? 0x8 : 0);
     let crc = crc32(raw);
     if (g.corruptCrc) crc = (crc ^ 1) >>> 0;
-    const isOpen = g.reportedSize === undefined ? raw.length : g.reportedSize;
+    const unpackedSize = g.reportedSize === undefined ? raw.length : g.reportedSize;
     const lb = Buffer.alloc(30);
     lb.writeUInt32LE(0x04034b50, 0); lb.writeUInt16LE(20, 4); lb.writeUInt16LE(flag, 6); lb.writeUInt16LE(method, 8);
-    lb.writeUInt32LE(0, 10); lb.writeUInt32LE(identifier ? 0 : crc, 14); lb.writeUInt32LE(identifier ? 0 : data.length, 18); lb.writeUInt32LE(identifier ? 0 : isOpen, 22);
+    lb.writeUInt32LE(0, 10); lb.writeUInt32LE(identifier ? 0 : crc, 14); lb.writeUInt32LE(identifier ? 0 : data.length, 18); lb.writeUInt32LE(identifier ? 0 : unpackedSize, 22);
     lb.writeUInt16LE(name.length, 26); lb.writeUInt16LE(0, 28);
     local.push(lb, name, data);
     let dt = Buffer.alloc(0);
     if (identifier) {
       dt = Buffer.alloc(16);
-      dt.writeUInt32LE(0x08074b50, 0); dt.writeUInt32LE(crc, 4); dt.writeUInt32LE(data.length, 8); dt.writeUInt32LE(isOpen, 12);
+      dt.writeUInt32LE(0x08074b50, 0); dt.writeUInt32LE(crc, 4); dt.writeUInt32LE(data.length, 8); dt.writeUInt32LE(unpackedSize, 12);
       local.push(dt);
     }
     const cb = Buffer.alloc(46);
     cb.writeUInt32LE(0x02014b50, 0); cb.writeUInt16LE(20, 4); cb.writeUInt16LE(20, 6); cb.writeUInt16LE(flag, 8);
     cb.writeUInt16LE(method, 10); cb.writeUInt32LE(0, 12); cb.writeUInt32LE(crc, 16); cb.writeUInt32LE(data.length, 20);
-    cb.writeUInt32LE(isOpen, 24); cb.writeUInt16LE(name.length, 28); cb.writeUInt32LE(offset, 42);
+    cb.writeUInt32LE(unpackedSize, 24); cb.writeUInt16LE(name.length, 28); cb.writeUInt32LE(offset, 42);
     center.push(cb, name);
     offset += 30 + name.length + data.length + dt.length;
   }
@@ -91,7 +90,7 @@ function makeZip(inputs, options) {
   return Buffer.concat(parts);
 }
 
-// ---- küçük resimler ----
+// ---- small images ----
 function makePng(w, h, color) {
   const [r, g, b] = color || [180, 60, 20];
   const line = Buffer.alloc(1 + w * 3);
@@ -107,16 +106,18 @@ function makePng(w, h, color) {
   ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), part('IHDR', ihdr), part('IDAT', zlib.deflateSync(raw)), part('IEND', Buffer.alloc(0))]);
 }
-// 1×1 GIF (createImageBitmap → PNG yolunu sınar)
+// 1×1 GIF (tests the createImageBitmap → PNG path)
 const GIF_1X1 = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAEALAAAAAABAAEAAAICTAEAOw==', 'base64');
 
-// ---- metin üretimi (belirlenimci, Türkçe) ----
+// turkish-data: begin (Turkish word list for the generated paragraphs)
+// ---- text generation (deterministic, Turkish) ----
 const WORDS = ('kitap sayfa cilt forma kağıt mürekkep dikiş sırt kapak yaprak kalem defter masa pencere ışık gölge ' +
   'akşam sabah güneş yağmur rüzgâr deniz dağ ağaç çiçek bahçe köprü sokak şehir köy ırmak göl orman yol ' +
   'öğretmen öğrenci çocuk ihtiyar kadın adam kardeş arkadaş komşu yolcu usta çırak terzi berber kâtip ' +
   'güzel uzun kısa eski yeni büyük küçük sessiz kalabalık ılık soğuk sıcak yorgun mutlu üzgün çalışkan ' +
   'okudu yazdı gördü düşündü anlattı bekledi yürüdü gülümsedi sordu söyledi taşıdı dinledi hatırladı ' +
   'İstanbul İzmir Iğdır Ankara Bursa Çanakkale Şanlıurfa Ödemiş Üsküdar Ağrı').split(' ');
+// turkish-data: end
 
 function random(seed) {
   let s = seed >>> 0 || 1;
@@ -154,20 +155,20 @@ function xhtml(body, s) {
   s = s || {};
   const css = (s.css || []).map((c) => `<link rel="stylesheet" type="text/css" href="${c}"/>`).join('');
   const style = s.style ? `<style type="text/css">${s.style}</style>` : '';
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="${NS.xhtml}" xmlns:epub="${NS.ops}" xml:lang="${s.i18n || 'tr'}" lang="${s.i18n || 'tr'}">` +
-    `<head><title>${s.title || 'Bölüm'}</title>${css}${style}</head><body>${body}</body></html>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="${NS.xhtml}" xmlns:epub="${NS.ops}" xml:lang="${s.lang || 'tr'}" lang="${s.lang || 'tr'}">` +
+    `<head><title>${s.title || 'Bölüm'}</title>${css}${style}</head><body>${body}</body></html>`;  // turkish-ok: Turkish test text
 }
 
 const MEDIA = { xhtml: 'application/xhtml+xml', css: 'text/css', png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', ncx: 'application/x-dtbncx+xml', otf: 'font/otf' };
 
 /**
- * tanim: { surum = 3, baslik, yazar, dil = 'tr', bolumler: [{ ad, xhtml, linear = true, ozellik }],
- *          dosyalar: { 'ad': veri } (OEBPS altına), kapak: 'resim adı' (cover-image), fxl: bool,
- *          ncx: bool, sifreleme: xml metni, container = true, opfEkMeta: '', ekGirdiler: [{ad, veri}] }
+ * definition: { version = 3, title, author, lang = 'tr', sections: [{ name, xhtml, linear = true, property }],
+ *               files: { 'name': data } (under OEBPS), cover: 'image name' (cover-image), fxl: bool,
+ *               ncx: bool, encryption: xml text, container = true, opfExtraMeta: '', extraInputs: [{ name, data }] }
  */
 function epub(t) {
   const version = t.version || 3;
-  const i18n = t.i18n || 'tr';
+  const lang = t.lang || 'tr';
   const g = [{ name: 'mimetype', data: 'application/epub+zip', method: 0 }];
   if (t.container !== false) {
     g.push({ name: 'META-INF/container.xml', data: `<?xml version="1.0"?><container version="1.0" xmlns="${NS.container}"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>` });
@@ -193,58 +194,58 @@ function epub(t) {
   }
   if (t.ncx) manifest.push(`<item id="ncx" href="toc.ncx" media-type="${MEDIA.ncx}"/>`);
   const fxl = t.fxl ? '<meta property="rendition:layout">pre-paginated</meta>' : '';
-  const opf = `<?xml version="1.0" encoding="UTF-8"?><package xmlns="${NS.opf}" version="${version}.0" unique-identifier="kimlik"${version >= 3 ? ' prefix="rendition: http://www.idpf.org/vocab/rendition/#"' : ''}>` +
-    `<metadata xmlns:dc="${NS.dc}"><dc:identifier id="kimlik">kitap-cilt-test</dc:identifier><dc:title>${t.title || 'Deneme'}</dc:title>` +
-    `<dc:creator>${t.writes || 'Mücellit'}</dc:creator><dc:language>${i18n}</dc:language>${coverMeta}${fxl}${t.opfEkMeta || ''}</metadata>` +
+  const opf = `<?xml version="1.0" encoding="UTF-8"?><package xmlns="${NS.opf}" version="${version}.0" unique-identifier="bookid"${version >= 3 ? ' prefix="rendition: http://www.idpf.org/vocab/rendition/#"' : ''}>` +
+    `<metadata xmlns:dc="${NS.dc}"><dc:identifier id="bookid">mucellit-test</dc:identifier><dc:title>${t.title || 'Test'}</dc:title>` +
+    `<dc:creator>${t.author || 'Mücellit'}</dc:creator><dc:language>${lang}</dc:language>${coverMeta}${fxl}${t.opfExtraMeta || ''}</metadata>` +
     `<manifest>${manifest.join('')}</manifest><spine${t.ncx ? ' toc="ncx"' : ''}>${spine.join('')}</spine></package>`;
   g.push({ name: 'OEBPS/content.opf', data: opf });
   if (t.ncx) {
-    g.push({ name: 'OEBPS/toc.ncx', data: `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="${NS.ncx}" version="2005-1"><head/><docTitle><text>${t.title || 'Deneme'}</text></docTitle><navMap>` +
+    g.push({ name: 'OEBPS/toc.ncx', data: `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="${NS.ncx}" version="2005-1"><head/><docTitle><text>${t.title || 'Test'}</text></docTitle><navMap>` +
       t.sections.map((b, i) => `<navPoint id="n${i}" playOrder="${i + 1}"><navLabel><text>${i + 1}</text></navLabel><content src="${b.name}"/></navPoint>`).join('') + '</navMap></ncx>' });
   }
   t.sections.forEach((b) => g.push({ name: 'OEBPS/' + b.name, data: b.xhtml }));
   Object.keys(files).forEach((name) => g.push({ name: 'OEBPS/' + name, data: files[name], method: /\.(png|jpg|gif)$/.test(name) ? 0 : 8 }));
-  (t.ekInputs || []).forEach((e) => g.push(e));
+  (t.extraInputs || []).forEach((e) => g.push(e));
   return makeZip(g);
 }
 
-// ---- hazır tanımlar ----
-const B3_SENTENCE = "Iğdır'da ılık bir İstanbul sabahı; şöyle güzel çiçekler: ÖĞÜŞÇ ğüşıöçİ.";
-const TR_CSS = '@import url("yok.css");\n.vurgu { font-style: italic }\n.koyu { font-weight: 700 }\n.ortala { text-align: center }\n' +
-  '.gizli { display: none }\n@media print { p { display: none } }\nh1 + p, .ilk { text-indent: 0 }\n.yeni-sayfa { page-break-before: always }\n';
+// ---- ready definitions ----
+const B3_SENTENCE = "Iğdır'da ılık bir İstanbul sabahı; şöyle güzel çiçekler: ÖĞÜŞÇ ğüşıöçİ.";  // turkish-ok: Turkish test text
+const TR_CSS = '@import url("missing.css");\n.emphasis { font-style: italic }\n.bold-class { font-weight: 700 }\n.centered { text-align: center }\n' +
+  '.hidden { display: none }\n@media print { p { display: none } }\nh1 + p, .first { text-indent: 0 }\n.new-page { page-break-before: always }\n';
 
 function trMiniDefinition() {
   const r = random(42);
   const p = (n) => `<p>${paragraphText(r, n)}</p>`;
   const b1 = xhtml(
-    '<h1>Birinci Bölüm</h1>' +
-    `<p class="ilk">Bu kitapta <span class="vurgu">eğik yazılmış</span> ve <strong>kalın yazılmış</strong> sözcükler var; <span class="koyu">sınıfla kalın</span> da var.</p>` +
-    `<p>Iğdır'da ılık bir İstanbul sabahı;<br/>şöyle güzel çiçekler: ÖĞÜŞÇ ğüşıöçİ.</p>` +
-    '<p class="gizli">GIZLIMETIN bu paragraf görünmemeli.</p>' +
+    '<h1>Birinci Bölüm</h1>' +  // turkish-ok: Turkish test text
+    `<p class="first">Bu kitapta <span class="emphasis">eğik yazılmış</span> ve <strong>kalın yazılmış</strong> sözcükler var; <span class="bold-class">sınıfla kalın</span> da var.</p>` +  // turkish-ok: Turkish test text
+    `<p>Iğdır'da ılık bir İstanbul sabahı;<br/>şöyle güzel çiçekler: ÖĞÜŞÇ ğüşıöçİ.</p>` +  // turkish-ok: Turkish test text
+    '<p class="hidden">GIZLIMETIN bu paragraf görünmemeli.</p>' +  // turkish-ok: Turkish test text
     p(120) + p(90) + '<hr/>' + p(140) +
     `<blockquote><p>${paragraphText(r, 40)}</p></blockquote>` +
-    '<ul><li>birinci madde</li><li>ikinci madde</li></ul><ol><li>sıralı bir</li><li>sıralı iki</li></ol>' +
-    '<p><img src="resim/kucuk.png" alt="küçük resim"/></p>' +
-    '<p><img src="resim/cizim.svg" alt="vektör çizim"/></p>' +
-    '<p><img src="resim/nokta.gif" alt="gif"/></p>' +
-    '<table><tr><td>hücre bir</td><td>hücre iki</td></tr><tr><td>alt bir</td><td>alt iki</td></tr></table>' +
+    '<ul><li>birinci madde</li><li>ikinci madde</li></ul><ol><li>sıralı bir</li><li>sıralı iki</li></ol>' +  // turkish-ok: Turkish test text
+    '<p><img src="images/small.png" alt="küçük resim"/></p>' +  // turkish-ok: Turkish test text
+    '<p><img src="images/drawing.svg" alt="vektör çizim"/></p>' +  // turkish-ok: Turkish test text
+    '<p><img src="images/dot.gif" alt="gif"/></p>' +
+    '<table><tr><td>hücre bir</td><td>hücre iki</td></tr><tr><td>alt bir</td><td>alt iki</td></tr></table>' +  // turkish-ok: Turkish test text
     p(160) + p(110),
-    { css: ['style.css'], title: 'Birinci' });
-  const b2 = xhtml('<h2 class="ortala">İkinci Bölüm</h2>' + p(150) + p(130) + p(170) + `<p class="yeni-sayfa">YENISAYFA ${paragraphText(r, 30)}</p>` + p(80),
-    { css: ['style.css'], title: 'İkinci' });
-  const b3 = xhtml('<h2>Üçüncü Bölüm</h2>' + `<p>Dipnot işareti<a epub:type="noteref" href="#n1">1</a> burada.</p>` + p(200) +
-    `<aside epub:type="footnote" id="n1"><p>1. Dipnot metni.</p></aside>` + `<p style="font-style: italic; text-align: right">SATIRICI eğik ve sağa yaslı.</p>`,
-    { css: ['style.css'], title: 'Üçüncü' });
-  const coverX = xhtml('<div><img src="resim/kapak.png" alt="kapak"/></div>', { title: 'Kapak' });
+    { css: ['style.css'], title: 'Birinci' });  // turkish-ok: Turkish test text
+  const b2 = xhtml('<h2 class="centered">İkinci Bölüm</h2>' + p(150) + p(130) + p(170) + `<p class="new-page">YENISAYFA ${paragraphText(r, 30)}</p>` + p(80),  // turkish-ok: Turkish test text
+    { css: ['style.css'], title: 'İkinci' });  // turkish-ok: Turkish test text
+  const b3 = xhtml('<h2>Üçüncü Bölüm</h2>' + `<p>Dipnot işareti<a epub:type="noteref" href="#n1">1</a> burada.</p>` + p(200) +  // turkish-ok: Turkish test text
+    `<aside epub:type="footnote" id="n1"><p>1. Dipnot metni.</p></aside>` + `<p style="font-style: italic; text-align: right">SATIRICI eğik ve sağa yaslı.</p>`,  // turkish-ok: Turkish test text
+    { css: ['style.css'], title: 'Üçüncü' });  // turkish-ok: Turkish test text
+  const coverX = xhtml('<div><img src="images/cover.png" alt="kapak"/></div>', { title: 'Kapak' });  // turkish-ok: Turkish test text
   return {
-    title: 'Deneme Kitabı', writes: 'Mücellit', i18n: 'tr', cover: 'resim/kapak.png',
-    sections: [{ name: 'kapak.xhtml', xhtml: coverX }, { name: 'b1.xhtml', xhtml: b1 }, { name: 'b2.xhtml', xhtml: b2 }, { name: 'b3.xhtml', xhtml: b3 }],
+    title: 'Deneme Kitabı', author: 'Mücellit', lang: 'tr', cover: 'images/cover.png',  // turkish-ok: Turkish test text
+    sections: [{ name: 'cover.xhtml', xhtml: coverX }, { name: 'b1.xhtml', xhtml: b1 }, { name: 'b2.xhtml', xhtml: b2 }, { name: 'b3.xhtml', xhtml: b3 }],
     files: {
       'style.css': TR_CSS,
-      'resim/kapak.png': makePng(60, 90, [20, 60, 140]),
-      'resim/kucuk.png': makePng(40, 30),
-      'resim/cizim.svg': `<svg xmlns="${NS.svg}" width="10" height="10"><rect width="10" height="10"/></svg>`,
-      'resim/nokta.gif': GIF_1X1
+      'images/cover.png': makePng(60, 90, [20, 60, 140]),
+      'images/small.png': makePng(40, 30),
+      'images/drawing.svg': `<svg xmlns="${NS.svg}" width="10" height="10"><rect width="10" height="10"/></svg>`,
+      'images/dot.gif': GIF_1X1
     }
   };
 }
@@ -252,11 +253,11 @@ function trMiniDefinition() {
 const ready = {
   trMini: () => epub(trMiniDefinition()),
   enMini: () => {
-    // EPUB 2 + NCX; XHTML'de DTD'siz &nbsp; → application/xhtml+xml ayrıştırması parsererror verir
+    // EPUB 2 + NCX; &nbsp; without a DTD in the XHTML → parsing as application/xhtml+xml gives a parsererror
     const b = '<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="' + NS.xhtml + '" xml:lang="en"><head><title>One</title></head><body>' +
       '<h1>Chapter One</h1><p>Hello&nbsp;world, this is an English paragraph with a non&#8209;breaking hyphen and an em&mdash;dash.</p>' +
       '<p>The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.</p></body></html>';
-    return epub({ version: 2, ncx: true, i18n: 'en', title: 'English Mini', sections: [{ name: 'one.xhtml', xhtml: b }] });
+    return epub({ version: 2, ncx: true, lang: 'en', title: 'English Mini', sections: [{ name: 'one.xhtml', xhtml: b }] });
   },
   drm: () => {
     const t = trMiniDefinition();
@@ -266,26 +267,26 @@ const ready = {
   },
   fontHidden: () => {
     const t = trMiniDefinition();
-    t.files['font/gizli.otf'] = Buffer.from('gizlenmis-font-baytlari-gecersiz');
+    t.files['font/hidden.otf'] = Buffer.from('obfuscated-font-bytes-invalid');
     t.encryption = `<?xml version="1.0"?><encryption xmlns="${NS.container}" xmlns:enc="${NS.enc}"><enc:EncryptedData><enc:EncryptionMethod Algorithm="${NS.hiding}"/>` +
-      '<enc:CipherData><enc:CipherReference URI="OEBPS/font/gizli.otf"/></enc:CipherData></enc:EncryptedData></encryption>';
+      '<enc:CipherData><enc:CipherReference URI="OEBPS/font/hidden.otf"/></enc:CipherData></enc:EncryptedData></encryption>';
     return epub(t);
   },
   fxl: () => { const t = trMiniDefinition(); t.fxl = true; return epub(t); },
   noContainer: () => { const t = trMiniDefinition(); t.container = false; return epub(t); },
   corrupt: () => { const r = random(7); return Buffer.from(Array.from({ length: 4096 }, () => Math.floor(r() * 256))); },
   long: (word) => {
-    // ~90 000 kelime: 30 bölüm × 25 paragraf × 120 kelime
+    // ~90 000 words: 30 chapters × 25 paragraphs × 120 words
     const target = word || 90000;
     const r = random(2026);
     const countChapter = 30, parSay = 25, parWord = Math.round(target / countChapter / parSay);
     const sections = [];
     for (let i = 0; i < countChapter; i++) {
-      let body = `<h1>Bölüm ${i + 1}</h1>`;
+      let body = `<h1>Bölüm ${i + 1}</h1>`;  // turkish-ok: Turkish test text
       for (let j = 0; j < parSay; j++) body += `<p>${paragraphText(r, parWord)}</p>`;
-      sections.push({ name: `b${i + 1}.xhtml`, xhtml: xhtml(body, { title: 'Bölüm ' + (i + 1) }) });
+      sections.push({ name: `b${i + 1}.xhtml`, xhtml: xhtml(body, { title: 'Bölüm ' + (i + 1) }) });  // turkish-ok: Turkish test text
     }
-    return epub({ title: 'Uzun Kitap', sections });
+    return epub({ title: 'Long Book', sections });
   }
 };
 

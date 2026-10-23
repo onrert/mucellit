@@ -1,16 +1,18 @@
 'use strict';
 /*
- * learn-measure.test.js — Öğren rehberinin sayı paneli (app/js/learn/learn-measure.js) uygulamanın kendi hesabıyla.
- *  1. Öntanımlılar Hesapla sekmesinin öntanımlılarıyla aynı: index.html'deki Hesapla alanlarından kurulan girdi
- *     (calculator.js girdiOku ile aynı kurallar) → hesap.hesapla → taban → panel; panel Hesapla'nın sonucunu AYNEN kullanır.
- *  2. Örnek Kitap (gerçek bir baskıdan alınan değerler) değerleri
- *     birebir: Hesapla'dan (162 sayfa) ve elle (11 forma × 4 kâğıt) iki yoldan.
- *  3. Bağımsız eşleme (bu dosyada ayrı yazıldı, panel kodundan kopyalanmadı) ile 1000 rastgele girdide calc.js aynı;
- *     tabanlı (Hesapla'dan gelen mukavva/taşma/kıvırma/mafsal …) 500 rastgele girdide de aynı.
- *  4. Taban kuralları: elle değişiklik Hesapla girdisini değiştirmez; forma/kâğıt aynıysa Hesapla'nın sayfa sayısı ve
- *     son forma ayarı kalır; formalı olmayan / yuvarlak sırtlı Hesapla formalı + düz çizilir (uyum=false); Hesapla
- *     hatası ya da rehber sınırı dışı değer taban vermez.
- *  5. Kusurlu girdi sınaması: karşılaştırıcı bozuk hesabı, eşleme bozuk panel kopyasını yakalar; geçersiz değerler reddedilir.
+ * learn-measure.test.js — the numbers panel of the Learn guide (app/js/learn/learn-measure.js) with the app's own calculation.
+ *  1. The defaults are the defaults of the Calculator tab: the input built from the Calculator fields in index.html
+ *     (the same rules as calculator.js readInputs) → calc.calculate → base → panel; the panel uses the Calculator's
+ *     result AS IT IS.
+ *  2. Sample Book values (taken from a real binding) exactly: from the Calculator (162 pages) and by hand
+ *     (11 signatures × 4 sheets), two ways.
+ *  3. With an independent mapping (written separately in this file, not copied from the panel code) calc.js gives the
+ *     same for 1000 random inputs; with a base (board/square/turn-in/joint … from the Calculator) also for 500 random inputs.
+ *  4. Base rules: a manual change does not change the Calculator input; when signature/sheets are the same the
+ *     Calculator's page count and last-signature setting stay; a Calculator that is not sewn / has a rounded spine is
+ *     drawn sewn + flat (match=false); a Calculator error or a value outside the guide's limits gives no base.
+ *  5. Faulty input test: the comparer catches a broken calculation, the mapping catches a broken panel copy; invalid
+ *     values are rejected.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -25,7 +27,7 @@ const Size = require(SIZE_PATH);
 const Calc = require('../js/calc.js');
 const INDEX = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');
 
-/* Bağımsız eşleme: formalı dikiş; toplam sayfa = forma × (forma başına kâğıt × 2 yaprak × 2 sayfa); boyut ve kalınlık aynen. */
+/* Independent mapping: sewn signatures; total pages = signatures × (sheets per signature × 2 leaves × 2 pages); size and thickness as they are. */
 const MAPPING = {
   bindingType: () => 'sewn',
   pageCount: (g) => { const sheetSignature = g.sheetsPerSignature * 2, pageSignature = sheetSignature * 2; return g.signatureCount * pageSignature; },
@@ -33,31 +35,31 @@ const MAPPING = {
 };
 const applyMapping = (g, ek) => Object.assign({}, ek || {}, Object.fromEntries(Object.entries(MAPPING).map(([a, fn]) => [a, fn(g)])));
 
-/** Panel sonucu ile calc.js sonucunun farkları (boş = aynı). */
+/** Differences between the panel result and the calc.js result (empty = the same). */
 function compare(o, r) {
-  const double = [
+  const pairs = [
     ['page', o.page, r.totalPages], ['signature', o.N, r.signatureCount], ['sheet', o.sheet, r.leaves],
     ['printing', o.printSheets, r.printSheets], ['spine', o.S, r.spineThickness], ['jointGap', o.f, r.jointGap],
     ['brdWidth', o.Db, r.board.width], ['brdHeight', o.Dh, r.board.height], ['strip', o.R, r.spineStrip.width],
-    ['kapGen', o.covering.width, r.covering.width], ['containerHeight', o.covering.height, r.covering.height],
+    ['coveringWidth', o.covering.width, r.covering.width], ['coveringHeight', o.covering.height, r.covering.height],
     ['endpaperWidth', o.endpapers.width, r.endpapers.width], ['endpaperHeight', o.endpapers.height, r.endpapers.height],
-    ['mullGen', o.mull.width, r.mull.width], ['mullHeight', o.mull.height, r.mull.height], ['headbands', o.headbands, r.headbands.length],
+    ['mullWidth', o.mull.width, r.mull.width], ['mullHeight', o.mull.height, r.mull.height], ['headbands', o.headbands, r.headbands.length],
     ['square', o.k, Number(r.input.square)], ['turnIn', o.e, Number(r.input.turnIn)], ['t', o.t, Number(r.input.boardThickness)],
   ];
-  return double.filter(([, a, b]) => a !== b).map(([name, a, b]) => `${name}: panel ${a} ≠ hesap ${b}`);
+  return pairs.filter(([, a, b]) => a !== b).map(([name, a, b]) => `${name}: panel ${a} ≠ calc ${b}`);
 }
 function seed(s) { return () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; }; }
 function random(rnd) {
-  const r = (a, b) => a + rnd() * (b - a), yuv = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
+  const r = (a, b) => a + rnd() * (b - a), roundTo = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
   return { signatureCount: 1 + Math.floor(rnd() * 40), sheetsPerSignature: 1 + Math.floor(rnd() * 8),
-    bookWidth: yuv(r(60, 300), rnd() < 0.5 ? 0 : 1), bookHeight: yuv(r(80, 420), rnd() < 0.5 ? 0 : 1), paperThickness: yuv(r(0.04, 0.4), 3) };
+    bookWidth: roundTo(r(60, 300), rnd() < 0.5 ? 0 : 1), bookHeight: roundTo(r(80, 420), rnd() < 0.5 ? 0 : 1), paperThickness: roundTo(r(0.04, 0.4), 3) };
 }
-/** Hesapla durumu: { girdi, sonuc } (calculator.js'in sakladığı biçim). */
+/** Calculator state: { input, result } (the format calculator.js keeps). */
 const calculatorState = (input) => ({ error: null, input, result: Calc.calculate(input) });
 
 /**
- * index.html'deki Hesapla alanlarının öntanımlıları → calculator.js girdiOku ile aynı kurallarla girdi (boş sayı → yok,
- * boş mafsal → 'otomatik'). Ayrıştırıcı bu testte yazıldı (calculator.js'ten alınmadı).
+ * The defaults of the Calculator fields in index.html → an input with the same rules as calculator.js readInputs
+ * (an empty number → missing, an empty joint → 'auto'). The parser is written in this test (not taken from calculator.js).
  */
 function calculatorDefault(html) {
   const value = (id) => { const m = new RegExp(`<input[^>]*\\sid="h-${id}"[^>]*>`).exec(html); assert.ok(m, `h-${id} none`); const v = /\svalue="([^"]*)"/.exec(m[0]); return v ? v[1] : ''; };
@@ -71,130 +73,130 @@ function calculatorDefault(html) {
   return g;
 }
 
-// calc.js hata metinleri için dil (Node'da require('./i18n.js') yolu da çalışır; açıkça Türkçe kurulur)
+// language for the calc.js error texts (in Node the require('./i18n.js') path works too; Turkish is set explicitly)
 const ctx = { navigator: { languages: ['tr-TR'] } }; ctx.self = ctx; vm.createContext(ctx); setupI18n(ctx, 'tr');
 
-// ---------------------------------------------------------------- 1. öntanımlı = Hesapla
-test('öntanımlı: panel Hesapla sekmesinin öntanımlı girdisini ve SONUCUNU aynen kullanır (index.html → calc.calculator → taban)', () => {
+// ---------------------------------------------------------------- 1. default = Calculator
+test('default: the panel uses the default input and the RESULT of the Calculator tab as they are (index.html → calc.calculate → base)', () => {
   const g = calculatorDefault(INDEX);
   assert.deepEqual({ bindingType: g.bindingType, pageCount: g.pageCount, sheetsPerSignature: g.sheetsPerSignature, bookWidth: g.bookWidth, bookHeight: g.bookHeight, paperThickness: g.paperThickness, boardThickness: g.boardThickness, square: g.square, turnIn: g.turnIn, jointGap: g.jointGap },
-    { bindingType: 'sewn', pageCount: 200, sheetsPerSignature: 4, bookWidth: 148, bookHeight: 210, paperThickness: 0.1, boardThickness: 2, square: 3, turnIn: 15, jointGap: 'auto' }, 'Hesapla öntanımlıları (index.html)');
+    { bindingType: 'sewn', pageCount: 200, sheetsPerSignature: 4, bookWidth: 148, bookHeight: 210, paperThickness: 0.1, boardThickness: 2, square: 3, turnIn: 15, jointGap: 'auto' }, 'Calculator defaults (index.html)');
   const d = calculatorState(g);
-  const tb = Size.fromBase(d);
-  assert.equal(tb.match, true);
-  assert.equal(tb.result, d.result, 'Hesapla formalı + düz: sonuç nesnesi aynen (kopya hesap yok)');
-  assert.deepEqual(tb.bes, { signatureCount: 13, sheetsPerSignature: 4, bookWidth: 148, bookHeight: 210, paperThickness: 0.1 });
-  const o = Size.calculate(tb.bes, tb);
+  const baseData = Size.fromBase(d);
+  assert.equal(baseData.match, true);
+  assert.equal(baseData.result, d.result, 'Calculator sewn + flat: the result object as it is (no copied calculation)');
+  assert.deepEqual(baseData.five, { signatureCount: 13, sheetsPerSignature: 4, bookWidth: 148, bookHeight: 210, paperThickness: 0.1 });
+  const o = Size.calculate(baseData.five, baseData);
   assert.equal(o.source, 'calculator');
   assert.equal(o.calc, d.result);
   assert.deepEqual(compare(o, d.result), []);
   assert.deepEqual([o.page, o.N, o.S, o.Db, o.Dh, o.f], [208, 13, 10.4, 144, 216, 7]);
-  // girdi verilmezse de taban kullanılır
-  assert.equal(Size.calculate({}, tb).calc, d.result);
+  // the base is used even when no input is given
+  assert.equal(Size.calculate({}, baseData).calc, d.result);
 });
 
-// ---------------------------------------------------------------- 2. Örnek Kitap
-const TB = { page: 176, signature: 11, sheet: 88, printing: 44, spine: 8.8, jointGap: 7, board: [144, 216], strip: [12.8, 216], covering: [348.8, 250], endpapers: [296, 210], mull: [58.8, 198], headbands: 8.8 };
-function tbFarki(o) {
+// ---------------------------------------------------------------- 2. Sample Book
+const BASE_VALUES = { page: 176, signature: 11, sheet: 88, printing: 44, spine: 8.8, jointGap: 7, board: [144, 216], strip: [12.8, 216], covering: [348.8, 250], endpapers: [296, 210], mull: [58.8, 198], headbands: 8.8 };
+function baseDiff(o) {
   const v = { page: o.page, signature: o.N, sheet: o.sheet, printing: o.printSheets, spine: o.S, jointGap: o.f, board: [o.Db, o.Dh], strip: [o.R, o.Dh],
     covering: [o.covering.width, o.covering.height], endpapers: [o.endpapers.width, o.endpapers.height], mull: [o.mull.width, o.mull.height], headbands: o.headbands };
-  return Object.keys(TB).filter((a) => JSON.stringify(v[a]) !== JSON.stringify(TB[a])).map((a) => `${a}: ${JSON.stringify(v[a])} ≠ ${JSON.stringify(TB[a])}`);
+  return Object.keys(BASE_VALUES).filter((a) => JSON.stringify(v[a]) !== JSON.stringify(BASE_VALUES[a])).map((a) => `${a}: ${JSON.stringify(v[a])} ≠ ${JSON.stringify(BASE_VALUES[a])}`);
 }
-test('Örnek Kitap birebir: Hesapla\'dan (162 sayfa) ve elle (11 forma × 4 kâğıt) aynı değerler', () => {
-  const tbInput = { bindingType: 'sewn', pageCount: 162, sheetsPerSignature: 4, shrinkLastSignature: false, paperThickness: 0.1, endpaperAllowance: 0, bookWidth: 148, bookHeight: 210,
+test('Sample Book exactly: the same values from the Calculator (162 pages) and by hand (11 signatures × 4 sheets)', () => {
+  const baseInput = { bindingType: 'sewn', pageCount: 162, sheetsPerSignature: 4, shrinkLastSignature: false, paperThickness: 0.1, endpaperAllowance: 0, bookWidth: 148, bookHeight: 210,
     boardThickness: 2, square: 3, spineShape: 'flat', spineRule: 'twoT', jointGap: 'auto', turnIn: 15, spareSheets: 0 };
-  const tb = Size.fromBase(calculatorState(tbInput));
-  const o1 = Size.calculate(tb.bes, tb);
-  assert.deepEqual(tbFarki(o1), []);
-  assert.equal(o1.calc.blankPages, 14, '176 (14 boş)');
+  const baseData = Size.fromBase(calculatorState(baseInput));
+  const o1 = Size.calculate(baseData.five, baseData);
+  assert.deepEqual(baseDiff(o1), []);
+  assert.equal(o1.calc.blankPages, 14, '176 (14 blank)');
   const o2 = Size.calculate({ signatureCount: 11, sheetsPerSignature: 4, bookWidth: 148, bookHeight: 210, paperThickness: 0.1 });
-  assert.deepEqual(tbFarki(o2), []);
-  // rehberin ek varsayımları (delik, iplik, köşe)
+  assert.deepEqual(baseDiff(o2), []);
+  // the guide's extra assumptions (holes, thread, corner)
   assert.deepEqual([o2.station.number, o2.station.range, o2.station.position[0], o2.station.position[5]], [6, 36, 15, 195]);
   assert.equal(o2.thread, 2730); assert.deepEqual(o2.corner, [4, 5]); assert.deepEqual([o2.k, o2.e, o2.t], [3, 15, 2]);
-  // denetleyici bozuk değeri yakalar
-  assert.ok(tbFarki({ ...o2, S: 8.9 }).length === 1 && tbFarki({ ...o2, Db: 145 }).length === 1);
+  // the checker catches a broken value
+  assert.ok(baseDiff({ ...o2, S: 8.9 }).length === 1 && baseDiff({ ...o2, Db: 145 }).length === 1);
 });
 
-// ---------------------------------------------------------------- 3. bağımsız eşleme, rastgele
-test('1000 rastgele girdi (tabansız) ve 500 rastgele girdi (rastgele Hesapla tabanıyla) calc.js ile aynı', () => {
+// ---------------------------------------------------------------- 3. independent mapping, random
+test('1000 random inputs (without a base) and 500 random inputs (with a random Calculator base) are the same as calc.js', () => {
   const rnd = seed(20261023);
   for (let i = 0; i < 1000; i++) {
     const g = random(rnd), o = Size.calculate(g), r = Calc.calculate(applyMapping(g));
-    assert.deepEqual(o.calc.input, r.input, 'hesap girdisi bağımsız eşlemeyle aynı');
+    assert.deepEqual(o.calc.input, r.input, 'the calculation input is the same as the independent mapping');
     assert.deepEqual(compare(o, r), [], JSON.stringify(g));
   }
   for (let i = 0; i < 500; i++) {
     const ek = { boardThickness: [1, 1.5, 2, 2.5, 3][Math.floor(rnd() * 5)], square: [0, 2, 3, 4][Math.floor(rnd() * 4)], turnIn: [12, 15, 18][Math.floor(rnd() * 3)],
       jointGap: rnd() < 0.5 ? 'auto' : 6 + Math.floor(rnd() * 4), endpaperAllowance: rnd() < 0.5 ? 0 : 0.4, spineRule: rnd() < 0.7 ? 'twoT' : 'onlyS', spareSheets: Math.floor(rnd() * 3) };
-    const base = random(rnd), tb = Size.fromBase(calculatorState(applyMapping(base, ek)));
-    assert.ok(tb.input, JSON.stringify(base));
-    const g = random(rnd), o = Size.calculate(g, tb);
+    const base = random(rnd), baseData = Size.fromBase(calculatorState(applyMapping(base, ek)));
+    assert.ok(baseData.input, JSON.stringify(base));
+    const g = random(rnd), o = Size.calculate(g, baseData);
     const r = Calc.calculate(applyMapping(g, { ...ek, spineShape: 'flat', shrinkLastSignature: false }));
     assert.deepEqual(compare(o, r), [], JSON.stringify({ g, ek }));
   }
 });
 
-// ---------------------------------------------------------------- 4. taban kuralları
-test('taban: elle değişiklik Hesapla girdisini değiştirmez; forma/kâğıt aynıysa Hesapla\'nın sayfa sayısı ve son forma ayarı kalır', () => {
-  const hg = { bindingType: 'sewn', pageCount: 200, sheetsPerSignature: 4, shrinkLastSignature: true, paperThickness: 0.1, bookWidth: 148, bookHeight: 210, boardThickness: 2.5, square: 4, turnIn: 18, jointGap: 'auto', spineShape: 'flat', spineRule: 'twoT' };
-  const once = JSON.stringify(hg), d = calculatorState(hg), tb = Size.fromBase(d);
-  assert.equal(d.result.totalPages, 200, 'son forma küçük: 12 × 16 + 2 kâğıt × 4');
-  const wide = Size.calculate({ ...tb.bes, bookWidth: 160 }, tb);
+// ---------------------------------------------------------------- 4. base rules
+test('base: a manual change does not change the Calculator input; when signature/sheets are the same the Calculator\'s page count and last-signature setting stay', () => {
+  const calcInput = { bindingType: 'sewn', pageCount: 200, sheetsPerSignature: 4, shrinkLastSignature: true, paperThickness: 0.1, bookWidth: 148, bookHeight: 210, boardThickness: 2.5, square: 4, turnIn: 18, jointGap: 'auto', spineShape: 'flat', spineRule: 'twoT' };
+  const once = JSON.stringify(calcInput), d = calculatorState(calcInput), baseData = Size.fromBase(d);
+  assert.equal(d.result.totalPages, 200, 'last signature smaller: 12 × 16 + 2 sheets × 4');
+  const wide = Size.calculate({ ...baseData.five, bookWidth: 160 }, baseData);
   assert.equal(wide.source, 'guide');
-  assert.deepEqual([wide.page, wide.N, wide.t, wide.k, wide.e], [200, 13, 2.5, 4, 18], 'yalnız en değişti: sayfa ve son forma Hesapla\'dan');
+  assert.deepEqual([wide.page, wide.N, wide.t, wide.k, wide.e], [200, 13, 2.5, 4, 18], 'only the width changed: pages and last signature from the Calculator');
   assert.equal(wide.calc.input.shrinkLastSignature, true);
-  const signature = Size.calculate({ ...tb.bes, signatureCount: 5 }, tb);
-  assert.deepEqual([signature.page, signature.N, signature.calc.input.shrinkLastSignature, signature.t, signature.k, signature.e], [80, 5, false, 2.5, 4, 18], 'forma değişti: 5 × 16 sayfa, Hesapla\'nın mukavva/taşma/kıvırması');
-  assert.equal(JSON.stringify(hg), once, 'Hesapla girdisi değişmedi');
-  assert.equal(JSON.stringify(tb.input), once, 'taban girdisi değişmedi');
-  assert.equal(Size.calculate({ ...tb.bes }, tb).source, 'calculator', 'aynı değerlere dönünce bağ sürer');
+  const signature = Size.calculate({ ...baseData.five, signatureCount: 5 }, baseData);
+  assert.deepEqual([signature.page, signature.N, signature.calc.input.shrinkLastSignature, signature.t, signature.k, signature.e], [80, 5, false, 2.5, 4, 18], 'signatures changed: 5 × 16 pages, the Calculator\'s board/square/turn-in');
+  assert.equal(JSON.stringify(calcInput), once, 'Calculator input unchanged');
+  assert.equal(JSON.stringify(baseData.input), once, 'base input unchanged');
+  assert.equal(Size.calculate({ ...baseData.five }, baseData).source, 'calculator', 'back to the same values the binding goes on');
 });
 
-test('taban: formalı olmayan ya da yuvarlak sırtlı Hesapla formalı + düz sırtla çizilir (match=false); diğer ayarlar aynen', () => {
+test('base: a Calculator that is not sewn or has a rounded spine is drawn sewn + flat (match=false); the other settings as they are', () => {
   const common = { pageCount: 176, sheetsPerSignature: 4, paperThickness: 0.1, bookWidth: 148, bookHeight: 210, boardThickness: 2, square: 3, turnIn: 15, jointGap: 'auto', spineRule: 'twoT' };
   for (const difference of [{ bindingType: 'single1', spineShape: 'flat' }, { bindingType: 'single2', spineShape: 'flat' }, { bindingType: 'sewn', spineShape: 'rounded', curveLength: 20 }]) {
-    const d = calculatorState({ ...common, ...difference }), tb = Size.fromBase(d);
-    assert.equal(tb.match, false, JSON.stringify(difference));
-    assert.notEqual(tb.result, d.result);
-    assert.deepEqual([tb.input.bindingType, tb.input.spineShape, 'curveLength' in tb.input], ['sewn', 'flat', false]);
-    assert.deepEqual(tbFarki(Size.calculate(tb.bes, tb)), [], 'formalı + düz: Örnek Kitap değerleri');
+    const d = calculatorState({ ...common, ...difference }), baseData = Size.fromBase(d);
+    assert.equal(baseData.match, false, JSON.stringify(difference));
+    assert.notEqual(baseData.result, d.result);
+    assert.deepEqual([baseData.input.bindingType, baseData.input.spineShape, 'curveLength' in baseData.input], ['sewn', 'flat', false]);
+    assert.deepEqual(baseDiff(Size.calculate(baseData.five, baseData)), [], 'sewn + flat: Sample Book values');
   }
 });
 
-test('taban: Hesapla hatası ya da rehberin sınırları dışındaki değer taban vermez (kusurlu girdi)', () => {
+test('base: a Calculator error or a value outside the guide\'s limits gives no base (faulty input)', () => {
   assert.ok(Size.fromBase(null).error);
-  assert.ok(Size.fromBase({ error: 'Geçersiz sayı', input: null, result: null }).error);
-  assert.ok(Size.fromBase({}).error, 'boş durum');
+  assert.ok(Size.fromBase({ error: 'Invalid number', input: null, result: null }).error);
+  assert.ok(Size.fromBase({}).error, 'empty state');
   const many = Size.fromBase(calculatorState({ bindingType: 'sewn', pageCount: 2000, sheetsPerSignature: 4, bookWidth: 148, bookHeight: 210, paperThickness: 0.1 }));
   assert.deepEqual(many.fields, ['signatureCount']);
-  const dar = Size.fromBase(calculatorState({ bindingType: 'sewn', pageCount: 32, sheetsPerSignature: 4, bookWidth: 40, bookHeight: 500, paperThickness: 0.5 }));
-  assert.deepEqual(dar.fields, ['bookWidth', 'bookHeight', 'paperThickness']);
-  // taban nesnesi eksikse yok sayılır (öntanımlıya düşer)
+  const narrow = Size.fromBase(calculatorState({ bindingType: 'sewn', pageCount: 32, sheetsPerSignature: 4, bookWidth: 40, bookHeight: 500, paperThickness: 0.5 }));
+  assert.deepEqual(narrow.fields, ['bookWidth', 'bookHeight', 'paperThickness']);
+  // a missing base object is ignored (falls back to the default)
   assert.equal(Size.calculate({}, { input: null }).N, 11);
 });
 
-// ---------------------------------------------------------------- 5. kusurlu girdi
-test('kusurlu girdi: geçersiz değerler reddedilir, alan adı bildirilir (tabanlı ve tabansız)', () => {
-  const tb = Size.fromBase(calculatorState(calculatorDefault(INDEX)));
+// ---------------------------------------------------------------- 5. faulty input
+test('faulty input: invalid values are rejected, the field name is reported (with and without a base)', () => {
+  const baseData = Size.fromBase(calculatorState(calculatorDefault(INDEX)));
   const bad = [
     [{ signatureCount: 0 }, 'signatureCount'], [{ signatureCount: 41 }, 'signatureCount'], [{ signatureCount: 2.5 }, 'signatureCount'],
     [{ sheetsPerSignature: 9 }, 'sheetsPerSignature'], [{ bookWidth: 59.9 }, 'bookWidth'], [{ bookHeight: 'abc' }, 'bookHeight'],
     [{ paperThickness: -0.1 }, 'paperThickness'], [{ paperThickness: '1.200' }, 'paperThickness'], [{ bookWidth: '1,2,3' }, 'bookWidth'],
     [{ bookHeight: NaN }, 'bookHeight'], [{ bookHeight: Infinity }, 'bookHeight'], [{ signatureCount: '  ' }, 'signatureCount'],
   ];
-  for (const t of [null, tb]) for (const [g, field] of bad) assert.throws(() => Size.calculate(g, t), (e) => e instanceof RangeError && e.fields.includes(field), JSON.stringify(g));
-  assert.equal(Size.calculate({ paperThickness: '0,12' }).S, 10.56, 'virgüllü ondalık');
+  for (const t of [null, baseData]) for (const [g, field] of bad) assert.throws(() => Size.calculate(g, t), (e) => e instanceof RangeError && e.fields.includes(field), JSON.stringify(g));
+  assert.equal(Size.calculate({ paperThickness: '0,12' }).S, 10.56, 'decimal comma');
   assert.equal(Size.invalidFields({ signatureCount: '', sheetsPerSignature: '', bookWidth: '', bookHeight: '', paperThickness: '' }).length, 5);
 });
 
-test('karşılaştırıcı bozuk hesabı yakalar; eşleme bozuk panel kopyası FAIL der (kusurlu girdi sınaması)', () => {
+test('the comparer catches a broken calculation; the mapping says FAIL for a broken panel copy (faulty input test)', () => {
   const rnd = seed(7);
   const corrupt = {
-    'mafsal +1': (r) => { r.jointGap += 1; },
-    'sırt × 1,01': (r) => { r.spineThickness = Math.round(r.spineThickness * 1.01 * 1000) / 1000; },
-    'kaplama eni −0,1': (r) => { r.covering = { width: r.covering.width - 0.1, height: r.covering.height }; },
-    'forma +1': (r) => { r.signatureCount += 1; },
+    'joint +1': (r) => { r.jointGap += 1; },
+    'spine × 1.01': (r) => { r.spineThickness = Math.round(r.spineThickness * 1.01 * 1000) / 1000; },
+    'covering width −0.1': (r) => { r.covering = { width: r.covering.width - 0.1, height: r.covering.height }; },
+    'signatures +1': (r) => { r.signatureCount += 1; },
   };
   for (const [name, breakIt] of Object.entries(corrupt)) {
     let caught = 0;
@@ -202,28 +204,28 @@ test('karşılaştırıcı bozuk hesabı yakalar; eşleme bozuk panel kopyası F
     assert.ok(caught >= 49, `${name}: ${caught}/50`);
   }
   const source = fs.readFileSync(SIZE_PATH, 'utf8');
-  const copy = (a, b) => { assert.ok(source.includes(a), 'varyant uygulanamadı: ' + a); const m = { exports: {} };
+  const copy = (a, b) => { assert.ok(source.includes(a), 'variant could not be applied: ' + a); const m = { exports: {} };
     new Function('module', 'require', 'self', source.replace(a, b))(m, (name) => require(path.join(APP, 'js', 'learn', name)), undefined); return m.exports; }; // eslint-disable-line no-new-func
-  const varyant = {
-    'sayfa = forma × kâğıt × 2': copy('hg.pageCount = sameSignature ? tb.input.pageCount : N * y * 4;', 'hg.pageCount = sameSignature ? tb.input.pageCount : N * y * 2;'),
-    'en ↔ boy': copy('hg.bookWidth = g.bookWidth; hg.bookHeight = g.bookHeight;', 'hg.bookWidth = g.bookHeight; hg.bookHeight = g.bookWidth;'),
-    'kalınlık yuvarlanmış': copy('hg.paperThickness = g.paperThickness;', 'hg.paperThickness = Math.round(g.paperThickness * 10) / 10;'),
-    'taban mukavvası atılmış': copy('if (tb) Object.keys(tb.input).forEach(function (a) { hg[a] = tb.input[a]; });', ''),
+  const variants = {
+    'pages = signatures × sheets × 2': copy('calcInput.pageCount = sameSignature ? baseData.input.pageCount : N * y * 4;', 'calcInput.pageCount = sameSignature ? baseData.input.pageCount : N * y * 2;'),
+    'width ↔ height': copy('calcInput.bookWidth = g.bookWidth; calcInput.bookHeight = g.bookHeight;', 'calcInput.bookWidth = g.bookHeight; calcInput.bookHeight = g.bookWidth;'),
+    'thickness rounded': copy('calcInput.paperThickness = g.paperThickness;', 'calcInput.paperThickness = Math.round(g.paperThickness * 10) / 10;'),
+    'base board dropped': copy('if (baseData) Object.keys(baseData.input).forEach(function (a) { calcInput[a] = baseData.input[a]; });', ''),
   };
-  const tbInput = { boardThickness: 3, square: 4, turnIn: 18 };
-  for (const [name, O] of Object.entries(varyant)) {
+  const baseInput = { boardThickness: 3, square: 4, turnIn: 18 };
+  for (const [name, O] of Object.entries(variants)) {
     let fail = 0;
     for (let i = 0; i < 50; i++) {
-      const tb = O.fromBase(calculatorState(applyMapping(random(rnd), tbInput))), g = random(rnd);
-      let f; try { f = compare(O.calculate(g, tb), Calc.calculate(applyMapping(g, { ...tbInput, spineShape: 'flat', shrinkLastSignature: false }))); } catch (e) { f = ['hata: ' + e.message]; }
+      const baseData = O.fromBase(calculatorState(applyMapping(random(rnd), baseInput))), g = random(rnd);
+      let f; try { f = compare(O.calculate(g, baseData), Calc.calculate(applyMapping(g, { ...baseInput, spineShape: 'flat', shrinkLastSignature: false }))); } catch (e) { f = ['error: ' + e.message]; }
       if (f.length) fail++;
     }
     assert.ok(fail >= 45, `${name}: ${fail}/50 FAIL`);
   }
 });
 
-test('Hesapla öntanımlı ayrıştırıcısı kusurlu HTML\'i yakalar (eksik alan)', () => {
+test('the Calculator default parser catches faulty HTML (missing field)', () => {
   assert.throws(() => calculatorDefault(INDEX.replace('id="h-pageCount"', 'id="h-none"')));
   assert.throws(() => calculatorDefault(''));
-  assert.equal(calculatorDefault(INDEX.replace(/(id="h-pageCount"[^>]*\s)value="200"/, '$1value="176"')).pageCount, 176, 'değer değişince okunan değişir');
+  assert.equal(calculatorDefault(INDEX.replace(/(id="h-pageCount"[^>]*\s)value="200"/, '$1value="176"')).pageCount, 176, 'when the value changes the value read changes');
 });

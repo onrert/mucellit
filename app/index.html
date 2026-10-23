@@ -13,14 +13,14 @@
 <body>
 <header>
   <h1>Mücellit</h1>
-  <nav role="tablist" aria-label="Sections" data-i18n-oz="aria-label:nav.sections">
+  <nav role="tablist" aria-label="Sections" data-i18n-attr="aria-label:nav.sections">
     <button role="tab" id="tab-button-impose" data-tab="impose" aria-selected="true" aria-controls="tab-impose" data-i18n="tab.impose">Imposition</button>
     <button role="tab" id="tab-button-projects" data-tab="projects" aria-selected="false" aria-controls="tab-projects" data-i18n="tab.projects">Projects</button>
     <button role="tab" id="tab-button-calculator" data-tab="calculator" aria-selected="false" aria-controls="tab-calculator" data-i18n="tab.calculator">Calculator</button>
     <button role="tab" id="tab-button-learn" data-tab="learn" aria-selected="false" aria-controls="tab-learn" data-i18n="tab.learn">Learn</button>
   </nav>
   <span class="small" data-i18n="header.privacy">Your PDF stays on your computer: everything is processed right here.</span>
-  <select id="i18n-select" aria-label="Language" data-i18n-oz="aria-label:language.label"></select>
+  <select id="i18n-select" aria-label="Language" data-i18n-attr="aria-label:language.label"></select>
 </header>
 
 <main>
@@ -50,25 +50,25 @@
 
       <h3 data-i18n="impose.sizes">Sizes (mm)</h3>
       <div class="field"><span data-i18n="impose.paper">Printer paper</span>
-        <select id="paper-ready" aria-label="Preset paper size" data-i18n-oz="aria-label:impose.paper_preset">
+        <select id="paper-ready" aria-label="Preset paper size" data-i18n-attr="aria-label:impose.paper_preset">
           <option value="" data-i18n="impose.select_preset">Choose a preset…</option>
         </select>
         <div class="pair">
-          <input type="text" inputmode="decimal" data-number id="paper-width" min="1" step="0.1" value="297" aria-label="Paper width (mm)" data-i18n-oz="aria-label:impose.paper_width">
+          <input type="text" inputmode="decimal" data-number id="paper-width" min="1" step="0.1" value="297" aria-label="Paper width (mm)" data-i18n-attr="aria-label:impose.paper_width">
           <span>×</span>
-          <input type="text" inputmode="decimal" data-number id="paper-height" min="1" step="0.1" value="210" aria-label="Paper height (mm)" data-i18n-oz="aria-label:impose.paper_height">
-          <button type="button" id="paper-swap" title="Swap portrait / landscape" data-i18n-oz="title:impose.swap">⇄</button>
+          <input type="text" inputmode="decimal" data-number id="paper-height" min="1" step="0.1" value="210" aria-label="Paper height (mm)" data-i18n-attr="aria-label:impose.paper_height">
+          <button type="button" id="paper-swap" title="Swap portrait / landscape" data-i18n-attr="title:impose.swap">⇄</button>
         </div>
       </div>
       <div class="field"><span data-i18n="impose.book">Book page (trimmed)</span>
-        <select id="book-ready" aria-label="Preset book size" data-i18n-oz="aria-label:impose.book_preset">
+        <select id="book-ready" aria-label="Preset book size" data-i18n-attr="aria-label:impose.book_preset">
           <option value="" data-i18n="impose.select_preset">Choose a preset…</option>
         </select>
         <div class="pair">
-          <input type="text" inputmode="decimal" data-number id="book-width" min="1" step="0.1" value="148" aria-label="Book width (mm)" data-i18n-oz="aria-label:impose.book_width">
+          <input type="text" inputmode="decimal" data-number id="book-width" min="1" step="0.1" value="148" aria-label="Book width (mm)" data-i18n-attr="aria-label:impose.book_width">
           <span>×</span>
-          <input type="text" inputmode="decimal" data-number id="book-height" min="1" step="0.1" value="210" aria-label="Book height (mm)" data-i18n-oz="aria-label:impose.book_height">
-          <button type="button" id="book-swap" title="Swap portrait / landscape" data-i18n-oz="title:impose.swap">⇄</button>
+          <input type="text" inputmode="decimal" data-number id="book-height" min="1" step="0.1" value="210" aria-label="Book height (mm)" data-i18n-attr="aria-label:impose.book_height">
+          <button type="button" id="book-swap" title="Swap portrait / landscape" data-i18n-attr="title:impose.swap">⇄</button>
         </div>
       </div>
       <label class="field"><span data-i18n="impose.scaling">Scaling</span>
@@ -122,12 +122,12 @@
     <div class="work">
       <div class="panel">
         <div class="tool-bar">
-          <label class="file-select"><button type="button" class="main" id="pdf-select" data-i18n="impose.pdf_sec">Choose PDF…</button>
+          <label class="file-select"><button type="button" class="main" id="pdf-select" data-i18n="impose.pdf_choose">Choose PDF…</button>
             <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden></label>
           <span id="source-info" class="summary" data-i18n="impose.unsourced">No PDF loaded yet.</span>
         </div>
         <div class="tool-bar" id="page-tools">
-          <input type="text" id="range" placeholder="e.g. 1-4, 9" aria-label="Page range" data-i18n-oz="placeholder:impose.range_example;aria-label:impose.range">
+          <input type="text" id="range" placeholder="e.g. 1-4, 9" aria-label="Page range" data-i18n-attr="placeholder:impose.range_example;aria-label:impose.range">
           <button type="button" id="range-select" data-i18n="impose.select_range">Select range</button>
           <button type="button" id="all-select" data-i18n="impose.select_all">Select all</button>
           <button type="button" id="selection-remove" data-i18n="impose.remove_selection">Clear selection</button>
@@ -135,11 +135,11 @@
           <button type="button" id="selected-remove" data-i18n="impose.delete_selected">Delete selected</button>
           <button type="button" id="selected-unselected-remove" data-i18n="impose.delete_selected_unselected">Delete unselected</button>
           <button type="button" id="blank-toStart" data-i18n="impose.blank_to_start">Insert blank at start</button>
-          <button type="button" id="blank-once" data-i18n="impose.bos_once">Insert blank before selected</button>
+          <button type="button" id="blank-once" data-i18n="impose.blank_before">Insert blank before selected</button>
           <button type="button" id="blank-toEnd" data-i18n="impose.blank_to_end">Insert blank at end</button>
         </div>
         <p class="small" data-i18n="impose.ordering_hint">Drag the pages or use ◀ ▶ to reorder them. The number is the page's position in the book (source p. = page in the source PDF).</p>
-        <div id="small-thumbs" class="grid" aria-label="Pages" data-i18n-oz="aria-label:impose.pages"></div>
+        <div id="small-thumbs" class="grid" aria-label="Pages" data-i18n-attr="aria-label:impose.pages"></div>
       </div>
 
       <h2 data-i18n="impose.sheet_preview">Sheet preview</h2>
@@ -175,15 +175,15 @@
           <label class="field"><span data-i18n="projects.field.width">Width (mm)</span><input type="text" inputmode="decimal" data-number id="yk-width" value="148" min="1" step="0.1"></label>
           <label class="field"><span data-i18n="projects.field.height">Height (mm)</span><input type="text" inputmode="decimal" data-number id="yk-height" value="210" min="1" step="0.1"></label>
         </div>
-        <label class="field"><span data-i18n="projects.field.paper">Paper</span><input type="text" id="yk-paper" placeholder="e.g. 80 gsm book paper" data-i18n-oz="placeholder:projects.field.paper_example"></label>
+        <label class="field"><span data-i18n="projects.field.paper">Paper</span><input type="text" id="yk-paper" placeholder="e.g. 80 gsm book paper" data-i18n-attr="placeholder:projects.field.paper_example"></label>
         <label class="field"><span data-i18n="field.paper_thickness">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-number id="yk-thickness" value="0.1" min="0" step="0.01"></label>
-        <label class="field"><span data-i18n="projects.field.pdf_name">PDF file name</span><input type="text" id="yk-pdf" placeholder="e.g. my-book.pdf" data-i18n-oz="placeholder:projects.field.pdf_example"></label>
+        <label class="field"><span data-i18n="projects.field.pdf_name">PDF file name</span><input type="text" id="yk-pdf" placeholder="e.g. my-book.pdf" data-i18n-attr="placeholder:projects.field.pdf_example"></label>
         <button type="submit" class="main" id="yk-create" data-i18n="projects.create">Create project</button>
       </form>
       <h3 data-i18n="projects.backup">Backup</h3>
       <div class="line">
-        <button type="button" id="json-export" data-i18n="projects.json_disa">Export JSON</button>
-        <label><button type="button" id="json-import-button" data-i18n="projects.json_ice">Import JSON</button>
+        <button type="button" id="json-export" data-i18n="projects.json_export">Export JSON</button>
+        <label><button type="button" id="json-import-button" data-i18n="projects.json_import">Import JSON</button>
           <input type="file" id="json-import" accept=".json,application/json" hidden></label>
         <button type="button" id="data-clear" data-i18n="projects.clear">Delete all</button>
       </div>
@@ -240,7 +240,7 @@
         </select>
       </label>
       <div class="pair simple">
-        <label class="field"><span data-i18n="calculator.jointGap">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-number id="h-jointGap" value="" placeholder="automatic" data-i18n-oz="placeholder:calculator.auto" min="0.5" step="0.5"></label>
+        <label class="field"><span data-i18n="calculator.jointGap">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-number id="h-jointGap" value="" placeholder="automatic" data-i18n-attr="placeholder:calculator.auto" min="0.5" step="0.5"></label>
         <label class="field"><span data-i18n="calculator.turnIn">Turn-in e (mm)</span><input type="text" inputmode="decimal" data-number id="h-turnIn" value="15" min="1" step="0.5"></label>
       </div>
       <div class="pair simple">
@@ -261,7 +261,7 @@
      Formalı dikiş + sert kapak rehberi (js/learn/). Sekme ilk açıldığında kurulur; sekmeden çıkınca figür sökülür.
      Çizimler Colorfigures motoru ve yöntemiyle (MIT; April Zhu, Tolga Cohce; tam metin js/learn/LICENSE). -->
 <section id="tab-learn" role="tabpanel" aria-labelledby="tab-button-learn" hidden>
-<div class="learn-root" id="og-root">
+<div class="learn-root" id="guide-root">
   <div class="top">
     <div class="title">
       <h2 data-i18n="learn.title">Learn bookbinding</h2>
@@ -269,7 +269,7 @@
     </div>
     <div class="settings">
       <label class="small"><span data-i18n="learn.speed">Speed</span>
-        <select id="og-speed">
+        <select id="guide-speed">
           <option value="1" data-i18n="learn.speed1">1×</option>
           <option value="2" data-i18n="learn.speed2">2×</option>
           <option value="4" data-i18n="learn.speed4">4×</option>
@@ -278,52 +278,52 @@
   </div>
 
   <div class="layout">
-    <nav class="side" aria-label="Stages" data-i18n-oz="aria-label:learn.stages">
+    <nav class="side" aria-label="Stages" data-i18n-attr="aria-label:learn.stages">
       <h3 data-i18n="learn.stages">Stages</h3>
-      <div class="progress" role="progressbar" aria-valuemin="0" aria-label="Progress" data-i18n-oz="aria-label:learn.progress_name"><div id="og-progress-bar"></div></div>
-      <p id="og-progress-text" class="small"></p>
-      <ol id="og-stages" class="stages"></ol>
-      <button type="button" id="og-fromStart-toEnd" class="large" aria-pressed="false" data-i18n="learn.from_start_to_end">Play from start to finish</button>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-label="Progress" data-i18n-attr="aria-label:learn.progress_name"><div id="guide-progress-bar"></div></div>
+      <p id="guide-progress-text" class="small"></p>
+      <ol id="guide-stages" class="stages"></ol>
+      <button type="button" id="guide-fromStart-toEnd" class="large" aria-pressed="false" data-i18n="learn.from_start_to_end">Play from start to finish</button>
     </nav>
 
     <div class="middle">
-      <div class="figures" id="og-stage"></div>
+      <div class="figures" id="guide-stage"></div>
     </div>
 
     <aside class="right">
-      <div class="og-card" id="og-card" aria-live="polite">
-        <p class="stage-name" id="og-stage-name"></p>
-        <p class="stage-summary small" id="og-stage-summary"></p>
-        <ol class="steps" id="og-steps"></ol>
-        <p class="step-no small" id="og-step-no"></p>
-        <h3 id="og-step-title"></h3>
-        <p id="og-step-description"></p>
-        <div class="box tool" id="og-tool-box"><strong data-i18n="learn.tool">Tools and materials</strong> <span id="og-tool"></span></div>
-        <div class="box caution" id="og-caution-box"><strong data-i18n="learn.caution">Watch out</strong> <span id="og-caution"></span></div>
+      <div class="guide-card" id="guide-card" aria-live="polite">
+        <p class="stage-name" id="guide-stage-name"></p>
+        <p class="stage-summary small" id="guide-stage-summary"></p>
+        <ol class="steps" id="guide-steps"></ol>
+        <p class="step-no small" id="guide-step-no"></p>
+        <h3 id="guide-step-title"></h3>
+        <p id="guide-step-description"></p>
+        <div class="box tool" id="guide-tool-box"><strong data-i18n="learn.tool">Tools and materials</strong> <span id="guide-tool"></span></div>
+        <div class="box caution" id="guide-caution-box"><strong data-i18n="learn.caution">Watch out</strong> <span id="guide-caution"></span></div>
         <div class="player">
-          <button type="button" id="og-previous" data-i18n="learn.previous">Previous</button>
-          <button type="button" id="og-play" class="primary" data-i18n="learn.play">Play step</button>
-          <button type="button" id="og-next" data-i18n="learn.next">Next</button>
-          <button type="button" id="og-again" data-i18n="learn.again">Replay last step</button>
+          <button type="button" id="guide-previous" data-i18n="learn.previous">Previous</button>
+          <button type="button" id="guide-play" class="primary" data-i18n="learn.play">Play step</button>
+          <button type="button" id="guide-next" data-i18n="learn.next">Next</button>
+          <button type="button" id="guide-again" data-i18n="learn.again">Replay last step</button>
         </div>
       </div>
       <div class="numbers">
       <details open>
         <summary data-i18n="learn.numbers">Your book's numbers</summary>
-        <p class="calculator-al"><button type="button" id="og-from_calculator-al" data-i18n="learn.take_from_calculator">Use values from the Calculator tab</button></p>
-        <form id="og-number-form" novalidate>
-          <label><span data-i18n="learn.g.signatureCount">Signatures</span><input id="og-g-signatureCount" inputmode="numeric" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.sheetsPerSignature">Sheets per signature</span><input id="og-g-sheetsPerSignature" inputmode="numeric" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.bookWidth">Book width (mm)</span><input id="og-g-bookWidth" inputmode="decimal" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.bookHeight">Book height (mm)</span><input id="og-g-bookHeight" inputmode="decimal" autocomplete="off"></label>
-          <label><span data-i18n="learn.g.paperThickness">Paper thickness (mm)</span><input id="og-g-paperThickness" inputmode="decimal" autocomplete="off"></label>
+        <p class="use-calculator"><button type="button" id="guide-use-calculator" data-i18n="learn.take_from_calculator">Use values from the Calculator tab</button></p>
+        <form id="guide-number-form" novalidate>
+          <label><span data-i18n="learn.g.signatureCount">Signatures</span><input id="guide-g-signatureCount" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.sheetsPerSignature">Sheets per signature</span><input id="guide-g-sheetsPerSignature" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.bookWidth">Book width (mm)</span><input id="guide-g-bookWidth" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.bookHeight">Book height (mm)</span><input id="guide-g-bookHeight" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-i18n="learn.g.paperThickness">Paper thickness (mm)</span><input id="guide-g-paperThickness" inputmode="decimal" autocomplete="off"></label>
           <button type="submit" data-i18n="learn.apply">Apply</button>
         </form>
-        <p id="og-number-error" class="error" role="alert" hidden></p>
-        <p id="og-number-note" class="error" role="status" hidden></p>
+        <p id="guide-number-error" class="error" role="alert" hidden></p>
+        <p id="guide-number-note" class="error" role="status" hidden></p>
         <p class="small" data-i18n="learn.numbers_note">Board thickness, square, turn-in and joint gap come from the Calculator tab. Changes here stay in this guide; the drawings follow these numbers.</p>
-        <p class="small" id="og-match" data-i18n="learn.calculator_match" hidden>The Calculator tab uses another binding style or a rounded spine; the guide always draws sewn signatures with a flat spine.</p>
-        <table class="result"><tbody id="og-results"></tbody></table>
+        <p class="small" id="guide-match" data-i18n="learn.calculator_match" hidden>The Calculator tab uses another binding style or a rounded spine; the guide always draws sewn signatures with a flat spine.</p>
+        <table class="result"><tbody id="guide-results"></tbody></table>
       </details>
       </div>
     </aside>
@@ -332,9 +332,9 @@
   <p class="bottom" data-i18n="learn.license">Drawings made with the Colorfigures method (MIT; April Zhu, Tolga Cohce). Full license text below.</p>
   <!-- MIT koşulu uygulama içinde görünür (Mac'te kullanıcı js/learn/LICENSE dosyasına erişemez). Metin
        js/learn/LICENSE ile birebir (app/test/learn-fixes.test.js D7); hukuk metni çevrilmez (lang="en"). -->
-  <details class="og-license" id="og-license">
+  <details class="guide-license" id="guide-license">
     <summary data-i18n="learn.license_text">Colorfigures license (MIT)</summary>
-    <pre id="og-license-text" lang="en" translate="no">MIT License
+    <pre id="guide-license-text" lang="en" translate="no">MIT License
 
 Copyright (c) 2026 April Zhu (Colorfigures: colour, hand-drawn style, 3D props, template, examples)
 Copyright (c) 2026 April Zhu (iso-glow, on which Colorfigures is based)

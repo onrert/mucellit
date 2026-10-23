@@ -1,28 +1,28 @@
 /*
- * epub-package.js — EPUB paket bilgisi: container.xml → OPF; başlık, yazar, dil, manifest, spine, kapak;
- * DRM ve sabit sayfa (fixed-layout) denetimi (KitapCilt.epubPaket). DOMParser ister (tarayıcı).
+ * epub-package.js — EPUB package info: container.xml → OPF; title, author, language, manifest, spine, cover;
+ * DRM and fixed-layout checks (Mucellit.epubPackage). Needs DOMParser (browser).
  *
- *   await paketOku(zip) → { surum, baslik, yazar, dil, opfYolu, spine: [{ yol, linear, ozellik }], manifest, kapakYolu, uyarilar }
+ *   await readPackage(zip) → { version, title, author, lang, opfPath, spine: [{ path, linear, property }], manifest, coverPath, warnings }
  *
- * Hatalar (.kod): E2 container yok, E3 DRM, E4 fixed-layout, E5 okunacak bölüm yok; OPF bulunamazsa E1.
- * DRM kuralı: META-INF/encryption.xml'de yazı tipi gizleme dışında bir EncryptedData varsa DRM sayılır
- * (IDPF gizleme: EPUB 3.3 §4.4.5; Adobe gizleme "ns.adobe.com/pdf/enc#RC"). rights.xml tek başına DRM değildir.
- * Algoritma tanımlayıcıları şemasız (alan adı + yol) karşılaştırılır.
+ * Errors (.code): E2 no container, E3 DRM, E4 fixed-layout, E5 no readable chapter; E1 when the OPF is not found.
+ * DRM rule: DRM when META-INF/encryption.xml has an EncryptedData other than font obfuscation
+ * (IDPF obfuscation: EPUB 3.3 §4.4.5; Adobe obfuscation "ns.adobe.com/pdf/enc#RC"). rights.xml alone is not DRM.
+ * Algorithm identifiers are compared without the scheme (domain + path).
  */
 (function (root) {
   'use strict';
   var MC = root.Mucellit = root.Mucellit || {};
   function t(a, p) { return MC.i18n.t(a, p); }
 
-  // Kullanıcı metinleri okundukları anda o anki dilde (sözlükte epub.E1 …).
+  // User texts in the language current when they are read (epub.E1 … in the dictionary).
   var MESSAGE = {};
   ['E1', 'E2', 'E3', 'E4', 'E5'].forEach(function (k) {
     Object.defineProperty(MESSAGE, k, { get: function () { return t('epub.' + k); }, enumerable: true });
   });
-  // yazı tipi gizleme algoritmaları (DRM değil)
+  // font obfuscation algorithms (not DRM)
   var HIDING = [/(^|\/\/)www\.idpf\.org\/2008\/embedding$/, /(^|\/\/)ns\.adobe\.com\/pdf\/enc#RC$/];
 
-  /** ayrinti: [anahtar, parametreler] (sözlükte epub.ayrinti.<anahtar>). */
+  /** detail: [key, parameters] (epub.detail.<key> in the dictionary). */
   function error(code, detail) {
     var e = new Error(MESSAGE[code]);
     e.code = code;
@@ -36,7 +36,7 @@
     return d;
   }
   function all(d, name) { return Array.prototype.slice.call(d.getElementsByTagNameNS('*', name)); }
-  function ilkMetin(d, name) {
+  function firstText(d, name) {
     var e = all(d, name)[0];
     return e ? String(e.textContent || '').replace(/\s+/g, ' ').trim() : '';
   }
@@ -58,12 +58,12 @@
       return m.getAttribute('property') === 'rendition:layout';
     }).map(function (m) { return String(m.textContent || '').trim(); });
     if (layout.indexOf('pre-paginated') >= 0) throw error('E4');
-    // eski Kindle işareti: <meta name="fixed-layout" content="true">
+    // old Kindle marker: <meta name="fixed-layout" content="true">
     var kindle = all(opf, 'meta').some(function (m) {
       return m.getAttribute('name') === 'fixed-layout' && String(m.getAttribute('content')).trim() === 'true';
     });
     if (kindle) throw error('E4');
-    // eski Apple işareti: META-INF/com.apple.ibooks.display-options.xml içinde fixed-layout = true
+    // old Apple marker: fixed-layout = true in META-INF/com.apple.ibooks.display-options.xml
     var elma = 'META-INF/com.apple.ibooks.display-options.xml';
     if (zip.has(elma)) {
       var d = xml(await zip.text(elma));
@@ -106,25 +106,25 @@
       if (kid && manifest[kid]) coverPath = manifest[kid].path;
     }
 
-    var main = [], ek = [], skipped = 0, tekFxl = 0;
+    var main = [], ek = [], skipped = 0, itemFxl = 0;
     all(opf, 'itemref').forEach(function (ir) {
       var m = manifest[ir.getAttribute('idref')];
       if (!m) { skipped += 1; return; }
       var html = /xhtml|html/.test(m.kind) || /\.x?html?$/i.test(m.path);
       if (!html || !zip.has(m.path)) { skipped += 1; return; }
       var oz = String(ir.getAttribute('properties') || '');
-      if (/rendition:layout-pre-paginated/.test(oz)) tekFxl += 1;
+      if (/rendition:layout-pre-paginated/.test(oz)) itemFxl += 1;
       var linear = String(ir.getAttribute('linear') || 'yes').trim() !== 'no';
       (linear ? main : ek).push({ path: m.path, linear: linear, property: oz });
     });
     if (skipped) warnings.push(t('epub.warning.spine_skipped', { n: skipped }));
-    if (tekFxl) warnings.push(t('epub.warning.fxl_reflowable', { n: tekFxl }));
-    // linear="no" öğeler (ör. sonnotlar) ana akıştan sonra eklenir
+    if (itemFxl) warnings.push(t('epub.warning.fxl_reflowable', { n: itemFxl }));
+    // linear="no" items (e.g. endnotes) are added after the main flow
     var spine = main.concat(ek);
     if (!spine.length) throw error('E5');
     return {
       version: version, opfPath: opfPath,
-      title: ilkMetin(opf, 'title'), writes: ilkMetin(opf, 'creator'), i18n: ilkMetin(opf, 'language'),
+      title: firstText(opf, 'title'), author: firstText(opf, 'creator'), lang: firstText(opf, 'language'),
       spine: spine, manifest: manifest, coverPath: coverPath, warnings: warnings
     };
   }

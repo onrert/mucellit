@@ -1,18 +1,21 @@
 /*
- * learn-measure.js — "Kitabın sayıları" paneli: kitabın beş sayısından rehberin bütün ölçüleri.
- * Cilt ölçüleri Mücellit'in kendi hesabından gelir (KitapCilt.hesap.hesapla). (uygulamaya ekleme): öntanımlı
- * sayılar Hesapla sekmesinin girdileri ve onun hesap sonucudur (taban; aynı kaynak, kopya hesap yok): rehber Hesapla'nın
- * mukavva kalınlığını, taşmayı, kıvırmayı, mafsalı, forza payını, sırt şeridi kuralını aynen kullanır; yalnız cilt türü
- * hep formalı dikiş ve sırt hep düz çizilir (rehberin konusu). Panelde elle değişiklik yalnız rehberde kalır.
- * Taban yoksa (Hesapla okunamadı) yedek öntanımlı: Örnek Kitap (11 forma × 4 kâğıt, 148 × 210, 0,1 mm).
- * Rehberin ek varsayımları (araçta yok):
- *   delik:  uçlardan 15 mm içeride birer kettle deliği, aralık en çok 40 mm, çift sayıda delik (kaynaksız varsayım;
- *           MEB-2021 s.26 örneğinde uçlar ~25 mm, Cockerell ~6 mm)
- *   iplik:  yaklaşık (forma + 2) × kitap boyu, 10 mm'ye yuvarlanır (kaynaksız yaklaşık kural)
- *   köşe:   mukavva köşesinden t + 2 … t + 3 mm (MEGEP-2008 s.36: "mukavva kalınlığından 2-3 mm fazla"; MEB-2021 s.75: 5 mm)
- * Tarayıcıda KitapCilt.ogren.olcu, Node'da module.exports (testler).
- * LİSANS NOTU: Mücellit kodu (MIT, kökteki LICENSE); Colorfigures kodu içermez. Bu klasördeki Colorfigures parçaları MIT lisanslı
- * (April Zhu, Tolga Cohce), tam metin: LICENSE.
+ * learn-measure.js — the "Book's numbers" panel: every measurement of the guide from the book's five numbers.
+ * The binding measurements come from Mucellit's own calculation (Mucellit.calc.calculate). (added for the app): the
+ * default numbers are the inputs of the Calculator tab and its result (the base; the same source, no copied
+ * calculation): the guide uses the Calculator's board thickness, square, turn-in, joint, endpaper allowance and spine
+ * strip rule as they are; only the binding type is always sewn signatures and the spine is always drawn flat (the
+ * subject of the guide). Manual changes in the panel stay in the guide only.
+ * Without a base (the Calculator could not be read) the fallback default: Sample Book (11 signatures × 4 sheets,
+ * 148 × 210, 0.1 mm).
+ * Extra assumptions of the guide (not in the tool):
+ *   holes:  one kettle hole 15 mm in from each end, spacing at most 40 mm, an even number of holes (assumption without
+ *           a source; in the MEB-2021 p.26 example the ends are ~25 mm, Cockerell ~6 mm)
+ *   thread: about (signatures + 2) × book height, rounded to 10 mm (approximate rule without a source)
+ *   corner: t + 2 … t + 3 mm from the board corner (MEGEP-2008 p.36: "2-3 mm more than the board thickness";
+ *           MEB-2021 p.75: 5 mm)
+ * In the browser Mucellit.learn.size, in Node module.exports (tests).
+ * LICENSE NOTE: Mucellit code (MIT, LICENSE at the root); it contains no Colorfigures code. The Colorfigures parts in this
+ * folder are MIT licensed (April Zhu, Tolga Cohce), full text: LICENSE.
  */
 (function (root, factory) {
   var m = factory(root);
@@ -21,16 +24,16 @@
 })(typeof self !== 'undefined' ? self : this, function (root) {
   'use strict';
   var DEFAULTS = { signatureCount: 11, sheetsPerSignature: 4, bookWidth: 148, bookHeight: 210, paperThickness: 0.1 };
-  // [en az, en çok, tam sayı mı]
+  // [minimum, maximum, integer only]
   var LIMIT = {
     signatureCount: [1, 40, true], sheetsPerSignature: [1, 8, true],
     bookWidth: [60, 300, false], bookHeight: [80, 420, false], paperThickness: [0.04, 0.4, false]
   };
-  var UC_ALLOWANCE = 15, MAX_RANGE = 40;
+  var END_ALLOWANCE = 15, MAX_RANGE = 40;
 
   function roundOff(x) { return Math.round(x * 1000) / 1000; }
 
-  /** "8,8" / "8.8" / 8.8 → 8.8; boş ya da bozuk → NaN. Binlik ayracı kabul edilmez. */
+  /** "8,8" / "8.8" / 8.8 → 8.8; empty or broken → NaN. No thousands separator is accepted. */
   function readNumber(v) {
     if (typeof v === 'number') return v;
     var s = String(v == null ? '' : v).trim().replace(',', '.');
@@ -38,7 +41,7 @@
     return Number(s);
   }
 
-  /** Geçersiz alanların adları (boş dizi = geçerli). */
+  /** Names of the invalid fields (empty array = valid). */
   function invalidFields(g) {
     return Object.keys(LIMIT).filter(function (a) {
       var v = readNumber(g[a]), s = LIMIT[a];
@@ -47,12 +50,12 @@
   }
 
   function stations(H) {
-    var inner = H - 2 * UC_ALLOWANCE;
+    var inner = H - 2 * END_ALLOWANCE;
     var rangeCount = Math.max(1, Math.ceil(inner / MAX_RANGE));
-    if (rangeCount % 2 === 0) rangeCount += 1;   // delik sayısı = aralık + 1, çift olmalı
+    if (rangeCount % 2 === 0) rangeCount += 1;   // number of holes = ranges + 1, must be even
     var range = inner / rangeCount, position = [];
-    for (var i = 0; i <= rangeCount; i++) position.push(roundOff(UC_ALLOWANCE + i * range));
-    return { number: position.length, range: roundOff(range), position: position, ucAllowance: UC_ALLOWANCE };
+    for (var i = 0; i <= rangeCount; i++) position.push(roundOff(END_ALLOWANCE + i * range));
+    return { number: position.length, range: roundOff(range), position: position, endAllowance: END_ALLOWANCE };
   }
 
   function calcModule() {
@@ -63,38 +66,42 @@
   var FIELDS = Object.keys(DEFAULTS);
 
   /**
-   * Hesapla sekmesinin durumundan taban: { girdi (rehberin hesap girdisi: formalı, düz sırt), sonuc (o girdinin
-   * hesap sonucu), bes (panelin beş alanı), uyum (Hesapla'da cilt türü formalı ve sırt düz mü) }.
-   * durum: { girdi, sonuc, hata } (KitapCilt.hesapla.durum()). Hesapla formalı + düz sırttaysa Hesapla'nın kendi sonucu
-   * aynen kullanılır (yeniden hesaplanmaz). Hata: Hesapla hatalıysa { hata }, rehberin sınırları dışındaysa { alanlar }.
+   * The base from the state of the Calculator tab: { input (the guide's calculation input: sewn, flat spine), result
+   * (the calculation result of that input), five (the five fields of the panel), match (are the binding type sewn and
+   * the spine flat in the Calculator) }.
+   * state: { input, result, error } (Mucellit.calculator.state()). When the Calculator is at sewn + flat spine, its own
+   * result is used as it is (not calculated again). Error: { error } when the Calculator has an error, { fields } when
+   * outside the guide's limits.
    */
   function fromBase(state, H) {
     if (!state || state.error || !state.input || !state.result) return { error: state && state.error ? state.error : true };
-    var hg = {}, d = state.input;
-    Object.keys(d).forEach(function (a) { if (a !== 'errors') hg[a] = d[a]; });
-    var match = hg.bindingType === 'sewn' && hg.spineShape !== 'rounded';
+    var calcInput = {}, d = state.input;
+    Object.keys(d).forEach(function (a) { if (a !== 'errors') calcInput[a] = d[a]; });
+    var match = calcInput.bindingType === 'sewn' && calcInput.spineShape !== 'rounded';
     var result = state.result;
     if (!match) {
-      hg.bindingType = 'sewn'; hg.spineShape = 'flat'; delete hg.curveLength;
-      try { result = (H || calcModule()).calculate(hg); } catch (e) { return { error: e && e.message ? e.message : String(e) }; }
+      calcInput.bindingType = 'sewn'; calcInput.spineShape = 'flat'; delete calcInput.curveLength;
+      try { result = (H || calcModule()).calculate(calcInput); } catch (e) { return { error: e && e.message ? e.message : String(e) }; }
     }
-    var bes = { signatureCount: result.signatureCount, sheetsPerSignature: Number(result.input.sheetsPerSignature), bookWidth: Number(result.input.bookWidth),
+    var five = { signatureCount: result.signatureCount, sheetsPerSignature: Number(result.input.sheetsPerSignature), bookWidth: Number(result.input.bookWidth),
       bookHeight: Number(result.input.bookHeight), paperThickness: Number(result.input.paperThickness) };
-    var failed = invalidFields(bes);
-    if (failed.length) return { fields: failed, bes: bes };
-    return { input: hg, result: result, bes: bes, match: match };
+    var failed = invalidFields(five);
+    if (failed.length) return { fields: failed, five: five };
+    return { input: calcInput, result: result, five: five, match: match };
   }
 
   /**
-   * girdi: { formaSayisi, formaYaprak, kitapGen, kitapYuk, kagitKalinlik } (eksik alan tabandan, taban yoksa öntanımlı).
-   * taban: tabandan() sonucu (isteğe bağlı). Beş alan tabanla aynıysa tabanın hesap sonucu aynen kullanılır; değilse hesap
-   * girdisi = taban girdisi (mukavva, taşma, kıvırma, mafsal …) + beş alan: forma sayısı ya da forma yaprağı değiştiyse
-   * sayfa = forma × kâğıt × 4 (son forma tam), değişmediyse Hesapla'nın sayfa sayısı ve son forma ayarı kalır.
-   * Geçersizse RangeError (e.alanlar = geçersiz alan adları). H: hesap modülü (testte başka bir kopya verilebilir).
+   * input: { signatureCount, sheetsPerSignature, bookWidth, bookHeight, paperThickness } (a missing field from the base,
+   * without a base the default). base: the result of fromBase() (optional). When the five fields equal the base, the
+   * base's calculation result is used as it is; otherwise the calculation input = the base input (board, square,
+   * turn-in, joint …) + the five fields: when the signature count or the sheets per signature changed,
+   * pages = signatures × sheets × 4 (last signature full), otherwise the Calculator's page count and last-signature
+   * setting stay. When invalid a RangeError (e.fields = names of the invalid fields). H: the calculation module (a test
+   * may pass another copy).
    */
   function calculate(input, base, H) {
-    var tb = base && base.input && base.result ? base : null;
-    var vs = tb ? tb.bes : DEFAULTS;
+    var baseData = base && base.input && base.result ? base : null;
+    var vs = baseData ? baseData.five : DEFAULTS;
     var g = {};
     FIELDS.forEach(function (a) {
       var v = input && input[a] != null && input[a] !== '' ? input[a] : vs[a];
@@ -103,34 +110,34 @@
     var failed = invalidFields(g);
     if (failed.length) { var e = new RangeError('learn-size: ' + failed.join(', ')); e.fields = failed; throw e; }
     FIELDS.forEach(function (a) { g[a] = readNumber(g[a]); });
-    var N = g.signatureCount, y = g.sheetsPerSignature, h, hg;
-    if (tb && FIELDS.every(function (a) { return g[a] === tb.bes[a]; })) {
-      h = tb.result;
+    var N = g.signatureCount, y = g.sheetsPerSignature, h, calcInput;
+    if (baseData && FIELDS.every(function (a) { return g[a] === baseData.five[a]; })) {
+      h = baseData.result;
     } else {
-      hg = {};
-      if (tb) Object.keys(tb.input).forEach(function (a) { hg[a] = tb.input[a]; });
-      var sameSignature = tb && N === tb.bes.signatureCount && y === tb.bes.sheetsPerSignature;
-      hg.bindingType = 'sewn';
-      if (tb) hg.spineShape = 'flat';
-      hg.pageCount = sameSignature ? tb.input.pageCount : N * y * 4;
-      if (tb) hg.shrinkLastSignature = sameSignature ? !!tb.input.shrinkLastSignature : false;
-      hg.sheetsPerSignature = y;
-      hg.bookWidth = g.bookWidth; hg.bookHeight = g.bookHeight; hg.paperThickness = g.paperThickness;
-      h = (H || calcModule()).calculate(hg);
+      calcInput = {};
+      if (baseData) Object.keys(baseData.input).forEach(function (a) { calcInput[a] = baseData.input[a]; });
+      var sameSignature = baseData && N === baseData.five.signatureCount && y === baseData.five.sheetsPerSignature;
+      calcInput.bindingType = 'sewn';
+      if (baseData) calcInput.spineShape = 'flat';
+      calcInput.pageCount = sameSignature ? baseData.input.pageCount : N * y * 4;
+      if (baseData) calcInput.shrinkLastSignature = sameSignature ? !!baseData.input.shrinkLastSignature : false;
+      calcInput.sheetsPerSignature = y;
+      calcInput.bookWidth = g.bookWidth; calcInput.bookHeight = g.bookHeight; calcInput.paperThickness = g.paperThickness;
+      h = (H || calcModule()).calculate(calcInput);
     }
-    var t = Number(h.input.boardThickness), ist = stations(g.bookHeight);
+    var t = Number(h.input.boardThickness), stationInfo = stations(g.bookHeight);
     return {
-      input: g, calc: h, source: h === (tb && tb.result) ? 'calculator' : 'guide',
+      input: g, calc: h, source: h === (baseData && baseData.result) ? 'calculator' : 'guide',
       N: h.signatureCount, y: y, W: g.bookWidth, H: g.bookHeight, paper: g.paperThickness,
       page: h.totalPages, sheet: h.leaves, printSheets: h.printSheets,
       S: h.spineThickness, t: t, k: Number(h.input.square), e: Number(h.input.turnIn), f: h.jointGap,
       Db: h.board.width, Dh: h.board.height, R: h.spineStrip.width,
       covering: h.covering, endpapers: h.endpapers, mull: h.mull, headbands: h.headbands.length,
-      station: ist, thread: Math.round((h.signatureCount + 2) * g.bookHeight / 10) * 10,
+      station: stationInfo, thread: Math.round((h.signatureCount + 2) * g.bookHeight / 10) * 10,
       corner: [roundOff(t + 2), roundOff(t + 3)]
     };
   }
 
-  return { DEFAULTS: DEFAULTS, LIMIT: LIMIT, UC_ALLOWANCE: UC_ALLOWANCE, MAX_RANGE: MAX_RANGE,
+  return { DEFAULTS: DEFAULTS, LIMIT: LIMIT, END_ALLOWANCE: END_ALLOWANCE, MAX_RANGE: MAX_RANGE,
     readNumber: readNumber, invalidFields: invalidFields, stations: stations, fromBase: fromBase, calculate: calculate };
 });

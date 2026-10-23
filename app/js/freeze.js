@@ -1,8 +1,8 @@
 /*
- * freeze.js — Object.prototype'ı dondurur (prototip kirletmeye karşı).
- * Tauri'nin `freezePrototype: true` ayarı bunu sayfa betiklerinden ÖNCE yapar; pdf-lib 1.17.1 (ES5 derlemesi)
- * yüklenirken `X.prototype.toString = …` atamasında hata verip yarım kalır (PDFLib.PDFDocument tanımsız).
- * Bu yüzden dondurma burada, vendor kütüphaneleri yüklendikten hemen sonra ve uygulama betiklerinden önce
- * yapılır (index.html sırası; app/test/tauri-security.test.js denetler). Tarayıcıda ve Tauri'de aynı.
+ * freeze.js — freezes Object.prototype (against prototype pollution).
+ * Tauri's `freezePrototype: true` setting does this BEFORE the page scripts; pdf-lib 1.17.1 (an ES5 build) then fails
+ * on its `X.prototype.toString = …` assignment while loading and stays half set up (PDFLib.PDFDocument undefined).
+ * So the freeze happens here, right after the vendor libraries are loaded and before the app scripts (index.html order;
+ * checked by app/test/tauri-security.test.js). The same in the browser and in Tauri.
  */
 Object.freeze(Object.prototype);

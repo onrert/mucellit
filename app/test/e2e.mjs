@@ -715,9 +715,9 @@ async function freshPage(page, address) {
       const MC = window.Mucellit;
       const zip = MC.epubZip.read(new Uint8Array(array));
       const pkg = await MC.epubPackage.readPackage(zip);
-      const env = { zip, i18n: pkg.i18n, cssCache: new Map(), thumbs: {}, counter: { skippedImage: 0, table: 0 } };
+      const env = { zip, lang: pkg.lang, cssCache: new Map(), images: {}, counter: { skippedImage: 0, table: 0 } };
       const r = await MC.xhtmlBlock.documentToBlocks(await zip.text(path), path, env);
-      return { blocks: r.blocks, counter: env.counter, spine: pkg.spine.map((s) => s.path), cover: pkg.coverPath, i18n: pkg.i18n,
+      return { blocks: r.blocks, counter: env.counter, spine: pkg.spine.map((s) => s.path), cover: pkg.coverPath, lang: pkg.lang,
         inline: env.inlineCache ? env.inlineCache.size : null, unsupported: zip.unsupportedEncodings ? zip.unsupportedEncodings() : null };
     };
   });
@@ -745,7 +745,7 @@ async function epubFlow(page, address, label) {
     `${label}: trMini IR'sinde sınıfla italik, <strong> ve sınıfla kalın parçalar var`);
   check('A7', !part.some((p) => /GIZLIMETIN/.test(p.text || '')) && ir.blocks.some((b) => b.kind === 'separator') && ir.blocks.some((b) => b.prefix === '•') && ir.blocks.some((b) => b.prefix === '2.'),
     `${label}: display:none atlanır, @media kuralı uygulanmaz; ayraç ve liste önekleri (• / 2.)`);
-  check('A7', ir.counter.skippedImage === 1 && ir.counter.table === 1 && ir.blocks.filter((b) => b.kind === 'image').length === 2 && ir.cover === 'OEBPS/resim/kapak.png',
+  check('A7', ir.counter.skippedImage === 1 && ir.counter.table === 1 && ir.blocks.filter((b) => b.kind === 'image').length === 2 && ir.cover === 'OEBPS/images/cover.png',
     `${label}: SVG atlandı (1), tablo düz metin (1), PNG + GIF resim bloğu (2), kapak cover-image`, JSON.stringify(ir.counter));
 
   // ---- B3 Türkçe: arayüzden yükle, kart = PDF sayfa ≥ 3; metin birebir ----
@@ -1563,7 +1563,7 @@ async function m6MostFlow(page, address, iz, label, tam) {
   // değişen İngilizce metinler arayüzde
   const dm = await page.evaluate(() => {
     const m = (a) => (document.querySelector(`[data-i18n="${a}"]`) || {}).textContent;
-    return { blank: [m('impose.blank_to_start'), m('impose.bos_once'), m('impose.blank_to_end')], spine: m('calculator.spine_shape'), endpapers: m('calculator.endpaper_allowance'), rule: m('calculator.spine_rule'),
+    return { blank: [m('impose.blank_to_start'), m('impose.blank_before'), m('impose.blank_to_end')], spine: m('calculator.spine_shape'), endpapers: m('calculator.endpaper_allowance'), rule: m('calculator.spine_rule'),
       source: m('calculator.source'), hint: m('impose.output_hint'), storage: (document.getElementById('storage-hint') || {}).textContent };
   });
   check('i18n', JSON.stringify(dm.blank) === '["Insert blank at start","Insert blank before selected","Insert blank at end"]' && dm.spine === 'Spine shape' &&
@@ -1994,7 +1994,7 @@ const learnState = (page) => page.evaluate(() => { const d = window.Mucellit.lea
 function extractNumbers(text, i18n) {
   return (String(text).match(/\d[\d.,]*/g) || []).map((x) => Number(i18n === 'tr' ? x.replace(/\./g, '').replace(',', '.') : x.replace(/,/g, '')));
 }
-const learnTable = (page, i18n) => page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('#og-results td')).map((td) => [td.dataset.k, td.textContent])))
+const learnTable = (page, i18n) => page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('#guide-results td')).map((td) => [td.dataset.k, td.textContent])))
   .then((t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, extractNumbers(v, i18n)])));
 const calculatorTable = (page, i18n) => page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('#h-result td[data-result]')).map((td) => [td.dataset.result, td.textContent])))
   .then((t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, extractNumbers(v, i18n)])));
@@ -2018,7 +2018,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const r0 = await page.evaluate(() => window.__kcRaf);
   await page.waitForTimeout(600);
   const once = await learnState(page);
-  const blank = await page.evaluate((r0) => ({ stage: document.getElementById('og-stage').childElementCount, raf: window.__kcRaf - r0, hidden: document.getElementById('tab-learn').hidden,
+  const blank = await page.evaluate((r0) => ({ stage: document.getElementById('guide-stage').childElementCount, raf: window.__kcRaf - r0, hidden: document.getElementById('tab-learn').hidden,
     tab: document.getElementById('tab-button-learn').textContent }), r0);
   check('learn', !once.installed && !once.figure && blank.stage === 0 && blank.raf === 0 && blank.hidden && blank.tab === PROMISE['tab.learn'],
     `${label}: Öğren sekmesi açılmadan rehber kurulmaz, figür ve rAF yok; 4. sekme "${PROMISE['tab.learn']}"`, JSON.stringify({ once, blank }));
@@ -2031,7 +2031,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const reconcile = { page: (h) => h.totalPages.slice(0, 1), signature: (h) => h.signatureCount, sheet: (h) => h.leaves, printing: (h) => h.printSheets, spine: (h) => h.spineThickness,
     board: (h) => h.board, strip: (h) => h.spineStrip, jointGap: (h) => h.jointGap, covering: (h) => h.covering, endpapers: (h) => h.endpapers, mull: (h) => h.mull, headbands: (h) => h.headbands };
   const difference = Object.entries(reconcile).filter(([k, f]) => JSON.stringify(og[k]) !== JSON.stringify(f(hs))).map(([k, f]) => `${k}: ${JSON.stringify(og[k])} ≠ ${JSON.stringify(f(hs))}`);
-  const field = await page.evaluate(() => ['signatureCount', 'sheetsPerSignature', 'bookWidth', 'bookHeight', 'paperThickness'].map((a) => document.getElementById('og-g-' + a).value));
+  const field = await page.evaluate(() => ['signatureCount', 'sheetsPerSignature', 'bookWidth', 'bookHeight', 'paperThickness'].map((a) => document.getElementById('guide-g-' + a).value));
   check('learn', open.installed && open.figure && open.visible && !open.manual && same && difference.length === 0 && Object.keys(og).length >= 12 && og.page[0] === 208 && og.signature[0] === 13 &&
     JSON.stringify(field) === JSON.stringify(['13', '4', '148', '210', i18n === 'tr' ? '0,1' : '0.1']),
     `${label}: sekme açılınca rehber kurulur; sayı paneli öntanımlıları Hesapla ile aynı (aynı hesap sonucu nesnesi, 12 değer)`, JSON.stringify({ difference, same, field, og: og.page }));
@@ -2043,23 +2043,23 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   // id'li öğeler tarayıcının adlı erişimiyle (window.fig === #fig) görünür: betik bildirimi değil, ayrı sayılır
   const idElement = await page.evaluate((l) => l.filter((a) => { const e = document.getElementById(a); return !!e && window[a] === e; }), defined);
   const reported = defined.filter((a) => !idElement.includes(a));
-  const window = await page.evaluate(() => ({ name: ['__st', '__ln', 'CF_SPEED', 'FIG_A', 'LBL_U', 'cfKur', 'mountFigure', 'PALS'].filter((a) => a in window),
+  const window = await page.evaluate(() => ({ name: ['__st', '__ln', 'CF_SPEED', 'FIG_A', 'LBL_U', 'cfMount', 'mountFigure', 'PALS'].filter((a) => a in window),
     learn: Object.keys(window.Mucellit.learn).sort(), nolabels: document.documentElement.classList.contains('nolabels'), accent: document.documentElement.style.getPropertyValue('--accent'),
     dataErrors: document.documentElement.hasAttribute('data-errors') }));
   check('learn', reported.length === 0 && window.name.length === 0 && !window.nolabels && !window.accent && !window.dataErrors && ['cf', 'probe', 'size', 'tab'].every((a) => window.learn.includes(a)),
     `${label}: global ad yalnız Mucellit altında (${candidate.length} aday bildirimden küresel ${reported.length}; id'li öğe adları ayrı: ${idElement.length}; html sınıf/değişken/data-errors kalıntısı yok)`, JSON.stringify({ reported, idElement, window }));
   // ---- lisans paneli (Mac'te kullanıcının erişebildiği MIT tam metni)
-  const lis = await page.evaluate(() => { const d = document.getElementById('og-license'), p = document.getElementById('og-license-text');
+  const lis = await page.evaluate(() => { const d = document.getElementById('guide-license'), p = document.getElementById('guide-license-text');
     // görünürlük: checkVisibility (kapalı details içeriği content-visibility ile gizli; offsetHeight Chromium'da 0 değil)
     const visible = (e) => (typeof e.checkVisibility === 'function' ? e.checkVisibility() : e.offsetHeight > 0);
-    const r = { var: !!d && !!p && !!d.closest('#og-root'), summary: d ? d.querySelector('summary').textContent : '', closed: p ? !d.open && !visible(p) : null };
+    const r = { var: !!d && !!p && !!d.closest('#guide-root'), summary: d ? d.querySelector('summary').textContent : '', closed: p ? !d.open && !visible(p) : null };
     if (d) d.querySelector('summary').click();
-    return { ...r, isOpen: p ? d.open && visible(p) && p.offsetHeight > 0 : null, text: p ? p.textContent.trim() : '', lang: p ? p.lang : '', footnote: document.querySelector('#og-root [data-i18n="learn.license"]').textContent }; });
-  await page.evaluate(() => { const d = document.getElementById('og-license'); if (d) d.open = false; });
+    return { ...r, isOpen: p ? d.open && visible(p) && p.offsetHeight > 0 : null, text: p ? p.textContent.trim() : '', lang: p ? p.lang : '', footnote: document.querySelector('#guide-root [data-i18n="learn.license"]').textContent }; });
+  await page.evaluate(() => { const d = document.getElementById('guide-license'); if (d) d.open = false; });
   check('learn', lis.var && lis.summary === PROMISE['learn.license_text'] && lis.closed && lis.isOpen && lis.text === LEARN_LICENSE && lis.lang === 'en' && lis.footnote === PROMISE['learn.license'],
     `${label}: Öğren'de "${PROMISE['learn.license_text']}" paneli açılır, MIT tam metni js/learn/LICENSE ile birebir`, JSON.stringify({ ...lis, text: lis.text.slice(0, 40) }));
   // ---- 10 aşama, 45 adım (4×)
-  await page.selectOption('#og-speed', '4');
+  await page.selectOption('#guide-speed', '4');
   const lesson = await page.evaluate(() => window.Mucellit.learn.probe.lessons.map((d) => d.steps.length));
   const rest = [];
   let step = 0;
@@ -2072,7 +2072,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
     }
   }
   const lastStep = await learnState(page);
-  const card = await page.textContent('#og-step-title');
+  const card = await page.textContent('#guide-step-title');
   check('learn', step === 45 && lesson.length === 10 && rest.length === 0 && lastStep.a === 9 && lastStep.i === 4 && card === PROMISE['learn.finished_title'],
     `${label}: 10 aşamanın 45 adımı oynatıldı (4×), hepsi başladı ve bitti; son kart "${PROMISE['learn.finished_title']}"`, JSON.stringify({ step, rest, last: [lastStep.a, lastStep.i], card }));
   // ---- Örnek Kitap (elle) ve elle değişikliğin Hesapla'ya geçmemesi
@@ -2087,7 +2087,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   await writeCalculator(page, 'h-pageCount', 300);
   await page.click('#tab-button-learn');
   const manualStays = await learnState(page);
-  await page.click('#og-from_calculator-al');
+  await page.click('#guide-use-calculator');
   const taken = await learnState(page), takeTable = await learnTable(page, i18n);
   await writeCalculator(page, 'h-pageCount', 162);
   await page.click('#tab-button-learn');
@@ -2100,40 +2100,40 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   // ---- Hesapla'da tek yaprak: rehber formalı çizer, uyum notu görünür; Hesapla hatalıysa not, önceki sayılar kalır
   await writeCalculator(page, 'h-bindingType', 'single1');
   await page.click('#tab-button-learn');
-  const match = await page.evaluate(() => ({ note: !document.getElementById('og-match').hidden, d: window.Mucellit.learn.probe.state().match }));
+  const match = await page.evaluate(() => ({ note: !document.getElementById('guide-match').hidden, d: window.Mucellit.learn.probe.state().match }));
   const matchTb = tbFarki(await learnTable(page, i18n));
   await writeCalculator(page, 'h-bindingType', 'sewn');
   await writeCalculator(page, 'h-bookWidth', 'abc');
   await page.click('#tab-button-learn');
-  const failed = await page.evaluate(() => ({ note: document.getElementById('og-number-note').hidden ? '' : document.getElementById('og-number-note').textContent, signature: window.Mucellit.learn.probe.state().input.signatureCount }));
+  const failed = await page.evaluate(() => ({ note: document.getElementById('guide-number-note').hidden ? '' : document.getElementById('guide-number-note').textContent, signature: window.Mucellit.learn.probe.state().input.signatureCount }));
   await writeCalculator(page, 'h-bookWidth', 148);
   await page.click('#tab-button-learn');
-  const fixed = await page.evaluate(() => ({ note: document.getElementById('og-number-note').hidden, match: document.getElementById('og-match').hidden }));
+  const fixed = await page.evaluate(() => ({ note: document.getElementById('guide-number-note').hidden, match: document.getElementById('guide-match').hidden }));
   check('learn', match.note && match.d === false && matchTb.length === 0 && failed.note === PROMISE['learn.calculator_error'] && failed.signature === 11 && fixed.note && fixed.match,
     `${label}: Hesapla tek yaprakken rehber formalı + düz sırt çizer ve not gösterir; Hesapla hatalıyken önceki sayılar kalır, düzelince not kalkar`, JSON.stringify({ match, matchTb, failed, fixed }));
   // ---- Öğren açıkken sekme yeniden basılınca rehber söküp yeniden kurulmaz; "baştan sona" adım atlamaz
   await page.evaluate(() => window.Mucellit.learn.probe.setup(0, 0));
-  await page.click('#og-fromStart-toEnd');
+  await page.click('#guide-fromStart-toEnd');
   await page.waitForFunction(() => { const d = window.Mucellit.learn.probe.state(); return d.flow && d.playing && d.i >= 1; }, null, { timeout: 20000 });
-  const yb0 = await page.evaluate(() => { const d = window.Mucellit.learn.probe.state(); window.__kcSt = d.st; window.__kcStage = document.getElementById('og-stage').firstElementChild; return { a: d.a, i: d.i }; });
+  const yb0 = await page.evaluate(() => { const d = window.Mucellit.learn.probe.state(); window.__kcSt = d.st; window.__kcStage = document.getElementById('guide-stage').firstElementChild; return { a: d.a, i: d.i }; });
   await page.click('#tab-button-learn');
   const yb1 = await page.evaluate(() => { const d = window.Mucellit.learn.probe.state();
-    return { sameSt: d.st === window.__kcSt, sameStage: document.getElementById('og-stage').firstElementChild === window.__kcStage, playing: d.playing, flow: d.flow, a: d.a, i: d.i }; });
+    return { sameSt: d.st === window.__kcSt, sameStage: document.getElementById('guide-stage').firstElementChild === window.__kcStage, playing: d.playing, flow: d.flow, a: d.a, i: d.i }; });
   await page.waitForFunction(([a, i]) => { const d = window.Mucellit.learn.probe.state(); return d.a !== a || d.i !== i || !d.flow; }, [yb0.a, yb0.i], { timeout: 20000 });
   const yb2 = await learnState(page);
-  await page.click('#og-fromStart-toEnd');   // durdur
+  await page.click('#guide-fromStart-toEnd');   // durdur
   await page.waitForFunction(() => !window.Mucellit.learn.probe.state().flow, null, { timeout: 10000 });
   check('learn', yb1.sameSt && yb1.sameStage && yb1.playing && yb1.flow && yb2.flow && yb2.a === yb0.a && yb2.i === yb0.i + 1,
     `${label}: "baştan sona" sürerken Öğren sekmesi yeniden basılınca figür yeniden kurulmaz, oynayan adım sürer, sonraki adım sırayla (adım atlanmaz)`,
     JSON.stringify({ once: yb0, after: yb1, first: [yb2.a, yb2.i, yb2.flow] }));
   // ---- sekme değişince "baştan sona" durur, figür sökülür, rAF çağrısı yok; geri dönünce aynı yerden kurulur
   await page.evaluate(() => window.Mucellit.learn.probe.setup(2, 0));
-  await page.click('#og-fromStart-toEnd');
+  await page.click('#guide-fromStart-toEnd');
   await page.waitForTimeout(1500);
   const whilePlaying = await learnState(page);
   await page.click('#tab-button-projects');
   const immediately = await learnState(page);
-  const stage = await page.evaluate(() => document.getElementById('og-stage').childElementCount);
+  const stage = await page.evaluate(() => document.getElementById('guide-stage').childElementCount);
   await page.waitForTimeout(300);
   const ra = await page.evaluate(() => window.__kcRaf);
   await page.waitForTimeout(1200);
@@ -2147,7 +2147,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   // ---- baştan sona oynat (4×): sona kadar, sıra 1→10, son karede kapak kapalı
   await page.evaluate(() => window.Mucellit.learn.probe.setup(0, 0));
   const t0 = Date.now();
-  await page.click('#og-fromStart-toEnd');
+  await page.click('#guide-fromStart-toEnd');
   const order = [];
   let last = null;
   while (Date.now() - t0 < 240000) {
@@ -2156,7 +2156,7 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
     if (!d.flow) { last = d; break; }
     await new Promise((r) => setTimeout(r, 250));
   }
-  const button = await page.textContent('#og-fromStart-toEnd');
+  const button = await page.textContent('#guide-fromStart-toEnd');
   check('learn', last && last.finished && last.a === 9 && last.i === 4 && last.isOpen === 0 && JSON.stringify(order) === '[1,2,3,4,5,6,7,8,9,10]' && button === PROMISE['learn.from_start_to_end'],
     `${label}: baştan sona oynat (4×) bitti: aşama sırası 1→10, son aşamada 4/4, kapak kapalı (${Math.round((Date.now() - t0) / 1000)} sn)`, JSON.stringify({ order, last: last && [last.finished, last.a, last.i, last.isOpen], button }));
   // ---- CSP ihlali 0 (Tauri CSP başlığı), eksik anahtar 0, uygulama bildiriminde hata yok
@@ -2168,20 +2168,20 @@ async function m7LearnFlow(page, address, iz, label, i18n) {
   const OTHER = D.extractJson(readFileSync(join(APP, 'i18n', other + '.js'), 'utf8'));
   await page.evaluate(() => window.Mucellit.learn.probe.setup(2, 2));
   const onceDone = (await learnState(page)).done;
-  const onceProgress = await page.evaluate(() => document.getElementById('og-progress-text').textContent.match(/\d+/g).join('/'));
+  const onceProgress = await page.evaluate(() => document.getElementById('guide-progress-text').textContent.match(/\d+/g).join('/'));
   await Promise.all([page.waitForEvent('load'), page.selectOption('#i18n-select', other)]);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   await page.waitForFunction(() => window.Mucellit.learn.probe.state().figure, null, { timeout: 10000 });
   const yd = await learnState(page);
   const ym = await page.evaluate(() => ({ tab: document.getElementById('tab-button-learn').textContent, selected: document.getElementById('tab-button-learn').getAttribute('aria-selected'),
-    title: document.querySelector('#og-root [data-i18n="learn.title"]').textContent, step: document.getElementById('og-step-title').textContent, play: document.getElementById('og-play').textContent,
+    title: document.querySelector('#guide-root [data-i18n="learn.title"]').textContent, step: document.getElementById('guide-step-title').textContent, play: document.getElementById('guide-play').textContent,
     lang: document.documentElement.lang, error: document.documentElement.dataset.errors || null }));
   const visible = other === 'en' ? await visibleText(page) : '';
   check('learn', ym.lang === other && ym.tab === OTHER['tab.learn'] && ym.selected === 'true' && ym.title === OTHER['learn.title'] && ym.step === OTHER['learn.sewing.second.title'] &&
     ym.play === OTHER['learn.play'] && yd.a === 2 && yd.i === 2 && (other !== 'en' || !trLetter(visible)),
     `${label}: dil ${i18n} → ${other}: yeniden yüklemeden sonra Öğren açık, rehber ${other} (başlık, adım, düğme), aşama 3 adım 3 korunur${other === 'en' ? ', görünen metinde Türkçe harf yok' : ''}`,
     JSON.stringify({ ym, position: [yd.a, yd.i], tr: other === 'en' ? (visible.match(new RegExp('.{0,20}' + TR_LETTER.source + '.{0,20}')) || [''])[0] : '' }));
-  const afterProgress = await page.evaluate(() => document.getElementById('og-progress-text').textContent.match(/\d+/g).join('/'));
+  const afterProgress = await page.evaluate(() => document.getElementById('guide-progress-text').textContent.match(/\d+/g).join('/'));
   check('learn', onceDone.reduce((s, v) => s + v, 0) > 0 && JSON.stringify(yd.done) === JSON.stringify(onceDone) && afterProgress === onceProgress,
     `${label}: dil ${i18n} → ${other}: aşamaların ilerlemesi (tamam) ve genel ilerleme (${onceProgress}) korunur`, JSON.stringify({ onceDone, after: yd.done, onceProgress, afterProgress }));
   await noMissingKey(page, label + ' (' + other + ')');
@@ -2237,26 +2237,26 @@ async function m7LearnSmoke(page, address, label, menu) {
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const open = () => (menu ? page.evaluate(() => window.__fake.listener.menu({ payload: 'tab-learn' })) : page.click('#tab-button-learn'));
   await open();
-  await page.waitForFunction(() => document.getElementById('og-stage').childElementCount > 0 && document.getElementById('og-root').dataset.state === 'ready', null, { timeout: 10000 });
-  await page.selectOption('#og-speed', '4');
-  await page.click('#og-play');
-  await page.waitForFunction(() => document.querySelectorAll('#og-steps li.finished').length === 1 && document.getElementById('og-root').dataset.state === 'ready', null, { timeout: 15000 });
+  await page.waitForFunction(() => document.getElementById('guide-stage').childElementCount > 0 && document.getElementById('guide-root').dataset.state === 'ready', null, { timeout: 10000 });
+  await page.selectOption('#guide-speed', '4');
+  await page.click('#guide-play');
+  await page.waitForFunction(() => document.querySelectorAll('#guide-steps li.finished').length === 1 && document.getElementById('guide-root').dataset.state === 'ready', null, { timeout: 15000 });
   const d = await page.evaluate(() => ({ selected: document.getElementById('tab-button-learn').getAttribute('aria-selected'), visible: !document.getElementById('tab-learn').hidden,
-    finished: document.querySelectorAll('#og-steps li.finished').length, current: Array.from(document.querySelectorAll('#og-steps li')).findIndex((l) => l.classList.contains('current')) }));
+    finished: document.querySelectorAll('#guide-steps li.finished').length, current: Array.from(document.querySelectorAll('#guide-steps li')).findIndex((l) => l.classList.contains('current')) }));
   check('learn', d.selected === 'true' && d.visible && d.finished === 1 && d.current === 1,
     `${label}: ${menu ? 'menü olayı "tab-learn" (Görünüm > Öğren ⌘4)' : 'Öğren sekmesi'} rehberi açar, ilk adım oynar`, JSON.stringify(d));
   const product = await page.evaluate(() => Object.keys(window.Mucellit.learn).sort());
   check('learn', !product.includes('probe') && product.includes('tab'),
     `${label}: ürün kodunda test arayüzü yok (Mucellit.learn.probe tanımsız; yalnız sekme/olcu/cf/…)`, JSON.stringify(product));
-  await page.evaluate(() => { window.__kcStage = document.getElementById('og-stage').firstElementChild; });
+  await page.evaluate(() => { window.__kcStage = document.getElementById('guide-stage').firstElementChild; });
   await open();
-  const y = await page.evaluate(() => ({ same: document.getElementById('og-stage').firstElementChild === window.__kcStage, finished: document.querySelectorAll('#og-steps li.finished').length,
-    current: Array.from(document.querySelectorAll('#og-steps li')).findIndex((l) => l.classList.contains('current')) }));
+  const y = await page.evaluate(() => ({ same: document.getElementById('guide-stage').firstElementChild === window.__kcStage, finished: document.querySelectorAll('#guide-steps li.finished').length,
+    current: Array.from(document.querySelectorAll('#guide-steps li')).findIndex((l) => l.classList.contains('current')) }));
   check('learn', y.same && y.finished === 1 && y.current === 1,
     `${label}: Öğren açıkken ${menu ? 'menü olayı (⌘4)' : 'tab'} yeniden gelince rehber yeniden kurulmaz (aynı figür, aynı adım)`, JSON.stringify(y));
   if (menu) {
     await page.evaluate(() => window.__fake.listener.menu({ payload: 'tab-calculator' }));
-    const g = await page.evaluate(() => ({ stage: document.getElementById('og-stage').childElementCount, calculator: !document.getElementById('tab-calculator').hidden }));
+    const g = await page.evaluate(() => ({ stage: document.getElementById('guide-stage').childElementCount, calculator: !document.getElementById('tab-calculator').hidden }));
     check('learn', g.stage === 0 && g.calculator, `${label}: menüden başka sekmeye (⌘3) geçince rehber figürü sökülür`, JSON.stringify(g));
   }
 }

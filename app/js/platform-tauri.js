@@ -1,29 +1,32 @@
 /*
- * platform-tauri.js — Tauri penceresinde KitapCilt.platform'un farklı olan işlevlerini ezer.
- * Tarayıcıda (window.__TAURI__ yok) hiçbir şey yapmaz. platform.js'ten sonra yüklenir.
+ * platform-tauri.js — in a Tauri window, overrides the functions of Mucellit.platform that differ.
+ * Does nothing in the browser (no window.__TAURI__). Loaded after platform.js.
  *
- * ad, onayla (yerel NSAlert, dialog eklentisi), menü olayları (Görünüm ⌘1-3; ⌘4 Öğren).
- * Yerel işlevler:
- *   dosyaSec   → Rust dosya_ac (yerel Aç penceresi; klasör paketi EPUB dahil) + dosya_oku (ham bayt) → File.
- *                JS hiçbir zaman yol görmez/vermez; Rust yalnız kimlik döner.
- *   kaydet     → Rust dosya_kaydet (yerel Kaydet penceresi; gövde ham bayt). Dönüş: false (vazgeçildi) ya da
- *                { ad, yol } (yazıldı). Tarayıcının <a download>'u Tauri'de iptal edilir.
- *   hepsiniKaydet / kayitMesaji → dizilmiş PDF(ler) sırayla kaydedilir, bildirim gerçek sonuca göre yazılır.
- *   sonAcilanlar / sonAcilaniAc → Rust son_acilanlar / son_acilani_oku (yer imi; kısa ömürlü erişim).
- *   Dosya menüsü (Aç ⌘O, Son Açılanlar, Kaydet ⌘S, JSON yedeği) ve Dock/Finder'dan açılan dosyalar
- *   (dosya-acildi olayı + bekleyen_acilanlar).
- *   hazir      → sayfa betikleri yüklenince: localStorage boşsa Süreç verisi otomatik yedekten geri yüklenir
- *                (boş yedek geri yüklenmez, bildirim çıkmaz); her depo.yaz/temizle sonrası HEMEN veri_yedekle
- *                (oturum + artan sıra). Bekletme (1 sn) ve kapanışta yazma Rust'ta (src-tauri/src/backup.rs).
- * son açılan hataları ayrımlı (yalnız BULUNAMADI/GECERSIZ "çıkarıldı"); kısmi kayıtta dosya başı
- *   yüz sayısı; dizilmiş PDF hazırlanırken/kaydedilirken ⌘S yok sayılır (D10, düğme aria-busy).
- * metinler KitapCilt.dil'den (okundukları anda); açılışta dil_oku (Rust'ta yedeklenmiş elle seçim, localStorage
- *   boşsa geri gelir) ve dil_ayarla (menü dili JS ile aynı olsun); Görünüm > Dil menüsü (dil:<seçim>) → dilDegistir.
- * yazdir (Rust yazdir: PDFKit baskı penceresi, %100) ve onizlemedeAc (Rust onizlemede_ac); Dosya > Yazdır… ⌘P,
- *   Önizleme'de Aç ⌥⌘P (dosya-yazdir / dosya-onizleme → Düzenle'deki düğmeler; akış app/js/printing.js).
- * sistem dili Rust'tan (dil_oku.sistem: NSLocale + Apple kuralı; menüdeki "Sistem dili (X)" ile aynı
- *   kaynak; WKWebView navigator.languages tek dil verebilir). Tarayıcıya özgü metinler (saklama ipucu ve uyarısı,
- *   "sayfayı yenileyin") Mac metniyle; saklama ipucu betik yüklenir yüklenmez değişir.
+ * name, ask (native NSAlert, dialog plug-in), menu events (View ⌘1-3; ⌘4 Learn).
+ * Native functions:
+ *   pickFile   → Rust open_file (native Open window; folder package EPUB included) + read_file (raw bytes) → File.
+ *                JS never sees or passes a path; Rust returns only an id.
+ *   save       → Rust save_file (native Save window; the body is raw bytes). Returns false (cancelled) or
+ *                { name, path } (written). The browser's <a download> is not used in Tauri.
+ *   saveAll / saveMessage → the imposed PDF(s) are saved one by one, the notice follows the real result.
+ *   recentFiles / openRecent → Rust recent_files / read_recent_file (bookmark; short-lived access).
+ *   File menu (Open ⌘O, Open Recent, Save ⌘S, JSON backup) and files opened from the Dock/Finder
+ *   (file-opened event + pending_opens).
+ *   ready      → once the page scripts are loaded: when localStorage is empty the project data is restored from the
+ *                automatic backup (an empty backup is not restored, no notice); after every storage.write/clear the
+ *                data goes to backup_data RIGHT AWAY (session + increasing sequence). The delay (1 s) and the write
+ *                on exit are in Rust (src-tauri/src/backup.rs). A backup written by an earlier version is converted
+ *                (migrate.js).
+ * Recent file errors are told apart (only NOTFOUND/INVALID say "removed"); after a partial save the sides are
+ *   counted per file; ⌘S is ignored while the imposed PDF is being prepared/saved (D10, button aria-busy).
+ * Texts come from Mucellit.i18n (when they are read); on start-up read_language (the manual choice backed up in Rust
+ *   comes back when localStorage is empty) and set_language (so that the menu language matches JS); the
+ *   View > Language menu (i18n:<choice>) → changeLanguage.
+ * print (Rust print: PDFKit print window, 100%) and openInPreview (Rust open_in_preview); File > Print… ⌘P,
+ *   Open in Preview ⌥⌘P (file-print / file-preview → the buttons on the Imposition tab; flow in app/js/printing.js).
+ * The system language comes from Rust (read_language.system: NSLocale + the Apple rule; the same source as
+ *   "System Language (X)" in the menu; WKWebView's navigator.languages may give only one language). Browser-only texts
+ *   (storage hint and warning, "reload the page") get the Mac text; the storage hint changes as soon as the script loads.
  */
 (function (root) {
   'use strict';
@@ -33,8 +36,8 @@
   var P = MC.platform;
   var D = MC.i18n;
   /**
-   * Metin (o anki dilde). i18n.js yüklenemediyse (KC.dil yok) yüklenmiş en sözlüğünden düz metin, o da yoksa
-   * anahtar; böylece bu dosya yüklenirken hata atmaz (fazladan konsol hatası yok) ve Mac metinleri İngilizce kalır.
+   * Text (in the current language). When i18n.js could not be loaded (no MC.i18n): the plain text from the loaded en
+   * dictionary, or the key; so this file does not throw while loading (no extra console error) and the Mac texts stay English.
    */
   function t(a, p) {
     if (D) return D.t(a, p);
@@ -45,7 +48,7 @@
     return p ? m.replace(/\{([a-zA-Z0-9_]+)\}/g, function (x, k) { return Object.prototype.hasOwnProperty.call(p, k) ? String(p[k]) : x; }) : m;
   }
   var KIND_MIME = { pdf: 'application/pdf', epub: 'application/epub+zip', json: 'application/json' };
-  // Bu sayfanın yedek oturumu: Rust aynı oturumdan geç gelen eski yedeği yok sayar, yeni sayfa her zaman yazar.
+  // Backup session of this page: Rust ignores an old backup that arrives late from the same session; a new page always writes.
   var BACKUP_SESSION = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 
   function invoke(command, arg, options) {
@@ -62,7 +65,7 @@
       get: function () { return t(m[1]); }, enumerable: true, configurable: true
     });
   });
-  // Süreç sekmesindeki saklama ipucu: "bu tarayıcıda" değil "bu Mac'te" (betikler gövde sonunda: öğe var).
+  // The storage hint on the Projects tab: "on this Mac", not "in this browser" (scripts are at the end of the body: the element exists).
   (function () {
     var s = element('storage-hint');
     if (!s || typeof s.setAttribute !== 'function') return;
@@ -76,17 +79,17 @@
     try {
       result = (d && typeof d.ask === 'function')
         ? d.ask(String(message), { title: t('app.name'), kind: 'warning', okLabel: t('common.done'), cancelLabel: t('common.cancel') })
-        : root.confirm(String(message)); // eklentinin ezdiği confirm de Promise<boolean> döner
+        : root.confirm(String(message)); // the confirm replaced by the plug-in also returns a Promise<boolean>
     } catch (e) { return Promise.reject(e); }
     return Promise.resolve(result).then(function (ok) { return ok === true; });
   };
 
-  // ---------------------------------------------------------------- dosya açma
+  // ---------------------------------------------------------------- opening files
   function makeFile(bytes, name, kind) {
     return new root.File([bytes], String(name), { type: KIND_MIME[kind] || '' });
   }
 
-  /** Yerel Aç penceresi. uzantilar 'json' içeriyorsa JSON yedeği, değilse PDF/EPUB. Vazgeçilirse null. */
+  /** Native Open window. A JSON backup when extensions contains 'json', otherwise PDF/EPUB. null when cancelled. */
   P.pickFile = function (options) {
     var u = (options && options.extensions) || [];
     var purpose = u.indexOf('json') >= 0 ? 'backup' : 'document';
@@ -98,7 +101,7 @@
 
   P.recentFiles = function () { return invoke('recent_files').then(function (l) { return Array.isArray(l) ? l : []; }); };
 
-  /** Son açılan kaydı açar → File. Kayıt okunamazsa (Rust listeden çıkarır) anlaşılır hata ile reddedilir. */
+  /** Opens a recent file entry → File. When the entry cannot be read (Rust removes it from the list) it is rejected with a clear error. */
   P.openRecent = function (id) {
     return P.recentFiles().then(function (list) {
       var k = list.filter(function (x) { return x && x.id === id; })[0];
@@ -127,7 +130,7 @@
     return Promise.reject(new Error(t('tauri.data_unrecognized')));
   }
 
-  /** Yerel Kaydet penceresi. Promise<false | { ad, yol }>. */
+  /** Native Save window. Promise<false | { name, path }>. */
   P.save = function (name, data, mime) {
     var kind = (/json/i.test(mime || '') || /\.json$/i.test(String(name))) ? 'json' : 'pdf';
     return toBytes(data).then(function (b) {
@@ -136,9 +139,9 @@
   };
 
   /**
-   * Dosyaları SIRAYLA kaydeder (her biri için ayrı Kaydet penceresi). Biri vazgeçilse ya da hata verse de
-   * sıradakine geçer. Promise<{ kaydedilen: [{ad, yol, yuz?}], vazgecilen: [ad], hatali: [{ad, mesaj}] }> (hiç
-   * reddedilmez). Dosyada `yuz` (o dosyadaki yüz sayısı) varsa kaydedilene taşınır.
+   * Saves the files ONE BY ONE (a separate Save window for each). When one is cancelled or fails it moves on to the
+   * next. Promise<{ saved: [{name, path, side?}], cancelled: [name], failed: [{name, message}] }> (never rejected).
+   * When a file has `side` (the number of sides in that file) it is carried over to the saved entry.
    */
   P.saveAll = function (files, mime) {
     var s = { saved: [], cancelled: [], failed: [] };
@@ -153,9 +156,9 @@
   };
 
   /**
-   * hepsiniKaydet sonucundan bildirim: { metin, tur } (tur 'hata' = en az biri yazılmadı). Yüz sayısı: kaydedilen
-   * dosyaların `yuz` toplamı; dosya başı bilgi yoksa `yuzSayisi` yalnız hepsi yazıldıysa (kısmi kayıtta toplamı
-   * yazmak yanlış olurdu, D9).
+   * Notice from a saveAll result: { text, kind } (kind 'error' = at least one was not written). Side count: the sum
+   * of `side` of the saved files; without per-file info `sideCount` only when all were written (giving the total after
+   * a partial save would be wrong, D9).
    */
   P.saveMessage = function (s, sideCount) {
     var number = null;
@@ -173,10 +176,10 @@
     return { text: part.join(' '), kind: (s.cancelled.length || s.failed.length) ? 'error' : undefined };
   };
 
-  // ---------------------------------------------------------------- yazdırma
+  // ---------------------------------------------------------------- printing
   /**
-   * Yerel baskı penceresi (Rust yazdir: PDFKit, %100 ölçek, kâğıt = sayfa). Gövde ham PDF baytı, x-ad iş adı.
-   * Promise<boolean>: true = yazdırıldı (ya da PDF olarak kaydedildi), false = vazgeçildi; hata reddedilir.
+   * Native print window (Rust print: PDFKit, 100% scale, paper = page). The body is the raw PDF bytes, x-name the job name.
+   * Promise<boolean>: true = printed (or saved as PDF), false = cancelled; an error is rejected.
    */
   P.print = function (name, data) {
     return toBytes(data).then(function (b) {
@@ -184,14 +187,14 @@
     }).then(function (r) { return r === true; });
   };
 
-  /** Önizleme'de Aç (Rust onizlemede_ac: önbelleğe yazar, NSWorkspace ile açar). Promise<{ ad }>; açılamazsa reddedilir. */
+  /** Open in Preview (Rust open_in_preview: writes to the cache, opens with NSWorkspace). Promise<{ name }>; rejected when it cannot open. */
   P.openInPreview = function (name, data) {
     return toBytes(data).then(function (b) {
       return invoke('open_in_preview', b, { headers: { 'x-name': encodeURIComponent(String(name)) } });
     }).then(function (r) { return { name: typeof r === 'string' && r ? r : String(name) }; });
   };
 
-  // ---------------------------------------------------------------- menü ve dış açılış
+  // ---------------------------------------------------------------- menu and outside opening
   function openDocument(filePromise) {
     return filePromise.then(function (f) {
       if (!f) return;
@@ -206,7 +209,7 @@
     if (b) b.click();
   }
 
-  /** Düzenle'deki çıktı düğmesine (yazdır / Önizleme) menüden basar: meşgulse yok sayar, kapalıysa bildirir. */
+  /** Presses an output button of the Imposition tab (print / Preview) from the menu: ignored while busy, reported when off. */
   function clickOutputButton(id) {
     var b = element(id);
     if (b && typeof b.getAttribute === 'function' && b.getAttribute('aria-busy') === 'true') return;
@@ -215,18 +218,18 @@
     b.click();
   }
 
-  var TAB_ITEMS = { 'tab-impose': 'impose', 'tab-projects': 'projects', 'tab-calculator': 'calculator', 'tab-learn': 'learn' }; // Öğren ⌘4
+  var TAB_ITEMS = { 'tab-impose': 'impose', 'tab-projects': 'projects', 'tab-calculator': 'calculator', 'tab-learn': 'learn' }; // Learn ⌘4
   var FILE_ITEMS = {
     'file-open': function () { click('pdf-select', 'impose'); },
     'file-save': function () {
       var b = element('export-transfer');
-      // D10: çıktı hazırlanıyor ya da Kaydet penceresi açık (duzenle.disaAktar düğmeyi aria-busy yapar): yok say.
+      // D10: the output is being prepared or the Save window is open (impose.exportPdf makes the button aria-busy): ignore.
       if (b && typeof b.getAttribute === 'function' && b.getAttribute('aria-busy') === 'true') return;
       if (!b || b.disabled) return notify(t('save.save_closed'), 'error');
       if (MC.app) MC.app.openTab('impose');
       b.click();
     },
-    // Yazdır… ⌘P / Önizleme'de Aç ⌥⌘P — çıktı hazırlanırken ya da pencere açıkken (aria-busy) yok sayılır
+    // Print… ⌘P / Open in Preview ⌥⌘P — ignored while the output is being prepared or a window is open (aria-busy)
     'file-print': function () { clickOutputButton('print'); },
     'file-preview': function () { clickOutputButton('inPreview-open'); },
     'json-export': function () { click('json-export', 'projects'); },
@@ -235,7 +238,7 @@
   var RECENT_PREFIX = 'last:';
   var LANGUAGE_PREFIX = 'i18n:';
 
-  /** Yerel menü öğesi (src-tauri/src/menu.rs) → arayüz işlemi. */
+  /** Native menu item (src-tauri/src/menu.rs) → interface action. */
   P.onMenu = function (id) {
     if (typeof id !== 'string') return;
     if (Object.prototype.hasOwnProperty.call(TAB_ITEMS, id)) { if (MC.app) MC.app.openTab(TAB_ITEMS[id]); return; }
@@ -244,7 +247,7 @@
     if (id.indexOf(LANGUAGE_PREFIX) === 0 && MC.app && MC.app.changeLanguage) return MC.app.changeLanguage(id.slice(LANGUAGE_PREFIX.length));
   };
 
-  /** Dock/Finder'dan gelen ve henüz işlenmemiş dosyaları sırayla açar (son açılan ekranda kalır). */
+  /** Opens the not yet handled files from the Dock/Finder one by one (the last opened stays on screen). */
   P.openPending = function () {
     return invoke('pending_opens').then(function (l) {
       return (Array.isArray(l) ? l : []).reduce(function (z, a) {
@@ -258,13 +261,13 @@
   if (T.event && typeof T.event.listen === 'function') {
     T.event.listen('menu', function (on_event) { P.onMenu(on_event && on_event.payload); });
     T.event.listen('file-opened', function () { if (P.isReady) P.openPending(); });
-    // Rust'taki gecikmeli yazım başarısız oldu (src-tauri/src/backup.rs HATA_OLAYI).
+    // The delayed write in Rust failed (src-tauri/src/backup.rs ERROR_EVENT).
     T.event.listen('backup-writeFailed', function (on_event) { notify(t('backup.writeFailed', { error: String(on_event && on_event.payload) }), 'error'); });
   }
 
-  // ---------------------------------------------------------------- Süreç verisi otomatik yedeği
+  // ---------------------------------------------------------------- automatic backup of the project data
   var backupSeq = 0;
-  /** Değişikliği HEMEN Rust'a gönderir: bekletme ve kapanışta diske yazma Rust'ta. */
+  /** Sends the change to Rust RIGHT AWAY: the delay and the write to disk on exit are in Rust. */
   function sendBackup(data) {
     var j;
     try { j = JSON.stringify(data); } catch (e) { return Promise.resolve(); }
@@ -274,8 +277,9 @@
   }
 
   /**
-   * localStorage'da Süreç verisi yoksa ve yedek geçerliyse yedeği yazar. true: geri yüklendi. Boş yedek (hiç kitap
-   * yok: kasıtlı temizlik ya da hiç veri girilmemiş) geri yüklenmez: yüklenecek bir şey yok, bildirim yanıltır.
+   * When there is no project data in localStorage and the backup is valid, writes the backup (converted to the current
+   * format when an earlier version wrote it). true: restored. An empty backup (no project at all: deliberately cleared
+   * or never filled) is not restored: there is nothing to load and a notice would mislead.
    */
   function restore(json) {
     if (typeof json !== 'string' || !MC.storage) return false;
@@ -309,16 +313,17 @@
     return new Promise(function (parse) { d.addEventListener('DOMContentLoaded', function () { parse(); }, { once: true }); });
   }
 
-  // ---------------------------------------------------------------- dil
-  /** Dil değişikliğini Rust'a bildirir (menü dili + elle seçimin yedeği). secim: 'sistem' | kod. */
+  // ---------------------------------------------------------------- language
+  /** Reports a language change to Rust (menu language + backup of the manual choice). choice: 'system' | code. */
   P.notifyLanguage = function (code, choice) { return invoke('set_language', { code: code, choice: choice }); };
 
   /**
-   * Açılışta: localStorage'da elle seçim yoksa ve Rust'ta yedeklenmiş elle seçim varsa (WebKit verisi silinmiş)
-   * o geri gelir; sonra Rust'a güncel dil bildirilir (menü JS ile aynı dilde kurulsun). Hata başlatmayı durdurmaz.
+   * On start-up: when localStorage has no manual choice and Rust has a backed-up one (WebKit data was cleared), it comes
+   * back; then the current language is reported to Rust (so the menu is built in the same language as JS). An error
+   * does not stop the start-up.
    */
   function syncLanguage() {
-    if (!D) return Promise.resolve(); // dil altyapısı yok; başlatma hatası app.js'te bildirilir
+    if (!D) return Promise.resolve(); // no language layer; the start-up error is reported in app.js
     return invoke('read_language').then(function (r) {
       if (r && D.isSupported(r.system)) D.setSystemCode(r.system);
       if (!D.readChoice() && r && D.isSupported(r.choice)) D.writeChoice(r.choice);
@@ -332,8 +337,8 @@
     });
   }
 
-  // Bütün klasik betikler (storage.js, impose.js …) yüklendikten sonra çalışır; app.js baslat()'ı bunu
-  // bekleyerek çağırır. Yedek ya da dil okunamazsa başlatma durmaz.
+  // Runs after all classic scripts (storage.js, impose.js …) are loaded; app.js calls start() after waiting
+  // for it. Start-up does not stop when the backup or the language cannot be read.
   P.ready = pageLoaded().then(syncLanguage).then(function () {
     return invoke('read_backup').then(function (json) { return restore(json); }, function () { return false; });
   }).then(function (restored) {

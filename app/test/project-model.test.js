@@ -3,20 +3,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const m = require('../js/project-model.js');
 
-test('şablonlar: formalı 14 adım (sırt yuvarlatma isteğe bağlı), tek yaprak 7 adım', () => {
+test('templates: sewn 14 steps (spine rounding optional), single leaf 7 steps', () => {
   const f = m.newProject({ name: 'A', bindingType: 'sewn' });
   assert.equal(f.steps.length, 14);
-  assert.equal(f.steps.find((a) => a.name === 'Sırt yuvarlatma').optional, true);
+  assert.equal(f.steps.find((a) => a.name === 'Sırt yuvarlatma').optional, true);  // turkish-ok: expected Turkish UI text (template step names)
   const t = m.newProject({ name: 'B', bindingType: 'single' });
-  assert.deepEqual(t.steps.map((a) => a.name), ['Hazırlık', 'Baskı', 'Kesim', 'Sırt hazırlama (tırtıklama)', 'Tutkallama', 'Kapak', 'Preste kurutma']);
+  assert.deepEqual(t.steps.map((a) => a.name), ['Hazırlık', 'Baskı', 'Kesim', 'Sırt hazırlama (tırtıklama)', 'Tutkallama', 'Kapak', 'Preste kurutma']);  // turkish-ok: expected Turkish UI text (template step names)
 });
 
-test('adım işaretle (tarih otomatik), ekle, sil, taşı, ilerleme', () => {
+test('mark a step (date automatic), add, remove, move, progress', () => {
   const k = m.newProject({ name: 'C', bindingType: 'single' });
   m.markStep(k, k.steps[0].id, true, '2026-10-11');
   assert.equal(k.steps[0].done, true);
   assert.equal(k.steps[0].date, '2026-10-11');
-  const fresh = m.addStep(k, 'Ayraç takma', 1);
+  const fresh = m.addStep(k, 'Add a bookmark ribbon', 1);
   assert.equal(k.steps[1].id, fresh.id);
   m.moveStep(k, fresh.id, 1);
   assert.equal(k.steps[2].id, fresh.id);
@@ -27,7 +27,7 @@ test('adım işaretle (tarih otomatik), ekle, sil, taşı, ilerleme', () => {
   assert.throws(() => m.newProject({ name: '' }));
 });
 
-test('dogrula: geçerli yedeği kabul, kusurlu yedekleri reddeder', () => {
+test('validate: accepts a valid backup, rejects faulty backups', () => {
   const data = m.emptyData();
   data.projects.push(m.newProject({ name: 'D' }));
   assert.ok(m.validate(JSON.parse(JSON.stringify(data))));
@@ -43,33 +43,33 @@ test('dogrula: geçerli yedeği kabul, kusurlu yedekleri reddeder', () => {
   bad.forEach((v, i) => assert.throws(() => m.validate(v), Error, 'faulty backup ' + i + ' reddedilmeli'));
 });
 
-// ---- D10: içe aktarma doğrulaması ----
+// ---- D10: import validation ----
 function validData() {
   const v = m.emptyData();
   v.projects.push(m.newProject({ name: 'T', bindingType: 'single' }));
   return v;
 }
 
-test('içe aktarma: adım id tekrarı reddedilir (açıklamalı hata)', () => {
+test('import: a repeated step id is rejected (with an explaining error)', () => {
   const v = validData();
   v.projects[0].steps[1].id = v.projects[0].steps[0].id;
-  assert.throws(() => m.validate(v), /adım id tekrarlanıyor/);
+  assert.throws(() => m.validate(v), /adım id tekrarlanıyor/);  // turkish-ok: expected Turkish UI text
 });
 
-test('içe aktarma: not ve tarih metin olmalı', () => {
+test('import: note and date must be text', () => {
   const v = validData();
   v.projects[0].steps[0].note = 5;
-  assert.throws(() => m.validate(v), /not metin olmalı/);
+  assert.throws(() => m.validate(v), /not metin olmalı/);  // turkish-ok: expected Turkish UI text
   const w = validData();
   w.projects[0].steps[0].date = { x: 1 };
-  assert.throws(() => m.validate(w), /tarih metin olmalı/);
+  assert.throws(() => m.validate(w), /tarih metin olmalı/);  // turkish-ok: expected Turkish UI text
 });
 
-test('içe aktarma: ayar nesne olmalı (dizi/metin/sayı reddedilir; null ve nesne olur)', () => {
+test('import: settings must be an object (array/text/number rejected; null and an object pass)', () => {
   [[], 'x', 5].forEach((bad) => {
     const v = validData();
     v.projects[0].settings = bad;
-    assert.throws(() => m.validate(v), /ayar bir nesne olmalı/);
+    assert.throws(() => m.validate(v), /ayar bir nesne olmalı/);  // turkish-ok: expected Turkish UI text
   });
   const ok = validData();
   ok.projects[0].settings = { bindingType: 'sewn' };
@@ -78,6 +78,6 @@ test('içe aktarma: ayar nesne olmalı (dizi/metin/sayı reddedilir; null ve nes
   assert.equal(m.validate(ok), true);
 });
 
-test('içe aktarma: geçerli yeni kitap (not/tarih boş metin) kabul edilir', () => {
+test('import: a valid new project (note/date empty text) is accepted', () => {
   assert.equal(m.validate(validData()), true);
 });

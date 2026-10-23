@@ -1,23 +1,23 @@
 /*
- * zip.js — EPUB için küçük, salt okunur ZIP okuyucu (KitapCilt.epubZip / module.exports).
+ * zip.js — a small read-only ZIP reader for EPUB (Mucellit.epubZip / module.exports).
  *
- * EPUB yalnız "stored" (0) ve "Deflate" (8) girdilerine izin verir (EPUB 3.3 §4.3.2).
- * Deflate, tarayıcının yerleşik DecompressionStream('deflate-raw') akışıyla açılır
- * (Chrome 103+, Node 21.2+); ek kütüphane yoktur. ZIP64 ve başka sıkıştırma yöntemleri
- * anlaşılır bir hatayla reddedilir; şifreli girdi (genel amaçlı bayrak bit 0) E3'tür.
+ * EPUB allows only "stored" (0) and "Deflate" (8) entries (EPUB 3.3 §4.3.2).
+ * Deflate is inflated with the browser's built-in DecompressionStream('deflate-raw')
+ * (Chrome 103+, Node 21.2+); there is no extra library. ZIP64 and other compression methods
+ * are rejected with a clear error; an encrypted entry (general purpose flag bit 0) is E3.
  *
- *   var z = KitapCilt.epubZip.oku(bytes);   // Uint8Array | ArrayBuffer; bozuksa E1 hatası atar
- *   z.adlar()            → ['mimetype', 'META-INF/container.xml', …]  (klasörler hariç)
- *   z.has(ad)            → true/false (tam ad; yoksa büyük/küçük harf duyarsız eşleşme)
- *   await z.ac(ad)       → Uint8Array
- *   await z.metin(ad)    → string (UTF-8; BOM'a göre UTF-16; XML bildirimi başka kodlama diyorsa o kodlamayla)
- *   z.desteksizKodlamalar() → tanınmayan XML kodlama adları (o belgeler UTF-8 olarak okundu)
- *   z.kokOneki()         → atılan üst klasör öneki ("Kitap.epub/") ya da '' (bkz. tekKlasorOneki: klasör paketi
- *                          EPUB'un tarayıcıda "<ad>.epub.zip" olarak sıkıştırılmış hali)
- *   KitapCilt.epubZip.oku(bytes, { enCokAcilan }) → girdi başına açılmış boyut sınırı (varsayılan 256 MB)
- *   KitapCilt.epubZip.yolCoz('OEBPS/text/', '../img/a%20b.png') → 'OEBPS/img/a b.png'
+ *   var z = Mucellit.epubZip.read(bytes);   // Uint8Array | ArrayBuffer; throws E1 when corrupt
+ *   z.names()            → ['mimetype', 'META-INF/container.xml', …]  (folders excluded)
+ *   z.has(name)          → true/false (exact name; otherwise a case-insensitive match)
+ *   await z.open(name)   → Uint8Array
+ *   await z.text(name)   → string (UTF-8; UTF-16 by BOM; in the declared encoding when the XML declaration names another)
+ *   z.unsupportedEncodings() → unknown XML encoding names (those documents were read as UTF-8)
+ *   z.rootPrefix()       → the dropped top folder prefix ("Book.epub/") or '' (see singleFolderPrefix: a folder package
+ *                          EPUB compressed by the browser as "<name>.epub.zip")
+ *   Mucellit.epubZip.read(bytes, { maxOpened }) → limit of the inflated size per entry (default 256 MB)
+ *   Mucellit.epubZip.parsePath('OEBPS/text/', '../img/a%20b.png') → 'OEBPS/img/a b.png'
  *
- * Hata nesnelerinde .kod alanı vardır ('E1', 'E3', 'E7'); metinler e2e'de birebir sınanır.
+ * Error objects have a .code field ('E1', 'E3', 'E7'); the texts are checked exactly in e2e.
  */
 (function (root, factory) {
   var m = factory();
@@ -29,17 +29,17 @@
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var root = typeof self !== 'undefined' ? self : globalThis; // vm bağlamında da KitapCilt.dil bulunur
+  var root = typeof self !== 'undefined' ? self : globalThis; // Mucellit.i18n is found in a vm context too
   function I18n() { return (root && root.Mucellit && root.Mucellit.i18n) || require('../../i18n.js'); }
   function t(a, p) { return I18n().t(a, p); }
 
-  // Kullanıcı metinleri okundukları anda o anki dilde (sözlükte epub.E1 …).
+  // User texts in the language current when they are read (epub.E1 … in the dictionary).
   var MESSAGE = {};
   ['E1', 'E3', 'E7'].forEach(function (k) {
     Object.defineProperty(MESSAGE, k, { get: function () { return t('epub.' + k); }, enumerable: true });
   });
 
-  /** ayrinti: [anahtar, parametreler] (sözlükte epub.ayrinti.<anahtar>). */
+  /** detail: [key, parameters] (epub.detail.<key> in the dictionary). */
   function error(code, detail) {
     var a = detail ? t('epub.detail.' + detail[0], detail[1]) : '';
     var e = new Error(code === 'E7' ? t('epub.E7_detailed', { detail: a }) : MESSAGE[code]);
@@ -48,8 +48,8 @@
     return e;
   }
 
-  // CP437 üst yarısı (0x80–0xFF): bayrak bit 11 kapalı ve ad UTF-8 değilse kullanılır.
-  var CP437 = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀' +
+  // Upper half of CP437 (0x80–0xFF): used when flag bit 11 is off and the name is not UTF-8.
+  var CP437 = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀' +  // turkish-ok: CP437 code page table, not Turkish text
     'αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ';
 
   function adCoz(b, utf8Flag) {
@@ -64,7 +64,7 @@
     }
   }
 
-  /** Yol normalleştirme: ters bölü → '/', kök ve '..' kırpılır (ZIP dışına çıkan yol olmaz). */
+  /** Path normalisation: backslash → '/', the root and '..' are trimmed (no path leaves the ZIP). */
   function normal(path) {
     var output = [];
     String(path).replace(/\\/g, '/').split('/').forEach(function (p) {
@@ -75,10 +75,10 @@
     return output.join('/');
   }
 
-  /** taban: belgenin bulunduğu klasör ('OEBPS/text/' ya da 'OEBPS/text/b1.xhtml'); goreli: href. */
+  /** base: the folder of the document ('OEBPS/text/' or 'OEBPS/text/b1.xhtml'); relative: href. */
   function parsePath(base, relative) {
     var h = String(relative || '').replace(/[#?].*$/, '');
-    try { h = decodeURIComponent(h); } catch (e) { /* bozuk % kodu: olduğu gibi */ }
+    try { h = decodeURIComponent(h); } catch (e) { /* broken % code: kept as it is */ }
     if (h.charAt(0) === '/') return normal(h);
     var tb = String(base || '');
     tb = tb.slice(0, tb.lastIndexOf('/') + 1);
@@ -101,18 +101,18 @@
     return (c ^ 0xffffffff) >>> 0;
   }
 
-  // Sıkıştırma bombası sınırı: bir girdi açılınca en çok bu kadar bayt (bildirilen boyut da bunu aşamaz).
+  // Compression bomb limit: at most this many bytes when one entry is inflated (the declared size cannot exceed it either).
   var ABSOLUTE_LIMIT = 256 * 1024 * 1024;
 
   /**
-   * Deflate akışını parça parça açar; açılan veri beklenen boyutu (merkezi dizindeki bildirim) aşar aşmaz
-   * okuma kesilir ve E1 verilir (bütün akış belleğe alınmaz).
+   * Inflates the Deflate stream piece by piece; as soon as the inflated data exceeds the expected size (declared in the
+   * central directory) reading stops with E1 (the whole stream is never held in memory).
    */
   async function inflate(data, expected, name) {
     if (typeof DecompressionStream === 'undefined') {
-      // Mac uygulamasında "Chrome/Edge" önerisi yanıltır: macOS metni
+      // In the Mac app a "Chrome/Edge" suggestion would mislead: the macOS text
       var P = root && root.Mucellit && root.Mucellit.platform;
-      throw error('E7', [P && P.name === 'tauri' ? 'deflate_yok_mac' : 'no_deflate']);
+      throw error('E7', [P && P.name === 'tauri' ? 'no_deflate_mac' : 'no_deflate']);
     }
     var reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
     var output = new Uint8Array(expected);
@@ -122,7 +122,7 @@
       if (r.done) break;
       var p = r.value;
       if (n + p.length > expected) {
-        try { await reader.cancel(); } catch (e) { /* yok say */ }
+        try { await reader.cancel(); } catch (e) { /* ignore */ }
         throw error('E1', ['size_exceeds', { name: name }]);
       }
       output.set(p, n);
@@ -131,7 +131,7 @@
     return n === expected ? output : output.subarray(0, n);
   }
 
-  /** XML bildirimindeki kodlama adı (yoksa null); yalnız ASCII başlık okunur. */
+  /** The encoding name in the XML declaration (null when missing); only the ASCII head is read. */
   function xmlEncoding(d) {
     var head = '';
     for (var i = 0; i < Math.min(d.length, 200); i++) {
@@ -145,8 +145,8 @@
   function systemLeftover(a) { return /^__MACOSX(\/|$)/.test(a) || /(^|\/)\.DS_Store$/.test(a); }
 
   /**
-   * Bütün (sistem artığı olmayan) girdiler tek bir "X/" klasöründeyse, kökte META-INF/container.xml yoksa ve
-   * "X/META-INF/container.xml" varsa "X/" döner; aksi halde null (EPUB olduğu gibi okunur).
+   * When all entries (system leftovers aside) are in a single "X/" folder, there is no META-INF/container.xml at the
+   * root and "X/META-INF/container.xml" exists, returns "X/"; otherwise null (the EPUB is read as it is).
    */
   function singleFolderPrefix(names) {
     if (names.some(function (a) { return a.toLowerCase() === 'meta-inf/container.xml'; })) return null;
@@ -161,7 +161,7 @@
   }
 
   /**
-   * secenek: { enCokAcilan } — bir girdinin açılmış boyutu için üst sınır (varsayılan 256 MB; test için küçültülebilir).
+   * options: { maxOpened } — upper limit for the inflated size of one entry (default 256 MB; can be made smaller for tests).
    */
   function read(input, options) {
     var limit = (options && options.maxOpened) || ABSOLUTE_LIMIT;
@@ -169,7 +169,7 @@
     var v = new DataView(b.buffer, b.byteOffset, b.byteLength);
     var n = b.length;
     if (n < 22) throw error('E1', ['many_short']);
-    // EOCD (0x06054b50) sondan aranır; sonundaki yorum en çok 65 535 bayt
+    // The EOCD (0x06054b50) is searched from the end; the comment at the end is at most 65 535 bytes
     var eocd = -1;
     for (var i = n - 22; i >= Math.max(0, n - 22 - 65535); i--) {
       if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
@@ -183,7 +183,7 @@
     if (v.getUint16(eocd + 4, true) !== 0 || v.getUint16(eocd + 6, true) !== 0) throw error('E7', ['many_parts']);
     if (cdOffset + cdSize > eocd) throw error('E1', ['dir_limit']);
 
-    // Prototipsiz tablolar: 'constructor', '__proto__', 'toString' gibi girdi adları Object.prototype ile karışmaz.
+    // Tables without a prototype: entry names like 'constructor', '__proto__', 'toString' do not mix with Object.prototype.
     var inputs = Object.create(null);
     var order = [];
     var p = cdOffset;
@@ -200,16 +200,16 @@
       if (p + 46 + adUz > eocd) throw error('E1', ['name_limit']);
       var hamAd = adCoz(b.subarray(p + 46, p + 46 + adUz), (flag & 0x800) !== 0);
       p += 46 + adUz + ekUz + commentUz;
-      if (/\/$/.test(hamAd)) continue; // klasör
+      if (/\/$/.test(hamAd)) continue; // folder
       var name = normal(hamAd);
       if (!name) continue;
       if (flag & 1) throw error('E3', ['encrypted_input', { name: name }]);
       if (!(name in inputs)) order.push(name);
       inputs[name] = { method: method, tightSize: tight, size: size, offset: offset, flag: flag, crc: crc };
     }
-    // Klasör paketi EPUB'un tarayıcı sıkıştırması (Safari/WebKit, Apple Kitaplar'daki klasör paketini "<ad>.epub.zip"
-    // olarak verir): bütün girdiler tek bir üst klasördeyse ve EPUB kapsayıcısı (META-INF/container.xml) kökte değil
-    // o klasördeyse, klasör öneki atılır. macOS'un eklediği __MACOSX/ ve .DS_Store girdileri yok sayılır.
+    // The browser compression of a folder package EPUB (Safari/WebKit gives the folder package in Apple Books as "<name>.epub.zip"):
+    // when all entries are in a single top folder and the EPUB container (META-INF/container.xml) is not at the root but
+    // in that folder, the folder prefix is dropped. The __MACOSX/ and .DS_Store entries added by macOS are ignored.
     var prefix = singleFolderPrefix(order);
     if (prefix) {
       var shortInputs = Object.create(null), shortOrder = [];
@@ -262,8 +262,8 @@
     var unsupportedEncoding = [];
     function supportedEncoding(k) { try { new TextDecoder(k); return true; } catch (e) { return false; } }
     /**
-     * Metin çözümü: BOM varsa UTF-16/UTF-8; yoksa XML bildirimindeki kodlama (ör. windows-1254, iso-8859-9)
-     * TextDecoder ile; tarayıcının tanımadığı kodlama UTF-8 olarak okunur ve desteksizKodlamalar()'a yazılır.
+     * Text decoding: UTF-16/UTF-8 by BOM; otherwise the encoding in the XML declaration (e.g. windows-1254, iso-8859-9)
+     * through TextDecoder; an encoding the browser does not know is read as UTF-8 and recorded in unsupportedEncodings().
      */
     async function text(name) {
       var d = await open(name);
@@ -271,12 +271,12 @@
       if (d.length >= 2 && d[0] === 0xff && d[1] === 0xfe) return new TextDecoder('utf-16le').decode(d);
       if (d.length >= 3 && d[0] === 0xef && d[1] === 0xbb && d[2] === 0xbf) return new TextDecoder('utf-8').decode(d);
       var code = xmlEncoding(d);
-      // BOM yok: bildirim ne derse desin, geçerli UTF-8 olan ve çok baytlı dizi içeren içerik UTF-8 okunur (yanlış bildirim)
+      // No BOM: whatever the declaration says, content that is valid UTF-8 and has multi-byte sequences is read as UTF-8 (wrong declaration)
       if (code && !/^(utf-?8|us-ascii|ascii)$/i.test(code) && supportedEncoding(code)) {
         var manyBytes = false;
         for (var q = 0; q < d.length; q++) { if (d[q] >= 0x80) { manyBytes = true; break; } }
         if (manyBytes) {
-          try { return new TextDecoder('utf-8', { fatal: true }).decode(d); } catch (e) { /* UTF-8 değil: bildirilen kodlamaya geç */ }
+          try { return new TextDecoder('utf-8', { fatal: true }).decode(d); } catch (e) { /* not UTF-8: switch to the declared encoding */ }
         }
       }
       if (code && !/^(utf-?8|utf-?16(le|be)?|ucs-?2|us-ascii|ascii)$/i.test(code)) {

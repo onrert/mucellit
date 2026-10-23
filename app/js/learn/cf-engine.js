@@ -1,43 +1,43 @@
 /*
- * cf-engine.js — Colorfigures çizim motorunun Mücellit "Öğren" için değiştirilmiş kopyası.
+ * cf-engine.js — a modified copy of the Colorfigures drawing engine for the Mucellit "Learn" guide.
  *
- * LİSANS NOTU (MIT). Kaynak: colorfigures skill'i, assets/core.js (değiştirilmemiş asıl: skill klasörü).
- * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) ve Tolga Cohce (iso-figure).
- * Yazılım ücretsiz kullanılabilir, kopyalanabilir, değiştirilebilir, dağıtılabilir; koşul: telif ve izin notunun
- * bütün kopyalarda korunması. "OLDUĞU GİBİ", garantisiz verilir. Tam metin: bu klasördeki LICENSE dosyası (app/js/learn/LICENSE).
+ * LICENSE NOTE (MIT). Source: the colorfigures skill, assets/core.js (the unmodified original: the skill folder).
+ * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) and Tolga Cohce (iso-figure).
+ * The software may be used, copied, modified and distributed free of charge, provided that the copyright and permission
+ * notice is kept in all copies. Provided "AS IS", without warranty. Full text: the LICENSE file in this folder (app/js/learn/LICENSE).
  *
- * Asıldan farkları (yalnız sayfa kabuğu; çizim, gölge, mürekkep ve sıralama işlevleri satırı satırına aynı):
- *  1. mountFigure bir kök öğeye (cfg.kok) bağlanır, document.body'yi ve document.title'ı değiştirmez; başlık,
- *     açıklama ve klavye takımı (mountKeypad) yok. "Made with" bağlantısı asıldaki gibi credit:false ile kapanır
- *     (Öğren'in bütün figürleri credit:false kurulur; bağlantı hiç çizilmez, istek yapılmaz).
- *  2. Bütün arayüz metinleri cfg.metin'den gelir (sözlük: i18n/en.js, i18n/tr.js); motor kendi İngilizcesini yazmaz.
- *  3. ui.sok(): pencere/belge dinleyicilerini, gözlemcileri, zamanlayıcıları ve animasyonları söker (aşama değişince
- *     figür yeniden kurulur).
- *  4. ui.mesgul(): kamera dışı bir animasyon sürüyor mu ("baştan sona oynat" bunu bekler). Animasyon hızı
- *     KitapCilt.ogren.hiz ile çarpılır (1, 2, 4).
- *  5. CSS satır içi enjekte edilmez: css/learn.css (CSP style-src 'self' 'unsafe-inline' ile uyumlu; betik satır içi değil).
- *  6. ?press= test parametresi yok (testler denetleyicinin JS arayüzünü kullanır).
- *  7. Tek ad alanı: motor bir IIFE içinde; dışarıya yalnız KitapCilt.ogren.cf açılır (çizim işlevleri,
- *     paletler, mountFigure/xrMount; değişen kamera değerleri getter). Asıldaki window.__ln, window.__st,
- *     window.CF_HIZ (→ KitapCilt.ogren.hiz), window.FIG_A/LBL_U (→ KitapCilt.ogren.FIG_A/LBL_U), html.nolabels ve
- *     :root --accent (→ .cf-kok kökü) yok.
- *  8. Safari/WebKit akıcılığı: el çizimi filtresi (feTurbulence + feDisplacementMap) WebKit'te her
- *     karede CPU'da yeniden hesaplanıyordu (gerçek Safari, Retina: 2–7 fps). Çizim iki katmanlı: #fig (canlı,
- *     filtresiz; her kare burada, etkileşim burada) ve üstünde #figF (filtreli, durgun kopya). Hareket başlayınca
- *     #figF yumuşakça söner, #fig görünür; hareket durunca (160 ms) son kare #figF'e kopyalanır ve yumuşakça belirir.
- *     Kopya yalnız durgun anda bir kez filtrelenir. Ölçüm: test/fps-olc.cjs, test/olc/.
- *  9. prefers-reduced-motion: adımlar animasyonsuz biter (tek karede son durum), geçişler anlık.
- * 10. Etiket ve yazı metinleri SVG'ye kaçışlı yazılır (esc).
- * 11. (uygulamaya ekleme) Bağımsız sürümün test için tuttuğu sayfa hata kaydı (window 'error' dinleyicisi,
- *     html[data-errors]) kaldırıldı: üründe test kalıntısı olmasın; uygulamanın testleri hataları Playwright'tan okur.
- *     Öğren prototipindeki motorun sadeleştirilmiş hali.
+ * Differences from the original (only the page shell; the drawing, shading, ink and sorting functions are the same line by line):
+ *  1. mountFigure attaches to a root element (cfg.root) and does not change document.body or document.title; there is
+ *     no title, description or keypad (mountKeypad). The "Made with" link is turned off with credit:false as in the
+ *     original (every Learn figure is set up with credit:false; the link is never drawn, no request is made).
+ *  2. Every interface text comes from cfg.text (dictionary: i18n/en.js, i18n/tr.js); the engine writes no English of its own.
+ *  3. ui.unmount(): removes the window/document listeners, observers, timers and animations (the figure is set up
+ *     again when the stage changes).
+ *  4. ui.busy(): is an animation other than the camera running ("play from start to end" waits for it). The animation
+ *     speed is multiplied by Mucellit.learn.speed (1, 2, 4).
+ *  5. No inline CSS is injected: css/learn.css (fits CSP style-src 'self' 'unsafe-inline'; no inline script).
+ *  6. No ?press= test parameter (the tests use the controller's JS interface).
+ *  7. One namespace: the engine is inside an IIFE; only Mucellit.learn.cf is exposed (drawing functions, palettes,
+ *     mountFigure/xrMount; changing camera values through getters). The original's window.__ln, window.__st,
+ *     the speed global of the prototype (→ Mucellit.learn.speed), window.FIG_A/LBL_U (→ Mucellit.learn.FIG_A/LBL_U), html.nolabels and
+ *     :root --accent (→ the .cf-root root) are gone.
+ *  8. Smoothness on Safari/WebKit: the hand-drawn filter (feTurbulence + feDisplacementMap) was recomputed on the CPU
+ *     for every frame in WebKit (real Safari, Retina: 2–7 fps). The drawing has two layers: #fig (live, without the
+ *     filter; every frame and every interaction happen here) and #figF above it (a filtered, still copy). When motion
+ *     starts #figF fades out and #fig shows; when motion stops (160 ms) the last frame is copied to #figF and fades in.
+ *     The copy is filtered only once, while still. Measured with the fps script of the Learn prototype.
+ *  9. prefers-reduced-motion: steps finish without animation (the end state in one frame), transitions are instant.
+ * 10. Label and text strings are written into the SVG escaped (esc).
+ * 11. (added for the app) The page error log the stand-alone version kept for its tests (window 'error' listener,
+ *     html[data-errors]) is removed so that no test leftover ships; the app's tests read errors from Playwright.
+ *     A simplified version of the engine of the Learn prototype.
  */
 'use strict';
 (function (root) {
 root.Mucellit = root.Mucellit || {};
 const MC = root.Mucellit.learn = root.Mucellit.learn || {};
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-let LN = {};   // etiket numaraları (figür başına; asılda window.__ln)
+let LN = {};   // label numbers (per figure; window.__ln in the original)
 
 /* ---------- palettes ---------- */
 const PALS = {
@@ -247,7 +247,7 @@ let INK_K = 1;
 const inkScale = svg => INK_K === 1 ? svg : svg.replace(/stroke-width="([\d.]+)"/g, (_, w) => `stroke-width="${(+w * INK_K).toFixed(2)}"`);
 
 
-// Öğren v2: el çizimi titreme kaydırıcısı kalktı; değer eski kaydırıcının en düşük değerine (min="0") sabit.
+// Learn v2: the hand-drawn jitter slider is gone; the value is fixed at the old slider's lowest value (min="0").
 const WOB_MIN = 0;
 const filterFor = k => `<filter id="hand" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
   <feTurbulence type="fractalNoise" baseFrequency="${(0.045/k).toFixed(4)}" numOctaves="2" seed="4" result="warp"/>
@@ -301,11 +301,11 @@ function bakeNoise(svg){
 }
 
 /* mountFigure({
-     kok: Element,                  // figürün kurulacağı öğe (içi silinir)
-     metin: { gorunum, onden, doner, icini_gor, etiketler, yakinlas, uzaklas, sifirla, sec_zaten, sec_olmaz },
+     root: Element,                 // the element the figure is set up in (its content is removed)
+     text: { view, from, rotates, see_inside, labels, zoom_in, zoom_out, reset, … },
      title, size:[W,D,H], center, state, scene(st, m), buttons:[{label, onClick(st, ui)}], stats(st), acts, turn:'full',
-     xr: 0|1, etiket: true|false     // başlangıçta içini gör / etiketler (aşamalar arası korunur)
-   }) -> ui = { st, render, animate(step, kamera), flash(text, ms), mesgul(), sok(), camTo } */
+     xr: 0|1, label: true|false     // see inside / labels at the start (kept between stages)
+   }) -> ui = { st, render, animate(step, camera), flash(text, ms), busy(), unmount(), camTo } */
 function mountFigure(cfg){
   const root = cfg.root, M = cfg.text || {}, clear = [];
   const on = (h, type, fn, opt) => { h.addEventListener(type, fn, opt); clear.push(() => h.removeEventListener(type, fn, opt)); };
@@ -327,12 +327,12 @@ function mountFigure(cfg){
   write('l-see', M.view); write('vreset', M.fromFront); write('vspin', M.rotates);
   document.getElementById('fig').setAttribute('aria-label', cfg.title || '');
   const st = cfg.state || {};
-  st.pal = 'mustard';   // vurgu rengi sabit: paletteki sarı (renk seçici kalktı)
+  st.pal = 'mustard';   // the accent colour is fixed: the yellow of the palette (the colour picker is gone)
   if (st.az == null) st.az = 105;
   const q = new URLSearchParams(location.search);
   CAM_LIM = cfg.turn === 'full' || q.get('free') === '1' ? null : 60;
 
-  // çerçeve: asıl motorla aynı hesap
+  // frame: the same calculation as the original engine
   const [W,D,H] = cfg.size, pts = [];
   OX = OY = 0; RC = cfg.center || [W/2, D/2]; RCZ = H/2;
   VIEW = 0; setCam(YAW0, PITCH0);
@@ -349,13 +349,13 @@ function mountFigure(cfg){
 
   const art = document.getElementById('art'), artF = document.getElementById('artF');
   const ui = { st, text: M, root };
-  /* iki katman (asıldan fark 8): hareket = #fig görünür, #figF sönük; durgun = son kare #figF'te filtreli.
-     Geçiş CSS'te (learn.css: .cf-hareket, opaklık geçişi); figF #fig'in kutusuna ve yakınlaştırmasına eşlenir. */
+  /* two layers (difference 8): motion = #fig visible, #figF faded; still = the last frame filtered in #figF.
+     The transition is in CSS (learn.css: .cf-motion, opacity transition); figF follows the box and the zoom of #fig. */
   let motion = true, dinT = 0, artHam = null, copyRaw = null;
   const reconcile = () => { const s2 = figF.style; s2.left = svg.offsetLeft + 'px'; s2.top = svg.offsetTop + 'px'; s2.width = svg.offsetWidth + 'px'; s2.height = svg.offsetHeight + 'px'; s2.transform = svg.style.transform; };
   const intoMotion = () => { clearTimeout(dinT); if (!motion){ motion = true; root.classList.add('cf-motion'); } };
   ui.rest = (instant) => { clearTimeout(dinT); if (dead || steps.size) return;
-    if (copyRaw !== artHam){ copyRaw = artHam;   // kırpma adları ikinci katmanda ayrı (aynı id iki kez olmasın)
+    if (copyRaw !== artHam){ copyRaw = artHam;   // clip names are separate in the second layer (so that no id appears twice)
       artF.innerHTML = art.innerHTML.replace(/id="k(\d+)"/g, 'id="kF$1"').replace(/url\(#k(\d+)\)/g, 'url(#kF$1)'); }
     reconcile(); motion = false;
     if (instant){ root.classList.add('cf-instant'); root.classList.remove('cf-motion'); void figF.getBoundingClientRect(); requestAnimationFrame(() => root.classList.remove('cf-instant')); }
@@ -383,23 +383,23 @@ function mountFigure(cfg){
   const toast = document.getElementById('toast');
   ui.flash = (text, ms=1600) => { ui._flash = true; toast.textContent = text; toast.classList.add('show');
     clearTimeout(flashT); flashT = setTimeout(() => { ui._flash = false; toast.classList.remove('show'); }, ms / Math.max(1, (MC.speed || 1) / 2)); };
-  // tek kare sürücüsü (asıldaki gibi); kamera animasyonları mesgul() sayımına girmez
+  // single frame driver (as in the original); camera animations are not counted by busy()
   const steps = new Set(), camera = new Set(); let driving = false, lastT = 0, fbT = 0, dead = false;
-  // hareketi azalt (asıldan fark 9): bütün adımlar bu karede sonuna kadar koşar (zincirlenen alt adımlar dahil), tek kare çizilir
-  const reduce = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;   // (kok burada figür kökü: pencere değil)
+  // reduced motion (difference 9): every step runs to its end in this frame (chained sub-steps included), one frame is drawn
+  const reduce = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;   // (root here is the figure root, not the window)
   const frame = () => { if (!driving || dead) return; driving = false; clearTimeout(fbT);
-    const az = reduce(), now = performance.now(), dt = az ? 1e4 : Math.max(0, Math.min(.05, (now - lastT) / 1000)) * (MC.speed || 1); lastT = now;
-    try { for (let kind = 0; kind < (az ? 400 : 1) && steps.size; kind++) for (const s of [...steps]) if (s(dt) === false){ steps.delete(s); camera.delete(s); }
+    const reducedMotion = reduce(), now = performance.now(), dt = reducedMotion ? 1e4 : Math.max(0, Math.min(.05, (now - lastT) / 1000)) * (MC.speed || 1); lastT = now;
+    try { for (let kind = 0; kind < (reducedMotion ? 400 : 1) && steps.size; kind++) for (const s of [...steps]) if (s(dt) === false){ steps.delete(s); camera.delete(s); }
       ui.render(); }
-    catch (e) { steps.clear(); camera.clear(); setTimeout(() => { throw e; }, 0); return; }   // hata gizlenmez, ama animasyon takılı kalmaz
+    catch (e) { steps.clear(); camera.clear(); setTimeout(() => { throw e; }, 0); return; }   // the error is not hidden, but the animation does not get stuck
     if (steps.size) drive(); };
   const drive = () => { if (driving || dead) return; driving = true; requestAnimationFrame(frame); fbT = setTimeout(frame, 60); };
-  // hareketi azalt: adım eklendiği anda (eylem içinde, zincirlenenlerle birlikte) sonuna kadar koşar; ara kare çizilmez
+  // reduced motion: a step runs to its end as soon as it is added (inside the action, with the chained ones); no in-between frame is drawn
   let completing = false;
   const complete = () => { if (completing) return; completing = true;
     try { for (let kind = 0; kind < 400 && steps.size; kind++) for (const s of [...steps]) if (s(1e4) === false){ steps.delete(s); camera.delete(s); } }
     finally { completing = false; } };
-  ui.animate = (step, kam) => { if (!steps.size && !driving) lastT = performance.now(); steps.add(step); if (kam) camera.add(step);
+  ui.animate = (step, isCamera) => { if (!steps.size && !driving) lastT = performance.now(); steps.add(step); if (isCamera) camera.add(step);
     if (reduce()){ complete(); if (!completing) drive(); return; } drive(); };
   ui.invalidate = () => drive();
   ui.busy = () => { for (const s of steps) if (!camera.has(s)) return true; return false; };
@@ -422,7 +422,7 @@ function mountFigure(cfg){
     if (/input|textarea|select/i.test(e.target.tagName)) return; e.preventDefault(); camTo(YAW + k[0], PITCH + k[1], 260); });
   const vsp = document.getElementById('vspin');
   document.getElementById('vreset').onclick = () => { spin = false; vsp.setAttribute('aria-pressed', false); camTo(YAW0, PITCH0); };
-  vsp.onclick = () => { if (reduce()){ spin = false; vsp.setAttribute('aria-pressed', false); return; }   // hareketi azalt: sürekli dönme yok
+  vsp.onclick = () => { if (reduce()){ spin = false; vsp.setAttribute('aria-pressed', false); return; }   // reduced motion: no continuous rotation
     spin = !spin; vsp.setAttribute('aria-pressed', spin); camAnim++;
     let dir = 1;
     if (spin) ui.animate(dt => { if (!spin || dead) return false; if (!drag){ let y = YAW + dir*dt*18;
@@ -489,9 +489,9 @@ function xrGhost(body, mech, k, OUTp, x0, x1, m){
   return far + mech + `<g opacity="${f(1 - .8*k)}">${body}</g>` + `<g opacity="${f(.6*k)}">` + hullInk([...on(PX(x0), OUTp), ...on(PX(x1), OUTp)], 2.8) + `</g>`;
 }
 
-// İçini gör / Etiketler anahtarları (asıl xrMount'un kök öğeli, sözlüklü sürümü; başlangıç durumu cfg.xr / cfg.etiket)
+// See inside / Labels switches (the original xrMount with a root element and a dictionary; start state cfg.xr / cfg.label)
 function xrMount(getUI, cfg = {}){
-  const ui = getUI(), html = ui.root, M = ui.text || {}, q = new URLSearchParams(location.search);   // etiket anahtarı .cf-kok kökünde (asılda html)
+  const ui = getUI(), html = ui.root, M = ui.text || {}, q = new URLSearchParams(location.search);   // the label switch is on the .cf-root root (html in the original)
   const label = q.get('labels') === '1' || !!cfg.label;
   html.classList.toggle('nolabels', !label);
   if (ui.st.xr == null){ ui.st.xr = 0; ui.st.xrT = 0; }
@@ -530,8 +530,8 @@ function xrWrap(sceneFn, opts){
   };
 }
 
-/* ---------- dışa açılan arayüz (tek ad alanı: KitapCilt.ogren.cf) ----------
-   İşlevler ve sabitler değişmez bağlar; kamera/çizgi ölçeği değişen değerler getter ile okunur. */
+/* ---------- exposed interface (one namespace: Mucellit.learn.cf) ----------
+   Functions and constants are fixed bindings; changing camera / line scale values are read through getters. */
 MC.cf = Object.freeze({
   PALS, METAL, CLEAR, CERAMIC, DARK, INK, BOARD, WOOD, YAW0, PITCH0,
   get CAM_V(){ return CAM_V; }, get CAM_R(){ return CAM_R; }, get CAM_U(){ return CAM_U; }, get YAW(){ return YAW; }, get PITCH(){ return PITCH; }, get INK_K(){ return INK_K; },

@@ -62,7 +62,7 @@ const MUTATIONS = [
   { name: 'EPUB: XHTML hatasında text/html yedeği kapalı', file: 'app/js/plugins/epub/xhtml-blocks.js', find: "return new DOMParser().parseFromString(text, 'text/html');", put: 'return d;', run: ['e2e'] },
   { name: 'EPUB: tembel yükleme yolu bozuk (fontkit)', file: 'app/js/plugins/epub.js', find: "var FONTKIT_JS = 'vendor/fontkit/fontkit.umd.min.js';", put: "var FONTKIT_JS = 'vendor/fontkit/none.umd.min.js';", run: ['e2e'] },
   // ---- EPUB düzeltme turu (kodlama dahil) ----
-  { name: 'BD/O1: girinti tavanı yok (W ≤ 0 → boş satırlar)', file: 'app/js/plugins/epub/typeset.js', find: 'if (solG + sagG > alanGen - minWidth) {', put: 'if (false) {', run: ['unit'] },
+  { name: 'BD/O1: girinti tavanı yok (W ≤ 0 → boş satırlar)', file: 'app/js/plugins/epub/typeset.js', find: 'if (solG + sagG > areaWidth - minWidth) {', put: 'if (false) {', run: ['unit'] },
   { name: 'BD/O2: uzun kelimede tam kelime her satırda ölçülüyor', file: 'app/js/plugins/epub/typeset.js', find: 'var g = wordWidthLimited(w, W - curW - ek, measure);', put: 'var g = wordWidth(w, measure);', run: ['unit'] },
   { name: 'BD/D3: ayraç boş sayfada da yeni sayfa açıyor', file: 'app/js/plugins/epub/typeset.js', find: 'if (before + L > rest() + 1e-6 && !blank()) newPage();', put: 'if (before + L > rest() + 1e-6) newPage();', run: ['unit'] },
   { name: 'BD/O3: bozuk resim yakalanmıyor', file: 'app/js/plugins/epub/pdf-writer.js', find: '} catch (e) { img = null; skipped += 1; }', put: '} catch (e) { throw e; }', run: ['unit', 'e2e'] },

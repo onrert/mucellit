@@ -30,8 +30,8 @@ pub const FILE_ITEMS: [(&str, &str, Option<&str>); 6] = [
     ("file-save", "menu.save", Some("CmdOrCtrl+S")),
     ("file-print", "menu.print", Some("CmdOrCtrl+P")),
     ("file-preview", "menu.preview", Some("Alt+CmdOrCtrl+P")),
-    ("json-export", "menu.json_disa", None),
-    ("json-import", "menu.json_ice", None),
+    ("json-export", "menu.json_export", None),
+    ("json-import", "menu.json_import", None),
 ];
 
 /// Son açılan öğesinin kimlik öneki: "son:<uuid>".
@@ -79,7 +79,7 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .unwrap_or_default();
     if summaries.is_empty() {
         last = last.item(
-            &MenuItemBuilder::with_id("last-blank", text("menu.son_bos", &[]))
+            &MenuItemBuilder::with_id("recent-empty", text("menu.recent_empty", &[]))
                 .enabled(false)
                 .build(app)?,
         );
@@ -163,7 +163,7 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 fn language_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Submenu<R>> {
     let choice = i18n::choice();
     // seçicideki "Sistem dili (X)" ile aynı kaynak (i18n::sistem_kodu; JS dil_oku.sistem ile alır)
-    let mut m = SubmenuBuilder::new(app, text("menu.i18n", &[])).item(
+    let mut m = SubmenuBuilder::new(app, text("menu.language", &[])).item(
         &CheckMenuItemBuilder::with_id(format!("{LANGUAGE_PREFIX}system"), i18n::system_label())
             .checked(choice.is_none())
             .build(app)?,
@@ -249,7 +249,7 @@ mod tests {
             "last:7f0c3a7e1d2b4c5d8e9f0a1b2c3d4e5f",
             "son:7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f ",
             "last-clear",
-            "last-blank",
+            "recent-empty",
             "file-open ",
         ] {
             assert!(!is_forwarded(k), "{k:?}");

@@ -1,26 +1,27 @@
 /*
- * learn.js — "Öğren" rehberinin denetleyicisi: aşama listesi, adım kartı (açıklama, araç/malzeme, Dikkat), ilerleme,
- * adım oynatma, "baştan sona oynat", kitabın sayıları paneli. Figürleri cfKur (cf-page.js) ile kurar.
- * Bütün kullanıcı metinleri sözlükten (KitapCilt.dil.t); burada sabit kullanıcı metni yok.
- * Dışa açık tek arayüz KitapCilt.ogren.sekme (goster/gizle; app.js sekmeAc çağırır). Test arayüzü üründe yok:
- * e2e kendi test kopyasına ekler (app/test/ altındaki enjeksiyon betiği).
- * (uygulamaya ekleme; Öğren prototipinden uyarlandı):
- *  - Öğren sekmesinde (#sekme-ogren) çalışır; öğe kimlikleri "og-" önekli (uygulamanın kimlikleriyle çakışmasın).
- *  - Kendi dil seçicisi yok: uygulamanın dili (KitapCilt.dil); dil değişince uygulama sayfayı yeniden yükler, rehber
- *    yeni dilde kurulur; aşama/adım konumu ve aşamaların ilerlemesi (tamam) sessionStorage'da kalır (yeniden yüklemede
- *    kaybolmaz).
- *  - Tembel kurulum: sekme ilk açıldığında kurulur (KitapCilt.ogren.sekme.goster); sekmeden çıkınca
- *    (KitapCilt.ogren.sekme.gizle) "baştan sona" durur, figür sökülür (animasyon, rAF, dinleyiciler bırakılır).
- *  - Sayı paneli öntanımlı olarak Hesapla sekmesinin girdileri ve sonucu (KitapCilt.hesapla.durum); elle
- *    değişiklik yalnız rehberde kalır; "Hesapla'dan al" yeniden Hesapla'ya bağlar. Belge başlığı ve URL değişmez.
- * LİSANS NOTU: Mücellit kodu (MIT, kökteki LICENSE); Colorfigures kodu içermez. Bu klasördeki Colorfigures parçaları MIT lisanslı
- * (April Zhu, Tolga Cohce), tam metin: LICENSE.
+ * learn.js — controller of the "Learn" guide: stage list, step card (description, tools/materials, Caution), progress,
+ * step playback, "play from start to end", the book's numbers panel. Sets up the figures with cfMount (cf-page.js).
+ * Every user text comes from the dictionary (Mucellit.i18n.t); there is no fixed user text here.
+ * The only exposed interface is Mucellit.learn.tab (show/hide; app.js openTab calls it). There is no test interface in
+ * the product: e2e adds it to its own test copy (the injection script under app/test/).
+ * (added for the app; adapted from the Learn prototype):
+ *  - Runs in the Learn tab (#tab-learn); element ids have the "guide-" prefix (so that they do not clash with the app's ids).
+ *  - No language picker of its own: the app's language (Mucellit.i18n); when the language changes the app reloads the
+ *    page and the guide is set up in the new language; the stage/step position and the progress of the stages (done)
+ *    stay in sessionStorage (not lost on reload).
+ *  - Lazy setup: set up when the tab is first opened (Mucellit.learn.tab.show); when the tab is left
+ *    (Mucellit.learn.tab.hide) "start to end" stops and the figure is removed (animation, rAF, listeners released).
+ *  - By default the numbers panel shows the inputs and the result of the Calculator tab (Mucellit.calculator.state);
+ *    manual changes stay in the guide only; "Use values from the Calculator tab" binds it to the Calculator again.
+ *    The document title and the URL do not change.
+ * LICENSE NOTE: Mucellit code (MIT, LICENSE at the root); it contains no Colorfigures code. The Colorfigures parts in this
+ * folder are MIT licensed (April Zhu, Tolga Cohce), full text: LICENSE.
  */
 'use strict';
 (function (root) {
   const MC = root.Mucellit.learn, I18n = root.Mucellit.i18n, doc = root.document;
   const t = (a, p) => I18n.t(a, p);
-  const $ = id => doc.getElementById('og-' + id);   // kimlikler og- önekli
+  const $ = id => doc.getElementById('guide-' + id);   // ids have the guide- prefix
   const LESSONS = MC.lessons;
   const NUMBER_FIELDS = ['signatureCount', 'sheetsPerSignature', 'bookWidth', 'bookHeight', 'paperThickness'];
 
@@ -30,8 +31,8 @@
     installed: false, visible: false, manual: false, base: null, match: true
   };
   const POSITION = 'mucellit.learn.position';
-  function writePosition() { try { root.sessionStorage.setItem(POSITION, JSON.stringify({ a: state.a, i: state.i, done: state.done })); } catch (_) { /* depolama yok */ } }
-  /** Kayıtlı konum ve ilerleme; bozuk ilerleme (uzunluk, tür, sınır) yok sayılır, konum yine kullanılır. */
+  function writePosition() { try { root.sessionStorage.setItem(POSITION, JSON.stringify({ a: state.a, i: state.i, done: state.done })); } catch (_) { /* no storage */ } }
+  /** Saved position and progress; broken progress (length, type, bounds) is ignored, the position is still used. */
   function readPosition() {
     try { const k = JSON.parse(root.sessionStorage.getItem(POSITION) || 'null');
       if (k && Number.isInteger(k.a) && k.a >= 0 && k.a < LESSONS.length && Number.isInteger(k.i) && k.i >= 0) {
@@ -39,14 +40,14 @@
           k.done.every((v, a) => Number.isInteger(v) && v >= 0 && v <= LESSONS[a].steps.length) ? k.done.slice() : null;
         return { a: k.a, i: Math.min(k.i, LESSONS[k.a].steps.length), done: t };
       }
-    } catch (_) { /* bozuk ya da yok */ }
+    } catch (_) { /* broken or missing */ }
     return null;
   }
 
-  /* ---------- sayılar ---------- */
+  /* ---------- numbers ---------- */
   const number = (n, b) => I18n.number(n, b === undefined ? 2 : b);
   const size2 = (a, b) => t('learn.size_two', { a: number(a), b: number(b) });
-  /** Metinlerdeki {yer tutucu} değerleri (dile göre sayı yazımı). */
+  /** {placeholder} values of the texts (number format by language). */
   function values(o) {
     return {
       signature: o.N, sheetsPerSignature: o.y, pagesPerSignature: o.y * 4, page: o.page, printSheets: o.printSheets, sheet: o.sheet,
@@ -54,26 +55,26 @@
       spine: number(o.S), jointGap: number(o.f), t: number(o.t), k: number(o.k), e: number(o.e),
       board: size2(o.Db, o.Dh), spineStrip: size2(o.R, o.Dh), covering: size2(o.covering.width, o.covering.height),
       endpapers: size2(o.endpapers.width, o.endpapers.height), mull: size2(o.mull.width, o.mull.height), headbands: number(o.headbands),
-      hole: o.station.number, range: number(o.station.range, 0), ucAllowance: number(o.station.ucAllowance), thread: number(o.thread, 0),
+      hole: o.station.number, range: number(o.station.range, 0), endAllowance: number(o.station.endAllowance), thread: number(o.thread, 0),
       cornerAlt: number(o.corner[0]), cornerTop: number(o.corner[1]),
-      lastPage: o.y * 4, arka2: o.y * 4 - 1, rest: Math.max(0, o.N - 3)
+      lastPage: o.y * 4, back2: o.y * 4 - 1, rest: Math.max(0, o.N - 3)
     };
   }
 
-  /* ---------- figür ---------- */
-  const metinCF = () => ({
+  /* ---------- figure ---------- */
+  const cfText = () => ({
     view: t('learn.cf.view'), fromFront: t('learn.cf.fromFront'),
     rotates: t('learn.cf.rotates'), see_inside: t('learn.cf.see_inside'), labels: t('learn.cf.labels'),
     zoomIn: t('learn.cf.zoomIn'), zoomOut: t('learn.cf.zoomOut'), reset: t('learn.cf.reset')
   });
 
-  function unmount() { if (state.ui) { try { state.ui.unmount(); } catch (_) { /* söküldü */ } state.ui = null; state.fig = null; } }
+  function unmount() { if (state.ui) { try { state.ui.unmount(); } catch (_) { /* already removed */ } state.ui = null; state.fig = null; } }
   function setup(a, i) {
     state.flowId += state.flow ? 0 : 1;
     unmount();
     state.a = a; state.i = Math.max(0, Math.min(LESSONS[a].steps.length, i)); state.playing = false;
     writePosition();
-    if (!state.visible) { render(); return; }   // gizli sekmede figür kurulmaz (animasyon, rAF yok)
+    if (!state.visible) { render(); return; }   // no figure is set up in a hidden tab (no animation, no rAF)
     const d = LESSONS[a], o = { size: state.size, t, number, value: values(state.size), stage: d.id,
       run: id => { const j = d.steps.indexOf(id); if (j >= 0 && !state.flow) run(j); } };
     const fig = MC.figures[d.figures](o);
@@ -82,15 +83,15 @@
     for (const id of (d.ready || [])) fig.step[id].last(st);
     for (let j = 0; j < state.i; j++) fig.step[d.steps[j]].last(st);
     const cfg = Object.assign({}, fig.cfg, {
-      root: $('stage'), text: metinCF(), xr: state.xr, label: state.label, turn: 'full',
+      root: $('stage'), text: cfText(), xr: state.xr, label: state.label, turn: 'full',
       buttons: d.steps.map((id, j) => ({ id, label: t(`learn.${d.id}.${id}.button`), onClick: () => run(j) })),
       viewChanged: g => { if ('xr' in g) state.xr = g.xr ? 1 : 0; if ('label' in g) state.label = g.label; }
     });
-    state.ui = MC.cfKur(cfg);
+    state.ui = MC.cfMount(cfg);
     render();
   }
 
-  /** Adımı oynatır; bitince (animasyon durunca) ilerlemeyi yazar. Başladıysa söz (bitince çözülür), başlamadıysa false. */
+  /** Plays a step; when it ends (the animation stops) the progress is written. A promise if it started (resolved at the end), false if not. */
   function run(j) {
     const ui = state.ui, d = LESSONS[state.a];
     if (!ui || !state.visible) return false;
@@ -108,14 +109,14 @@
         if (j >= state.i) state.i = j + 1;
         state.done[a] = Math.max(state.done[a], state.i);
         if (a === LESSONS.length - 1 && state.i === d.steps.length) state.finished = true;
-        writePosition();   // oynanan adımdan sonra da konum ve ilerleme saklanır (dil değişiminde kaybolmaz)
+        writePosition();   // the position and the progress are saved after a played step too (not lost when the language changes)
         render(); parse(true);
       };
       requestAnimationFrame(wait);
     });
   }
 
-  /* ---------- oynatma düğmeleri ---------- */
+  /* ---------- playback buttons ---------- */
   function play() {
     const d = LESSONS[state.a];
     if (state.i >= d.steps.length) { if (state.a < LESSONS.length - 1) { setup(state.a + 1, 0); return run(0); } return false; }
@@ -159,11 +160,11 @@
     }
   }
 
-  /* ---------- çizim (adım kartı, aşama listesi, ilerleme) ---------- */
+  /* ---------- drawing (step card, stage list, progress) ---------- */
   function hasText(a) { return I18n.has(a); }
   function render() {
     const d = LESSONS[state.a], n = d.steps.length, D = values(state.size);
-    // aşama listesi
+    // stage list
     const ol = $('stages'); ol.textContent = '';
     LESSONS.forEach((x, a) => {
       const li = doc.createElement('li'), b = doc.createElement('button'); b.type = 'button';
@@ -175,29 +176,29 @@
       b.onclick = () => setup(a, 0);
       li.appendChild(b); ol.appendChild(li);
     });
-    // genel ilerleme
+    // overall progress
     const top = LESSONS.reduce((s, x) => s + x.steps.length, 0), done = state.done.reduce((s, v) => s + v, 0);
     $('progress-bar').style.width = (100 * done / top).toFixed(1) + '%';
     $('progress-bar').parentNode.setAttribute('aria-valuenow', String(done));
     $('progress-bar').parentNode.setAttribute('aria-valuemax', String(top));
     $('progress-text').textContent = t('learn.general', { i: done, n: top });
-    // adım kartı
+    // step card
     $('stage-name').textContent = t('learn.stage_no', { a: state.a + 1, an: LESSONS.length }) + ' · ' + t(`learn.${d.id}.name`);
     $('stage-summary').textContent = t(`learn.${d.id}.summary`, D);
-    const adl = $('steps'); adl.textContent = '';
+    const stepList = $('steps'); stepList.textContent = '';
     d.steps.forEach((id, j) => {
       const li = doc.createElement('li');
       li.className = (j < state.i ? 'finished' : '') + (j === state.i ? ' current' : '');
       li.textContent = t(`learn.${d.id}.${id}.title`, D);
-      adl.appendChild(li);
+      stepList.appendChild(li);
     });
     const card = $('card');
     if (state.i < n) {
       const id = d.steps[state.i], k = `learn.${d.id}.${id}`;
-      const az = d.az && d.az[id] && d.az[id](state.size);
+      const few = d.few && d.few[id] && d.few[id](state.size);
       $('step-no').textContent = t('learn.step_no', { i: state.i + 1, n });
       $('step-title').textContent = t(k + '.title', D);
-      $('step-description').textContent = t(k + (az && hasText(k + '.description_az') ? '.description_az' : '.description'), D);
+      $('step-description').textContent = t(k + (few && hasText(k + '.description_few') ? '.description_few' : '.description'), D);
       const tool = hasText(k + '.tool'), caution = hasText(k + '.caution');
       $('tool-box').hidden = !tool; $('tool').textContent = tool ? t(k + '.tool', D) : '';
       $('caution-box').hidden = !caution; $('caution').textContent = caution ? t(k + '.caution', D) : '';
@@ -223,7 +224,7 @@
     if (rootElement) { rootElement.dataset.state = state.flow ? 'flow' : state.playing ? 'playing' : 'ready'; rootElement.dataset.finished = state.finished ? '1' : '0'; }
   }
 
-  /* ---------- sayı paneli ---------- */
+  /* ---------- numbers panel ---------- */
   function writeResults() {
     const o = state.size, tb = $('results'); tb.textContent = '';
     const line = (k, v, hint) => { const tr = doc.createElement('tr'); const th = doc.createElement('th'); th.scope = 'row'; th.textContent = t(k);
@@ -265,18 +266,19 @@
     $('number-error').hidden = true;
     for (const a of NUMBER_FIELDS) g[a] = MC.size.readNumber(g[a]);
     const o = MC.size.calculate(g, state.base);
-    state.manual = o.source !== 'calculator';   // Hesapla'nın değerleriyle aynıysa bağ sürer
+    state.manual = o.source !== 'calculator';   // the binding to the Calculator stays when the values are the same as there
     state.input = g; state.size = o;
     writeResults();
     if (!state.flow) setup(state.a, state.i); else render();
     return true;
   }
 
-  /* ---------- Hesapla sekmesi ---------- */
+  /* ---------- Calculator tab ---------- */
   function calculatorState() { return root.Mucellit.calculator && root.Mucellit.calculator.state ? root.Mucellit.calculator.state() : null; }
   /**
-   * Sayıları Hesapla sekmesinden alır (taban). Hesapla hatalı ya da rehberin sınırları dışındaysa önceki sayılar kalır ve
-   * not gösterilir; ilk kurulumda taban yoksa yedek öntanımlı (Örnek Kitap). Değişti mi döner.
+   * Takes the numbers from the Calculator tab (the base). If the Calculator has an error or is outside the guide's
+   * limits, the previous numbers stay and a note is shown; on the first setup without a base, the fallback default
+   * (Sample Book). Returns whether anything changed.
    */
   function takeFromCalculator() {
     const tb = MC.size.fromBase(calculatorState());
@@ -292,18 +294,18 @@
     note.hidden = true;
     const old = state.size && JSON.stringify(state.size.calc.input) + JSON.stringify(state.size.input);
     state.base = tb; state.match = tb.match; state.manual = false;
-    state.input = Object.assign({}, tb.bes); state.size = MC.size.calculate(state.input, tb);
+    state.input = Object.assign({}, tb.five); state.size = MC.size.calculate(state.input, tb);
     writeFields(); writeResults();
     return old !== JSON.stringify(state.size.calc.input) + JSON.stringify(state.size.input);
   }
 
-  /* ---------- kurulum ve sekme ---------- */
-  function ilkKur() {
+  /* ---------- setup and tab ---------- */
+  function firstSetup() {
     state.installed = true;
     takeFromCalculator();
     for (const a of NUMBER_FIELDS) $('g-' + a).addEventListener('change', numbersChanged);
     $('number-form').addEventListener('submit', e => { e.preventDefault(); numbersChanged(); });
-    $('from_calculator-al').addEventListener('click', () => { const changed = takeFromCalculator(); if (!state.flow && (changed || !state.ui)) setup(state.a, state.i); else render(); });
+    $('use-calculator').addEventListener('click', () => { const changed = takeFromCalculator(); if (!state.flow && (changed || !state.ui)) setup(state.a, state.i); else render(); });
     $('play').onclick = () => { play(); };
     $('previous').onclick = previous; $('next').onclick = next; $('again').onclick = again;
     $('fromStart-toEnd').onclick = () => { fromStartToEnd(); };
@@ -313,18 +315,19 @@
     if (k) { state.a = k.a; state.i = k.i; if (k.done) state.done = k.done; }
   }
   /**
-   * Sekme açıldı: ilk kez kurulur; Hesapla'ya bağlıysa (elle değişiklik yoksa) sayılar yenilenir; figür kurulur.
-   * Sekme zaten görünür ve figür kuruluysa (⌘4 / menü / sekme yeniden basıldı) hiçbir şey yapılmaz: figür söküp
-   * yeniden kurulsaydı oynayan adım yarıda kalır, "baştan sona" sonraki adıma geçip birini atlardı.
+   * The tab was opened: set up the first time; when bound to the Calculator (no manual change) the numbers are
+   * refreshed; the figure is set up. When the tab is already visible and the figure is set up (⌘4 / menu / tab pressed
+   * again) nothing is done: setting the figure up again would cut a playing step short, and "start to end" would move
+   * on to the next step and skip one.
    */
   function show() {
     if (state.visible && state.ui) return;
     state.visible = true;
-    if (!state.installed) ilkKur();
+    if (!state.installed) firstSetup();
     else if (!state.manual) takeFromCalculator();
     setup(state.a, state.i);
   }
-  /** Sekmeden çıkıldı: baştan sona durur, figür sökülür (gizli sekmede animasyon ve rAF çalışmaz). */
+  /** The tab was left: "start to end" stops and the figure is removed (no animation and no rAF in a hidden tab). */
   function hide() {
     state.visible = false;
     if (state.flow) { state.flow = false; state.flowId++; }

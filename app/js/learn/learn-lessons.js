@@ -1,21 +1,22 @@
 /*
- * learn-lessons.js — aşamalar ve adımlar (sıra: elle denenmiş ciltleme akışı):
- * katlama → delme → dikiş → forza → sırt (tutkal → kapital → sırt bezi) → kapak (bitmiş bloğun ölçüsüyle) → kaplama →
- * takma → pres → bitmiş kitap.
- * Her aşama bir figür (sekil) kullanır; "hazir": aynı figürün önceki aşamada biten adımları (figür o durumdan başlar).
- * Metinler sözlükte: ogren.<aşama>.ad / .ozet, ogren.<aşama>.<adım>.baslik / .aciklama / .dugme / [.arac] / [.dikkat].
- * LİSANS NOTU: Mücellit kodu (MIT, kökteki LICENSE); Colorfigures kodu içermez. Bu klasördeki Colorfigures parçaları MIT lisanslı
- * (April Zhu, Tolga Cohce), tam metin: LICENSE.
- * "az": figürün o kitapta karşılığı olmayan adımlar için (ör. 3 formalı kitapta zincir) açıklama anahtarının son eki.
+ * learn-lessons.js — stages and steps (order: a binding flow tried by hand):
+ * folding → punching → sewing → endpapers → spine (glue → headbands → mull) → cover (with the size of the finished block) →
+ * covering → casing-in → press → finished book.
+ * Every stage uses a figure; "ready": the steps of the same figure finished in an earlier stage (the figure starts from that state).
+ * Texts are in the dictionary: learn.<stage>.name / .summary, learn.<stage>.<step>.title / .description / .button / [.tool] / [.caution].
+ * LICENSE NOTE: Mucellit code (MIT, LICENSE at the root); it contains no Colorfigures code. The Colorfigures parts in this
+ * folder are MIT licensed (April Zhu, Tolga Cohce), full text: LICENSE.
+ * "few": for steps that have no counterpart in this book (e.g. the kettle stitch in a book of 3 signatures), the suffix of
+ * the description key (.description_few).
  */
 'use strict';
 (function (root) {
   const MC = (root.Mucellit = root.Mucellit || {}).learn = root.Mucellit.learn || {};
   MC.lessons = [
     { id: 'folding', figures: 'folding', steps: ['grain', 'impose', 'fold', 'boneFolder', 'press'] },
-    { id: 'punching', figures: 'sewing', steps: ['template', 'del', 'all'] },
-    { id: 'sewing', figures: 'sewing', ready: ['template', 'del', 'all'], steps: ['prepare', 'first', 'second', 'third', 'chain', 'last'],
-      az: { second: o => o.N < 2, third: o => o.N < 3, chain: o => o.N < 4 } },
+    { id: 'punching', figures: 'sewing', steps: ['template', 'punch', 'all'] },
+    { id: 'sewing', figures: 'sewing', ready: ['template', 'punch', 'all'], steps: ['prepare', 'first', 'second', 'third', 'chain', 'last'],
+      few: { second: o => o.N < 2, third: o => o.N < 3, chain: o => o.N < 4 } },
     { id: 'endpapers', figures: 'endpapers', steps: ['fold', 'glue', 'top', 'bottom'] },
     { id: 'spine', figures: 'spine', steps: ['press', 'glue', 'headbands', 'mull'] },
     { id: 'cover', figures: 'cover', steps: ['measure', 'board', 'strip', 'covering'] },

@@ -1,5 +1,5 @@
 'use strict';
-// storage.js'i sahte localStorage ile (vm bağlamında) sınar: kota dolu / bozuk kayıt davranışı.
+// Tests storage.js with a fake localStorage (in a vm context): full quota / corrupt record behaviour.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -33,19 +33,19 @@ function withBooksData(MC, name) {
   return v;
 }
 
-test('kota dolunca read() eski kalıcı kaydı değil, bellekteki en yeni veriyi döndürür', () => {
+test('when the quota is full read() returns the newest data in memory, not the old persistent record', () => {
   const d = fakeStorage();
   const MC = setup(d);
-  assert.equal(MC.storage.write(withBooksData(MC, 'Eski')), true);
+  assert.equal(MC.storage.write(withBooksData(MC, 'Old')), true);
   d.filled = true;
-  const fresh = withBooksData(MC, 'Eski');
-  fresh.projects.push(MC.projectModel.newProject({ name: 'Yeni' }));
+  const fresh = withBooksData(MC, 'Old');
+  fresh.projects.push(MC.projectModel.newProject({ name: 'New' }));
   assert.equal(MC.storage.write(fresh), false);
   assert.equal(MC.storage.isPersistent(), false);
-  assert.deepEqual(names(MC.storage.read()), ['Eski', 'Yeni']);
+  assert.deepEqual(names(MC.storage.read()), ['Old', 'New']);
 });
 
-test('yazım yeniden başarılı olunca kalıcı moda döner ve read() depoyu okur', () => {
+test('when a write succeeds again it goes back to persistent mode and read() reads the storage', () => {
   const d = fakeStorage();
   const MC = setup(d);
   MC.storage.write(withBooksData(MC, 'A'));
@@ -57,7 +57,7 @@ test('yazım yeniden başarılı olunca kalıcı moda döner ve read() depoyu ok
   assert.deepEqual(names(MC.storage.read()), ['C']);
 });
 
-test('bozuk kayıt uyarısı başarılı yazımdan sonra kalkar; ham kayıt yedeklenir', () => {
+test('the corrupt record warning goes away after a successful write; the raw record is backed up', () => {
   const d = fakeStorage();
   const MC = setup(d);
   d.data[MC.storage.KEY] = '{corrupt json';
@@ -69,26 +69,26 @@ test('bozuk kayıt uyarısı başarılı yazımdan sonra kalkar; ham kayıt yede
   assert.equal(MC.storage.isCorrupt(), false);
 });
 
-test('saklama hiç yoksa (getItem atar) bellekten sürer', () => {
+test('without any storage (getItem throws) it goes on in memory', () => {
   const MC = setup({ getItem() { throw new Error('none'); }, setItem() { throw new Error('none'); }, removeItem() {} });
   assert.equal(MC.storage.write(withBooksData(MC, 'B')), false);
   assert.deepEqual(names(MC.storage.read()), ['B']);
 });
 
-test('temizle sonrası read() silinmiş/eski kaydı döndürmez (removeItem başarısız olsa da)', () => {
+test('after clear read() does not return the removed/old record (even when removeItem fails)', () => {
   const d = fakeStorage();
   const MC = setup(d);
   assert.equal(MC.storage.write(withBooksData(MC, 'A')), true);
   d.removeItem = () => { throw new Error('deleteFailed'); };
   MC.storage.clear();
-  assert.equal(MC.storage.read().projects.length, 0, 'removeItem atsa da eski kayıt dönmez');
-  // normal yol
+  assert.equal(MC.storage.read().projects.length, 0, 'removeItem throws and still no old record comes back');
+  // normal path
   const d2 = fakeStorage();
   const KC2 = setup(d2);
   KC2.storage.write(withBooksData(KC2, 'B'));
   KC2.storage.clear();
   assert.equal(KC2.storage.read().projects.length, 0);
-  // kota doluyken (bellek en yeni) temizle: eski kalıcı kayıt geri gelmez
+  // clear while the quota is full (memory is newest): the old persistent record does not come back
   const d3 = fakeStorage();
   const KC3 = setup(d3);
   KC3.storage.write(withBooksData(KC3, 'A'));

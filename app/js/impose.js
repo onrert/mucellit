@@ -1,11 +1,11 @@
 /*
- * impose.js — Düzenle sekmesi: PDF yükleme, sayfa ızgarası (sil, sırala,
- * döndür, boş sayfa), dizilim ayarları, yaprak önizlemesi, dışa aktarma.
+ * impose.js — Imposition tab: PDF loading, page grid (delete, reorder,
+ * rotate, blank page), imposition settings, sheet preview, export.
  */
 (function (root) {
   'use strict';
   var MC = root.Mucellit = root.Mucellit || {};
-  var O = MC.common, $ = O.$, el = O.el, I18N = MC.i18n; // (D bu dosyada belge durumu)
+  var O = MC.common, $ = O.$, el = O.el, I18N = MC.i18n; // (D is the document state in this file)
   function t(a, p) { return I18N.t(a, p); }
   var SETTINGS_KEY = 'mucellit.imposeSettings';
 
@@ -18,23 +18,23 @@
     selected: {},
     dragging: null,
     loadNo: 0,
-    requestNo: 0,       // dosya seçimi sıra numarası: bayat yükleme sonucu atılır
+    requestNo: 0,       // file choice sequence number: a stale load result is dropped
     outputPdf: null,
-    encrypted: false,   // kaynak PDF şifreli/izin kısıtlı: pdf-lib çözemez, dışa aktarma kapalı
-    uncheckable: false, // şifre/kısıt durumu denetlenemedi: dışa aktarma kapalı (kapalı başarısız)
-    passwordProtected: false,  // parolalı PDF seçildi: önizleme açılmadı
-    pluginSizes: null, // eklentiyle (ör. EPUB) dönüştürüldüyse o andaki ölçüler {kitapGen, kitapYuk, ciltPayi, disKenar}
-    blocked: false      // dışa aktarma düğmesi kapalı olmalı mı (şifreli, kağıda sığmıyor, hata)
+    encrypted: false,   // the source PDF is encrypted/permission restricted: pdf-lib cannot decrypt it, export is off
+    uncheckable: false, // the encryption/restriction state could not be checked: export is off (fail closed)
+    passwordProtected: false,  // a password-protected PDF was chosen: no preview was opened
+    pluginSizes: null, // sizes at the time of conversion when converted by a plug-in (e.g. EPUB) {bookWidth, bookHeight, gutter, outerMargin}
+    blocked: false      // must the export button be off (encrypted, does not fit the paper, error)
   };
-  // Uyarı metinleri okundukları anda o anki dilde.
+  // Warning texts in the language current when they are read.
   function ENCRYPTED_WARNING() { return t('impose.warning.encrypted'); }
   function PASSWORD_WARNING() { return t('impose.warning.passwordProtected'); }
-  // ortama göre (tarayıcı: "sayfayı yenileyin"; Mac uygulaması: tauri.uyari_denetim)
+  // depends on the environment (browser: "reload the page"; Mac app: tauri.warning_check)
   function UNCHECKED_WARNING() { return (MC.platform && MC.platform.text && MC.platform.text.checkWarning) || t('impose.warning.check'); }
   var counter = 0;
   function newId() { counter += 1; return 's' + counter; }
 
-  // ---------------- ayarlar ----------------
+  // ---------------- settings ----------------
   var FIELDS = {
     bindingType: ['binding-type', 'text'], sheetsPerSignature: ['signature-sheet', 'number'], shrinkLastSignature: ['last-signature-shrink', 'mark'],
     creep: ['creep', 'mark'], paperThickness: ['paper-thickness', 'number'], paperWidth: ['paper-width', 'number'], paperHeight: ['paper-height', 'number'],
@@ -60,7 +60,7 @@
       if (a[k] === undefined || a[k] === null) return;
       var id = FIELDS[k][0], kind = FIELDS[k][1], e = $(id);
       if (kind === 'mark') e.checked = !!a[k];
-      else if (kind === 'number') O.writeNumber(e, a[k]); // dilin ondalık ayracı
+      else if (kind === 'number') O.writeNumber(e, a[k]); // the language's decimal separator
       else e.value = a[k];
     });
     updateVisibility();
@@ -82,7 +82,7 @@
     if (MC.platform && typeof MC.platform.print === 'function') $('print-note').textContent = printNote();
   }
 
-  // ---------------- PDF yükleme ----------------
+  // ---------------- PDF loading ----------------
   function pdfjs() {
     var p = root.pdfjsLib;
     if (!p) throw new Error(t('error.pdfjs'));
@@ -90,15 +90,15 @@
   }
 
   function openDocument(bytes) {
-    // isEvalSupported:false — kötü niyetli yazı tipi ile kod çalıştırma açığına karşı (pdf.js < 4.2.67)
-    // Parola istemi yok (tarayıcı iletişim kutusu kullanılmaz): parolalı PDF PasswordException ile reddedilir, dosyaYukle yakalar.
+    // isEvalSupported:false — against the code execution hole through a malicious font (pdf.js < 4.2.67)
+    // No password prompt (no browser dialog is used): a password-protected PDF is rejected with PasswordException, caught by loadFile.
     return pdfjs().getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
   }
 
   /**
-   * pdf-lib ile yüklenince belge şifreli mi (sahip parolalı/izin kısıtlı dahil)? pdf-lib şifre ÇÖZMEZ.
-   * true: şifreli, false: değil, null: DENETLENEMEDİ (pdf-lib yok ya da ayrıştıramadı) → kapalı başarısız:
-   * çağıran dışa aktarmayı kapatır.
+   * Is the document encrypted when loaded with pdf-lib (owner password/permission restricted included)? pdf-lib does NOT decrypt.
+   * true: encrypted, false: not, null: COULD NOT BE CHECKED (no pdf-lib or it could not parse) → fail closed:
+   * the caller turns export off.
    */
   async function isEncrypted(bytes) {
     try {
@@ -109,7 +109,7 @@
   }
 
   function passwordDocument(name) {
-    if (D.pdf) { try { D.pdf.destroy(); } catch { /* yok say */ } }
+    if (D.pdf) { try { D.pdf.destroy(); } catch { /* ignore */ } }
     D.loadNo += 1;
     D.pdf = null; D.sourceBytes = null; D.sourceName = name;
     D.encrypted = false; D.uncheckable = false; D.passwordProtected = true; D.pluginSizes = null;
@@ -122,11 +122,11 @@
   }
 
   /**
-   * Yeni seçilen dosya açılamadı: önceki belge bırakılmaz (kullanıcı hata gördüğü halde eski belgeyi
-   * indiremesin). Belge, kartlar ve eklenti uyarıları temizlenir, dışa aktarma kapanır. PDF ve EPUB için aynı.
+   * The newly chosen file could not be opened: the previous document is not kept (so the user cannot download the old
+   * document while seeing an error). The document, cards and plug-in warnings are cleared, export turns off. Same for PDF and EPUB.
    */
   function failedDocument(name) {
-    if (D.pdf) { try { D.pdf.destroy(); } catch { /* yok say */ } }
+    if (D.pdf) { try { D.pdf.destroy(); } catch { /* ignore */ } }
     D.loadNo += 1;
     D.pdf = null; D.sourceBytes = null; D.sourceName = name;
     D.encrypted = false; D.uncheckable = false; D.passwordProtected = false; D.pluginSizes = null;
@@ -141,9 +141,9 @@
   }
 
   /**
-   * Dosya seçimi sırası: her yükleme bir sıra numarası alır; await'ten dönünce daha yeni bir seçim varsa
-   * bu (bayat) sonuç atılır, durum ve bildirim değişmez. Yeni yükleme başlarken eklenti uyarıları temizlenir.
-   * Güncel istek hata verirse önceki belge temizlenir (hataliBelge) ve hata çağırana iletilir (bildirim).
+   * File choice order: every load gets a sequence number; when a newer choice exists after an await returns, this
+   * (stale) result is dropped and the state and notice do not change. Plug-in warnings are cleared when a new load starts.
+   * When the current request fails, the previous document is cleared (failedDocument) and the error goes to the caller (notice).
    */
   async function loadFile(file) {
     var no = ++D.requestNo;
@@ -152,7 +152,7 @@
     try {
       return await load(file, stale);
     } catch (e) {
-      if (stale()) return; // eski isteğin hatası yeni seçimin bildirimini ve durumunu bozmaz
+      if (stale()) return; // an old request's error does not spoil the notice and state of the new choice
       failedDocument(file.name || t('impose.document'));
       throw e;
     }
@@ -178,7 +178,7 @@
       });
       if (stale()) return;
       if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
-      name = name.replace(/(\.epub\.zip|\.[^.]+)$/i, '') + '.pdf'; // "Kitap.epub.zip" → "Kitap.pdf"
+      name = name.replace(/(\.epub\.zip|\.[^.]+)$/i, '') + '.pdf'; // "Book.epub.zip" → "Book.pdf"
     }
     if (stale()) return;
     var head = String.fromCharCode.apply(null, bytes.subarray(0, 1024));
@@ -187,14 +187,14 @@
     try { pdf = await openDocument(bytes); } catch (e) {
       if (stale()) return;
       if (e && e.name === 'PasswordException') return passwordDocument(name);
-      // pdf.js'in ham (İngilizce) hata metni kullanıcıya gösterilmez
+      // pdf.js's raw (English) error text is not shown to the user
       var h = new Error(t('impose.pdf_corrupt', { name: name }));
       h.cause = e;
       throw h;
     }
     var encrypted = await isEncrypted(bytes);
-    if (stale()) { try { pdf.destroy(); } catch { /* yok say */ } return; }
-    if (D.pdf) { try { D.pdf.destroy(); } catch { /* yok say */ } }
+    if (stale()) { try { pdf.destroy(); } catch { /* ignore */ } return; }
+    if (D.pdf) { try { D.pdf.destroy(); } catch { /* ignore */ } }
     D.loadNo += 1;
     D.pdf = pdf;
     D.sourceBytes = bytes;
@@ -212,7 +212,7 @@
     $('source-info').removeAttribute('data-i18n');
     $('source-info').textContent = t('impose.source.info', { name: name, n: pdf.numPages,
       width: Math.round(vp.width / MC.output.MM), height: Math.round(vp.height / MC.output.MM) });
-    setOutputButtons(true);  // onizlemeCiz şifreli/sığmıyor durumuna göre açar
+    setOutputButtons(true);  // drawPreview turns them on depending on the encrypted/does-not-fit state
     D.blocked = true;
     drawCards();
     update();
@@ -247,7 +247,7 @@
     if (grid) grid.setAttribute('data-thumbs-ready', 'yes');
   }
 
-  // ---------------- sayfa ızgarası ----------------
+  // ---------------- page grid ----------------
   function indexOf(id) {
     for (var i = 0; i < D.pages.length; i++) if (D.pages[i].id === id) return i;
     return -1;
@@ -329,7 +329,7 @@
       if (!card) return;
       D.dragging = card.getAttribute('data-id');
       card.classList.add('dragging');
-      try { e.dataTransfer.setData('text/plain', D.dragging); e.dataTransfer.effectAllowed = 'move'; } catch { /* yok say */ }
+      try { e.dataTransfer.setData('text/plain', D.dragging); e.dataTransfer.effectAllowed = 'move'; } catch { /* ignore */ }
     });
     grid.addEventListener('dragend', function () {
       D.dragging = null;
@@ -359,7 +359,7 @@
     });
   }
 
-  /** "1-4, 9" → [1,2,3,4,9] (1'den, geçerli sıra numaraları). */
+  /** "1-4, 9" → [1,2,3,4,9] (from 1, valid sequence numbers). */
   function parseRange(text, max) {
     var result = {};
     String(text || '').split(/[,;\s]+/).forEach(function (p) {
@@ -379,15 +379,15 @@
     return l;
   }
 
-  /** Dosyayı açar; hata bildirime gider (Promise reddedilmez). Menü/Son Açılanlar/Dock'tan da çağrılır. */
+  /** Opens the file; errors go to the notice (the Promise is not rejected). Also called from the menu/Open Recent/Dock. */
   function openFile(f) {
     return loadFile(f).catch(function (err) { O.notify(t('impose.file_open_failed', { error: err.message }), 'error'); });
   }
 
   function toolEvents() {
     $('pdf-select').addEventListener('click', function () {
-      // Tarayıcıda gizli girdi açılır ve seçim aşağıdaki change olayıyla gelir (null döner);
-      // yerel diyalog doğrudan File döndürür.
+      // In the browser the hidden input opens and the choice arrives through the change event below (returns null);
+      // the native dialog returns a File directly.
       MC.platform.pickFile({ input: $('pdf-file'), extensions: ['pdf', 'epub'], mime: 'application/pdf' })
         .then(function (f) { if (f) return openFile(f); }, function (err) { O.notify(t('impose.file_open_failed', { error: err.message }), 'error'); });
     });
@@ -396,9 +396,9 @@
       if (!f) return;
       openFile(f).then(function () { e.target.value = ''; });
     });
-    // Pencereye/sayfaya dosya bırakma: yalnız dışarıdan dosya sürüklenince; ızgaradaki sayfa
-    // sürüklemesine (D.surukle) dokunulmaz. Bırakılmayan yerde tarayıcının dosyayı açıp sayfadan
-    // ayrılması da önlenir.
+    // Dropping a file on the window/page: only when a file is dragged in from outside; dragging a page in the grid
+    // (D.dragging) is left alone. Where nothing takes the drop, the browser is also kept from opening the file and
+    // leaving the page.
     function isFileDrag(e) {
       var types = e.dataTransfer && e.dataTransfer.types;
       return !D.dragging && !!types && Array.prototype.indexOf.call(types, 'Files') >= 0;
@@ -406,7 +406,7 @@
     document.addEventListener('dragover', function (e) {
       if (!isFileDrag(e)) return;
       e.preventDefault();
-      try { e.dataTransfer.dropEffect = 'copy'; } catch { /* yok say */ }
+      try { e.dataTransfer.dropEffect = 'copy'; } catch { /* ignore */ }
     });
     document.addEventListener('drop', function (e) {
       if (e.defaultPrevented || !isFileDrag(e)) return;
@@ -431,18 +431,18 @@
     $('selection-remove').addEventListener('click', function () { D.selected = {}; drawCards(); });
     $('selected-remove').addEventListener('click', function () {
       var n = selectedIndices().length;
-      if (!n) return O.notify(t('impose.once_sec'), 'error');
+      if (!n) return O.notify(t('impose.select_first'), 'error');
       D.pages = D.pages.filter(function (s) { return !D.selected[s.id]; });
       D.selected = {}; changed(); O.notify(t('impose.deleted', { n: n }));
     });
     $('selected-unselected-remove').addEventListener('click', function () {
-      if (!selectedIndices().length) return O.notify(t('impose.once_sec'), 'error');
+      if (!selectedIndices().length) return O.notify(t('impose.select_first'), 'error');
       D.pages = D.pages.filter(function (s) { return D.selected[s.id]; });
       changed();
     });
     $('selected-rotate').addEventListener('click', function () {
       var l = selectedIndices();
-      if (!l.length) return O.notify(t('impose.once_sec'), 'error');
+      if (!l.length) return O.notify(t('impose.select_first'), 'error');
       l.forEach(function (i) { var s = D.pages[i]; if (s.kind === 'pdf') s.rotate = ((s.rotate || 0) + 90) % 360; });
       changed();
     });
@@ -450,13 +450,13 @@
     $('blank-toEnd').addEventListener('click', function () { D.pages.push({ id: newId(), kind: 'blank' }); changed(); });
     $('blank-once').addEventListener('click', function () {
       var l = selectedIndices();
-      if (!l.length) return O.notify(t('impose.once_sec'), 'error');
+      if (!l.length) return O.notify(t('impose.select_first'), 'error');
       D.pages.splice(l[0], 0, { id: newId(), kind: 'blank' });
       changed();
     });
   }
 
-  // ---------------- önizleme ----------------
+  // ---------------- preview ----------------
   var updatePending = false;
   function update() {
     if (updatePending) return;
@@ -473,12 +473,12 @@
     return { settings: a, imposition: dz, layout: MC.layout.layout(dz, a) };
   }
 
-  /** Eklentiye verilen ölçüler (mm): Düzenle > Ölçüler. */
+  /** The sizes given to the plug-in (mm): Imposition > Sizes. */
   function currentSizes() {
     return { bookWidth: O.number('book-width', 148), bookHeight: O.number('book-height', 210), gutter: O.number('binding-allowance', 0), outerMargin: O.number('outer-margin', 0) };
   }
 
-  /** Eklentiyle dönüştürülmüş belge, şimdiki ölçülerden farklı ölçülerle dizildiyse uyarı metni; değilse null. */
+  /** Warning text when a document converted by a plug-in was imposed with sizes other than the current ones; otherwise null. */
   function pluginSizeWarning() {
     var e = D.pluginSizes;
     if (!e) return null;
@@ -508,7 +508,7 @@
       D.blocked = true; setOutputButtons(true);
       return;
     }
-    // Şifreli PDF ya da kağıda sığmayan yerleşim: indirme kapalı (uyarı yukarıda/aşağıda görünür)
+    // Encrypted PDF or a layout that does not fit the paper: download off (the warning shows above/below)
     D.blocked = D.encrypted || D.uncheckable || !!r.layout.doesNotFit;
     setOutputButtons(D.blocked);
     var dz = r.imposition;
@@ -542,7 +542,7 @@
     var c = el('canvas', { width: W, height: H, 'aria-label': t(side.side === 'front' ? 'impose.sheet.front_side' : 'impose.sheet.back_side', { pages: side.slots.map(pageLabel).join(', ') }) });
     var g = c.getContext('2d');
     function X(x) { return x * k; }
-    function Y(y) { return H - y * k; } // PDF: alt sol başlangıç
+    function Y(y) { return H - y * k; } // PDF: origin at the bottom left
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
     g.strokeStyle = '#9a8f82'; g.lineWidth = 1; g.strokeRect(0.5, 0.5, W - 1, H - 1);
     side.slots.forEach(function (yv) {
@@ -562,7 +562,7 @@
         g.setLineDash([]);
       }
       g.strokeStyle = '#7a6f62'; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      // sırt tarafı: kalın çizgi
+      // spine side: thick line
       g.strokeStyle = '#8a3b12'; g.lineWidth = 3;
       var spineLeft = (yv.spineSide === 'left') !== !!side.rotate180;
       g.beginPath(); var sx = spineLeft ? x + 1.5 : x + w - 1.5; g.moveTo(sx, y); g.lineTo(sx, y + h); g.stroke();
@@ -582,13 +582,13 @@
       g.beginPath(); g.moveTo(X(cz.x1), Y(cz.y1)); g.lineTo(X(cz.x2), Y(cz.y2)); g.stroke();
     });
     g.setLineDash([]);
-    // forma sırt işareti: önizlemede okunur olsun diye en az 6 px
+    // signature spine mark: at least 6 px so that it is readable in the preview
     side.squares.forEach(function (kr) {
       var w = Math.max(6, kr.w * k), h = Math.max(6, kr.h * k);
       var cx = X(kr.x + kr.w / 2), cy = Y(kr.y + kr.h / 2);
-      g.fillStyle = '#fff'; g.fillRect(cx - w / 2 - 1, cy - h / 2 - 1, w + 2, h + 2); // okunur zemin
+      g.fillStyle = '#fff'; g.fillRect(cx - w / 2 - 1, cy - h / 2 - 1, w + 2, h + 2); // readable background
       g.fillStyle = '#000';
-      // biçim (dolu / çerçeve / küçük kareler) en az 6 × 6 px kutuya ölçeklenir
+      // the style (filled / outline / small squares) is scaled into a box of at least 6 × 6 px
       var ox = w / (kr.w * k), oy = h / (kr.h * k);
       MC.layout.markParts(kr).forEach(function (pr) {
         g.fillRect(cx - w / 2 + (pr.x - kr.x) * k * ox, cy - h / 2 + (kr.y + kr.h - pr.y - pr.h) * k * oy, Math.max(1, pr.w * k * ox), Math.max(1, pr.h * k * oy));
@@ -597,17 +597,17 @@
     return c;
   }
 
-  // ---------------- dışa aktarma ----------------
-  // Çıktı düğmeleri: Kaydet/İndir, Yazdır…, Önizleme'de Aç (son ikisi yalnız platform.yazdir varsa görünür).
+  // ---------------- export ----------------
+  // Output buttons: Save/Download, Print…, Open in Preview (the last two show only when platform.print exists).
   var OUTPUT_BUTTONS = ['export-transfer', 'print', 'inPreview-open'];
-  // bir çıktı işi sürerken (PDF üretimi, Kaydet/baskı penceresi) düğmeler kapalı kalır; ayar
-  // değişince yeniden çizilen önizleme (onizlemeCiz → ciktiDugmeleri(D.engel)) onları açmaz, ikinci iş başlamaz.
+  // while an output job runs (building the PDF, Save/print window) the buttons stay off; the preview that is redrawn
+  // when a setting changes (drawPreview → setOutputButtons(D.blocked)) does not turn them on, so no second job starts.
   var outputBusy = false;
   function setOutputButtons(closed) {
     OUTPUT_BUTTONS.forEach(function (id) { var b = $(id); if (b) b.disabled = closed || outputBusy; });
   }
 
-  /** yazdırma düğmeleri yalnız yerel baskı varsa (Mac uygulaması); not araçtaki çift yüz seçimini söyler. */
+  /** The print buttons show only with native printing (Mac app); the note tells the duplex choice in the tool. */
   function updatePrintVisibility() {
     var var_ = !!(MC.platform && typeof MC.platform.print === 'function');
     $('print-field').hidden = !var_;
@@ -620,12 +620,12 @@
   }
 
   /**
-   * Çıktıyı üretip işe verir (Kaydet/İndir, Yazdır, Önizleme). Çalışırken bütün çıktı düğmeleri kapalı ve tıklanan
-   * aria-busy (D10: menü kısayolları bu sırada yok sayılır, "önce PDF açın" denmez). is(sonuc) Promise döner.
+   * Builds the output and hands it to the job (Save/Download, Print, Preview). While it runs all output buttons are off
+   * and the clicked one is aria-busy (D10: menu shortcuts are ignored meanwhile, no "open a PDF first"). job(result) returns a Promise.
    */
   async function runOutputJob(buttonId, is) {
-    if (outputBusy) return; // aria-busy: iş sürüyor (düğme/menü/kısayol ikinci işi başlatmaz)
-    if (!D.pages.length) return O.notify(t('impose.once_pdf'), 'error');
+    if (outputBusy) return; // aria-busy: a job is running (button/menu/shortcut does not start a second one)
+    if (!D.pages.length) return O.notify(t('impose.pdf_first'), 'error');
     if (D.encrypted) return O.notify(ENCRYPTED_WARNING(), 'error');
     if (D.uncheckable) return O.notify(UNCHECKED_WARNING(), 'error');
     var btn = $(buttonId);
@@ -647,7 +647,7 @@
     }
   }
 
-  /** Yazdır… (tek PDF ya da önler → çevir onayı → arkalar); not baskı penceresinden önce gösterilir. */
+  /** Print… (one PDF, or fronts → flip confirmation → backs); the note is shown before the print window. */
   function print() {
     return runOutputJob('print', async function (result) {
       await showOutputPreview(result.files[0].bytes);
@@ -657,7 +657,7 @@
     });
   }
 
-  /** Önizleme'de Aç (açılamazsa Kaydet + "Önizleme'de basın" notu: printing.js). */
+  /** Open in Preview (when it cannot open: Save + an "print from Preview" note: printing.js). */
   function openInPreview() {
     return runOutputJob('inPreview-open', async function (result) {
       await showOutputPreview(result.files[0].bytes);
@@ -669,7 +669,7 @@
   function exportPdf() {
     return runOutputJob('export-transfer', async function (result) {
       if (MC.platform.localFile) {
-        // Yerel Kaydet penceresi (Tauri): dosyalar sırayla kaydedilir, bildirim gerçek sonucu söyler.
+        // Native Save window (Tauri): the files are saved one by one, the notice tells the real result.
         await showOutputPreview(result.files[0].bytes);
         var record = await MC.platform.saveAll(result.files, 'application/pdf');
         var m = MC.platform.saveMessage(record, result.layout.sides.length);
@@ -682,7 +682,7 @@
         }, i * 600);
       });
       await showOutputPreview(result.files[0].bytes);
-      O.notify(t('impose.ready', { names: result.files.map(function (d) { return d.name; }).join(t('app.ve')), n: result.layout.sides.length }));
+      O.notify(t('impose.ready', { names: result.files.map(function (d) { return d.name; }).join(t('app.and')), n: result.layout.sides.length }));
     });
   }
 
@@ -690,7 +690,7 @@
     var container = $('output-preview');
     container.textContent = '';
     container.removeAttribute('data-ready');
-    if (D.outputPdf) { try { D.outputPdf.destroy(); } catch { /* yok say */ } D.outputPdf = null; }
+    if (D.outputPdf) { try { D.outputPdf.destroy(); } catch { /* ignore */ } D.outputPdf = null; }
     var pdf = await openDocument(bytes);
     D.outputPdf = pdf;
     var count = Math.min(2, pdf.numPages);
@@ -706,11 +706,11 @@
     container.setAttribute('data-ready', 'yes');
   }
 
-  // ---------------- kitaba kaydet ----------------
-  /** Süreç sekmesinin bellekteki güncel verisi (saklama dolu olsa da en yenisi); yoksa depodan. */
+  // ---------------- save to project ----------------
+  /** The current in-memory data of the Projects tab (the newest even when storage is full); otherwise from storage. */
   function currentData() {
     var v = (MC.projects && MC.projects.data && MC.projects.data()) || MC.storage.read();
-    return JSON.parse(JSON.stringify(v)); // kopya: çağıran canlı veriyi değiştiremez
+    return JSON.parse(JSON.stringify(v)); // copy: the caller cannot change the live data
   }
 
   function refreshProjectList() {
@@ -718,7 +718,7 @@
     var previous = select.value;
     var data = currentData();
     select.textContent = '';
-    if (!data.projects.length) select.appendChild(el('option', { value: '', text: t('impose.book_once') }));
+    if (!data.projects.length) select.appendChild(el('option', { value: '', text: t('impose.project_first_hint') }));
     data.projects.forEach(function (k) { select.appendChild(el('option', { value: k.id, text: k.name })); });
     if (previous && MC.projectModel.findProject(data, previous)) select.value = previous;
   }
@@ -726,7 +726,7 @@
   function saveEvents() {
     $('settings-save').addEventListener('click', function () {
       var id = $('settings-book').value;
-      if (!id) return O.notify(t('impose.once_book'), 'error');
+      if (!id) return O.notify(t('impose.project_first'), 'error');
       var a = readSettings();
       MC.projects.saveSettings(id, a, D.sourceName);
       O.notify(t('impose.settings_saved'));
@@ -741,7 +741,7 @@
     });
   }
 
-  // ---------------- başlat ----------------
+  // ---------------- start ----------------
   function fillPresetSizes(secId, genId, heightId, landscape) {
     var select = $(secId);
     O.PRESET_SIZES.forEach(function (o) {
@@ -767,7 +767,7 @@
     $('paper-swap').addEventListener('click', function () { swap('paper-width', 'paper-height'); });
     $('book-swap').addEventListener('click', function () { swap('book-width', 'book-height'); });
     var registered = O.readLocal(SETTINGS_KEY);
-    if (registered) { try { applySettings(JSON.parse(registered)); } catch { /* bozuk kayıt: varsayılanlar */ } }
+    if (registered) { try { applySettings(JSON.parse(registered)); } catch { /* corrupt record: defaults */ } }
     $('settings').addEventListener('input', function () { updateVisibility(); update(); });
     $('settings').addEventListener('change', function () { updateVisibility(); update(); });
     $('export-transfer').addEventListener('click', exportPdf);
@@ -775,7 +775,7 @@
     $('inPreview-open').addEventListener('click', openInPreview);
     updatePrintVisibility();
     $('pdf-file').setAttribute('accept', MC.plugins.accept());
-    if (MC.plugins.list().length > 0) { $('pdf-select').setAttribute('data-i18n', 'impose.pdf_epub_sec'); $('pdf-select').textContent = t('impose.pdf_epub_sec'); }
+    if (MC.plugins.list().length > 0) { $('pdf-select').setAttribute('data-i18n', 'impose.pdf_epub_choose'); $('pdf-select').textContent = t('impose.pdf_epub_choose'); }
     MC.plugins.setupInterfaces($('plugin-settings'));
     cardEvents();
     toolEvents();

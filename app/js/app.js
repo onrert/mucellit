@@ -1,21 +1,21 @@
 /*
- * app.js — sekmeler ve başlatma. En son yüklenir.
- * statik etiketleri i18n.js kendisi yükler yüklenmez yazar; burada dil seçici de hemen doldurulur
- * (platform.hazir reddedilse de arayüz metinli). baslat() etiketleri yeniden uygular (Tauri dil eşitlemesi dili
- * değiştirmiş olabilir). i18n.js hiç çalışmadıysa (KC.dil yok) arayüz index.html'in statik İngilizcesiyle kalır ve
- * başlatma hatası İngilizce bildirilir.
+ * app.js — tabs and start-up. Loaded last.
+ * i18n.js writes the static labels itself as soon as it loads; the language picker is also filled right away here
+ * (the interface has text even when platform.ready is rejected). start() applies the labels again (the Tauri language
+ * sync may have changed the language). When i18n.js did not run at all (no MC.i18n) the interface keeps the static
+ * English of index.html and the start-up error is reported in English.
  */
 (function (root) {
   'use strict';
   var MC = root.Mucellit = root.Mucellit || {};
   var O = MC.common, $ = O.$, D = MC.i18n;
   var TAB_KEY = 'mucellit.tab';
-  var TABS = ['impose', 'projects', 'calculator', 'learn']; // 4. sekme Öğren (Görünüm > Öğren ⌘4)
+  var TABS = ['impose', 'projects', 'calculator', 'learn']; // 4th tab Learn (View > Learn ⌘4)
 
   /**
-   * Öğren sekmesi açılınca rehber kurulur (ilk kez) ya da figürü yeniden kurulur; başka sekmeye geçince
-   * "baştan sona" durur ve figür sökülür (gizli sekmede animasyon/rAF çalışmaz). Sekme gizlendikten SONRA gizle,
-   * gösterildikten SONRA goster çağrılır (figür ölçüsü görünür panelde alınır).
+   * When the Learn tab opens, the guide is set up (the first time) or its figure is set up again; when another tab
+   * is opened, "from start to finish" stops and the figure is unmounted (no animation/rAF in a hidden tab). hide is
+   * called AFTER the tab is hidden, show AFTER it is shown (the figure is measured in the visible panel).
    */
   function learnTab() { return MC.learn && MC.learn.tab ? MC.learn.tab : null; }
 
@@ -29,7 +29,7 @@
     var og = learnTab();
     if (og) {
       try { if (name === 'learn') og.show(); else og.hide(); }
-      catch (e) { // sekme geçişi yarıda kalmaz; hata bildirilir ve gizlenmez (konsolda da görünür)
+      catch (e) { // the tab switch is not left half done; the error is reported and not swallowed (it also shows in the console)
         O.notify(D.t('learn.openFailed', { error: e && e.message ? e.message : e }), 'error');
         setTimeout(function () { throw e; }, 0);
       }
@@ -41,10 +41,10 @@
     if (!root.PDFLib) missing.push('pdf-lib');
     if (!root.pdfjsLib) missing.push('pdf.js');
     if (missing.length) {
-      O.notify(D.t('app.no_library', { names: missing.join(D.t('app.ve')), hint: MC.platform.text.libraryHint }), 'error');
+      O.notify(D.t('app.no_library', { names: missing.join(D.t('app.and')), hint: MC.platform.text.libraryHint }), 'error');
     }
     D.apply(document);
-    if (O.setupNumberFields) O.setupNumberFields(document); // sayı alanları dilin ondalık ayracıyla
+    if (O.setupNumberFields) O.setupNumberFields(document); // number fields with the language's decimal separator
     fillLanguagePicker();
     var tabs = document.querySelectorAll('nav [role="tab"]');
     for (var i = 0; i < tabs.length; i++) {
@@ -57,19 +57,19 @@
     document.documentElement.setAttribute('data-ready', 'yes');
   }
 
-  // ---------------------------------------------------------------- dil seçimi
+  // ---------------------------------------------------------------- language choice
   /**
-   * Seçimin karşılığı olan dil: 'sistem' → sistem dili (Tauri'de Rust'ın bildirdiği, menüdeki "Sistem dili (X)"
-   * ile aynı kaynak; tarayıcıda navigator.languages). Apple kuralı i18n.js'te.
+   * The language a choice stands for: 'system' → the system language (in Tauri the one reported by Rust, the same
+   * source as "System Language (X)" in the menu; navigator.languages in the browser). The Apple rule is in i18n.js.
    */
   function languageForChoice(choice) { return D.isSupported(choice) ? choice : D.systemCode(); }
 
-  /** Dil seçicinin seçenekleri (yeniden çağrılabilir: Tauri eşitlemesinden sonra sistem dilinin adı değişebilir). */
+  /** The options of the language picker (can be called again: after the Tauri sync the name of the system language may change). */
   function fillLanguagePicker() {
     var select = $('i18n-select');
     if (!select) return;
-    // ipucu statik değil (index.html'de title yok): yeniden yüklemede eski dilde "Language" görünmez; her
-    // doldurmada (açılış, Tauri eşitlemesi sonrası baslat) seçili dilde yazılır.
+    // the hint is not static (no title in index.html): after a reload "Language" is not shown in the old language; every
+    // fill (start-up, start after the Tauri sync) writes it in the selected language.
     if (typeof select.setAttribute === 'function') select.setAttribute('title', D.t('language.label'));
     if (typeof select.appendChild !== 'function') return;
     select.textContent = '';
@@ -78,22 +78,22 @@
     select.value = D.readChoice() || 'system';
   }
 
-  /** Dil seçici: hemen doldurulur, değişiklik dinleyicisi bir kez bağlanır. */
+  /** Language picker: filled right away, the change listener is bound once. */
   function setupLanguagePicker() {
     var select = $('i18n-select');
     fillLanguagePicker();
     if (!select || typeof select.appendChild !== 'function') return;
     select.addEventListener('change', function () {
       var requested = select.value;
-      select.value = D.readChoice() || 'system'; // değişiklik dilDegistir onaylanınca yansır
+      select.value = D.readChoice() || 'system'; // the change shows once changeLanguage has been confirmed
       changeLanguage(requested);
     });
   }
 
   /**
-   * Arayüz dilini değiştirir: secim 'sistem' | 'en' | 'tr'. Seçim saklanır (localStorage; Tauri'de Rust da
-   * menüyü yeniden kurar ve seçimi yedekler); görünen dil değişiyorsa sayfa yeniden yüklenir (açık belge
-   * varsa önce onay istenir). Promise<boolean>: değişti mi.
+   * Changes the interface language: choice 'system' | 'en' | 'tr'. The choice is stored (localStorage; in Tauri Rust
+   * also rebuilds the menu and backs the choice up); when the visible language changes the page is reloaded (asking
+   * for confirmation first when a document is open). Promise<boolean>: whether it changed.
    */
   function changeLanguage(choice) {
     if (choice !== 'system' && !D.isSupported(choice)) return Promise.resolve(false);
@@ -105,7 +105,7 @@
     var ask = needsReload && hasDocument ? MC.platform.ask(D.t('language.refresh_confirm')) : Promise.resolve(true);
     return ask.then(function (ok) {
       if (!ok) return false;
-      // Önce Rust (Tauri: menü + yedek); başarısızsa seçim değişmez.
+      // Rust first (Tauri: menu + backup); when that fails the choice does not change.
       return Promise.resolve(MC.platform.notifyLanguage ? MC.platform.notifyLanguage(target, choice) : null).then(function () {
         D.writeChoice(choice === 'system' ? null : choice);
         var select = $('i18n-select');
@@ -114,17 +114,17 @@
         return true;
       });
     }).catch(function (e) {
-      O.notify(D.t('language.setFailed', { error: e && e.message ? e.message : e }), 'error');
+      O.notify(D.t('language.set_failed', { error: e && e.message ? e.message : e }), 'error');
       return false;
     });
   }
 
   MC.app = { openTab: openTab, changeLanguage: changeLanguage };
-  // seçici hemen dolar (hazir beklenmez); i18n.js yoksa seçici boş, statik İngilizce kalır.
-  try { if (D) setupLanguagePicker(); } catch (e) { /* başlatma sürer; hata baslat'ta yeniden görünür */ }
+  // the picker is filled right away (ready is not awaited); without i18n.js the picker is empty and the static English stays.
+  try { if (D) setupLanguagePicker(); } catch (e) { /* start-up continues; the error shows again in start */ }
   function prepareAndStart() {
-    // .catch: platform.hazir reddi de, baslat() içinde atılan hata da bildirime gider. Dil altyapısı yoksa
-    // (i18n.js yüklenemedi/hata attı) bildirim en sözlüğünün metniyle (statik arayüz de İngilizce).
+    // .catch: a rejected platform.ready and an error thrown inside start() both go to the notice. When the language layer is
+    // missing (i18n.js failed to load/threw) the notice uses the en dictionary text (the static interface is English too).
     MC.platform.ready.then(start).catch(function (e) {
       var error = e && e.message ? e.message : e;
       O.notify(D ? D.t('app.startFailed', { error: error }) : "The app couldn't start: " + error, 'error');

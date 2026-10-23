@@ -1,6 +1,6 @@
-/* calculator.js — Hesapla sekmesi arayüzü (calc.js'i kullanır).
- * son çizimin girdisi ve sonucu KitapCilt.hesapla.durum() ile okunur (Öğren rehberinin sayı paneli aynı kaynağı
- * kullanır; ayrı hesap yapmaz). */
+/* calculator.js — Calculator tab interface (uses calc.js).
+ * The input and result of the last render are read through Mucellit.calculator.state() (the numbers panel of the
+ * Learn guide uses the same source; it does not calculate separately). */
 (function (root) {
   'use strict';
   var MC = root.Mucellit = root.Mucellit || {};
@@ -14,7 +14,7 @@
       spineShape: $('h-spineShape').value, spineRule: $('h-spineRule').value };
     var errors = [];
     NUMBER_FIELDS.forEach(function (k) {
-      var raw = $('h-' + k).value; // "," ya da "."; ortak katı ayrıştırıcı
+      var raw = $('h-' + k).value; // "," or "."; the shared strict parser
       var error = O.numberError(raw);
       if (error) errors.push(error);
       g[k] = String(raw).trim() === '' ? undefined : O.parseNumber(raw);
@@ -27,7 +27,7 @@
   function mm(x) { return D.number(Math.round(x * 10) / 10) + ' mm'; }
   function size(o) { return mm(o.width) + ' × ' + mm(o.height); }
 
-  // son çizimin girdisi/sonucu ya da hatası (Öğren sayı paneli okur)
+  // input/result or error of the last render (read by the Learn numbers panel)
   var last = { error: null, input: null, result: null };
 
   function render() {
@@ -37,7 +37,7 @@
     $('h-spineRule').disabled = $('h-spineShape').value === 'rounded';
     var r;
     var input = readInputs();
-    if (input.errors.length) { // geçersiz sayı: sessiz hesap yok, hata gösterilir
+    if (input.errors.length) { // invalid number: no silent calculation, the error is shown
       input.errors.forEach(function (m) { error.appendChild(el('div', { class: 'warning', text: m })); });
       last = { error: input.errors.join(' '), input: null, result: null };
       return;
@@ -54,7 +54,7 @@
       return;
     }
     last = { error: null, input: input, result: r };
-    var f = r.jointGap, tk = r.input.boardThickness, k = r.input.square, e = r.input.turnIn; // tk: mukavva t (t() metin)
+    var f = r.jointGap, tk = r.input.boardThickness, k = r.input.square, e = r.input.turnIn; // tk: board t (t() is text)
     var rounded = r.input.spineShape === 'rounded';
     var onlyS = !rounded && r.input.spineRule === 'onlyS';
     var sf = t(rounded ? 'calculator.formula.spine_rounded' : onlyS ? 'calculator.formula.spine_s' : 'calculator.formula.spine_s2t');
@@ -102,7 +102,7 @@
     render();
   }
 
-  /** son çizimin { hata, girdi, sonuc } kopyası (girdi hesap.hesapla'ya verilenin aynısı; sonuç onun sonucu). */
+  /** A copy of the last render's { error, input, result } (input is exactly what calc.calculate got; result is its result). */
   function state() {
     var g = null;
     if (last.input) { g = {}; Object.keys(last.input).forEach(function (k) { g[k] = last.input[k]; }); }

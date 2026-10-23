@@ -1,15 +1,17 @@
 /*
- * epub.js — EPUB → PDF girdi dönüştürücü. Çekirdeğe eklenti noktasından (plugins.js) kaydolur.
+ * epub.js — EPUB → PDF input converter. Registers with the core through the plug-in point (plugins.js).
  *
- * Akış: EPUB (ZIP) → zip.js → epub-package.js (OPF, spine, DRM/FXL) → xhtml-blocks.js (blok listesi)
- *   → typeset.js (sayfalar) → pdf-writer.js (pdf-lib + fontkit + Literata) → PDF baytları → çekirdek.
- * fontkit ve Literata (≈2,4 MB JS) ilk EPUB dönüşümünde <script> ile tembel yüklenir (file:// altında fetch yasak).
+ * Flow: EPUB (ZIP) → zip.js → epub-package.js (OPF, spine, DRM/FXL) → xhtml-blocks.js (block list)
+ *   → typeset.js (pages) → pdf-writer.js (pdf-lib + fontkit + Literata) → PDF bytes → core.
+ * fontkit and Literata (≈2.4 MB of JS) are loaded lazily with <script> on the first EPUB conversion (fetch is not
+ * allowed under file://).
  *
- * Sayfa ölçüsü = çekirdeğin içerik kutusu: (kitapGen − ciltPayi − disKenar) × (kitapYuk − 2·disKenar) mm.
- * Çekirdek bu sayfayı ölçeklemeden (1:1) içerik kutusuna koyar, cilt payını sırt tarafına bırakır.
- * Eklentinin kendi tipografik kenarları simetriktir (üst, alt, yan).
+ * Page size = the core's content box: (bookWidth − gutter − outerMargin) × (bookHeight − 2·outerMargin) mm.
+ * The core places this page in the content box without scaling (1:1) and leaves the gutter on the spine side.
+ * The plug-in's own typographic margins are symmetric (top, bottom, side).
  *
- * Konsola hiçbir şey yazmaz; hatalar arayüz dilinde mesajla atılır (KitapCilt.dil), çekirdek bildirir.
+ * Writes nothing to the console; errors are thrown with messages in the interface language (Mucellit.i18n), the core
+ * reports them.
  */
 (function (root) {
   'use strict';
@@ -22,7 +24,7 @@
   var STYLE_FILE = { R: 'regular', I: 'italic', B: 'bold', BI: 'bolditalic' };
   function E6() { return t('epub.E6'); }
 
-  // ---------- tembel yükleme ----------
+  // ---------- lazy loading ----------
   var loaded = {};
   function loadScript(src) {
     if (!loaded[src]) {
@@ -64,14 +66,14 @@
     return source;
   }
 
-  // ---------- ayarlar ----------
+  // ---------- settings ----------
   function loadSettings() {
     var a = Object.assign({}, DEFAULTS);
-    try { Object.assign(a, JSON.parse(MC.common.readLocal(SETTINGS_KEY) || '{}')); } catch (e) { /* bozuk kayıt: varsayılanlar */ }
+    try { Object.assign(a, JSON.parse(MC.common.readLocal(SETTINGS_KEY) || '{}')); } catch (e) { /* corrupt record: defaults */ }
     return a;
   }
 
-  // Etiketler sözlük anahtarı (epub.alan.* / epub.isaret.*), arayüz kurulurken çevrilir.
+  // Labels are dictionary keys (epub.field.* / epub.mark.*), translated when the interface is set up.
   var FIELDS = [
     ['fontSize', 'epub-fontSize', 'epub.field.fontSize', 6, 24, 0.5],
     ['lineSpacing', 'epub-line', 'epub.field.line', 1, 3, 0.05],
@@ -80,7 +82,7 @@
     ['side', 'epub-side', 'epub.field.side', 0, 60, 0.5]
   ];
   var MARKS = [
-    ['hyphenate', 'epub-hyphen', 'epub.mark.hyphen', 'epub.mark.tire_not'],
+    ['hyphenate', 'epub-hyphen', 'epub.mark.hyphen', 'epub.mark.hyphen_note'],
     ['pageNumbers', 'epub-page-no', 'epub.mark.page_no', null],
     ['skipCover', 'epub-cover-skip', 'epub.mark.skip_cover', null]
   ];
@@ -91,7 +93,7 @@
     var children = [el('summary', { text: t('epub.settings') })];
     FIELDS.forEach(function (f) {
       children.push(el('label', { class: 'field' }, [el('span', { text: t(f[2]) }),
-        // sayı alanı type=text + data-sayi (dilin ondalık ayracı; ortak.sayiAlanlariKur)
+        // number field type=text + data-number (the language's decimal separator; common.setupNumberFields)
         el('input', { type: 'text', inputmode: 'decimal', 'data-number': '', id: f[1], min: String(f[3]), max: String(f[4]), step: String(f[5]), value: MC.i18n.numberField(a[f[0]]) })]));
     });
     MARKS.forEach(function (f) {
@@ -101,11 +103,11 @@
     children.push(el('p', { class: 'small', text: t('epub.size_note') }));
     children.push(el('div', { id: 'epub-warning' }));
     var d = el('details', { id: 'epub-settings' }, children);
-    d.addEventListener('change', function () { try { readSettings(); } catch (e) { /* kaydetme yalnız geçerliyse */ } });
+    d.addEventListener('change', function () { try { readSettings(); } catch (e) { /* save only when valid */ } });
     container.appendChild(d);
   }
 
-  /** Arayüzden okur, doğrular, saklar. Geçersizse anlaşılır hata atar. */
+  /** Reads from the interface, validates, stores. Throws a clear error when invalid. */
   function readSettings() {
     var O = MC.common, $ = O.$;
     var a = loadSettings();
@@ -121,7 +123,7 @@
     return a;
   }
 
-  /** U1 uyarısı #epub-uyari kutusunda; kutu kapalı "EPUB ayarları" bölümündeyse bölüm açılır (uyarı görünür olsun). */
+  /** Warning U1 in the #epub-warning box; when the box is inside the closed "EPUB settings" section, the section opens (so that the warning is visible). */
   function showWarning(text) {
     var u = MC.common.$('epub-warning');
     if (!u) return;
@@ -135,16 +137,16 @@
 
   function breath() { return new Promise(function (ok) { setTimeout(ok, 0); }); }
 
-  /** İlk spine belgesi yalnız manifestteki kapak resmiyse kapak sayılır. */
+  /** The first spine document counts as a cover only when it is the cover image in the manifest. */
   function isCover(blocks, coverPath) {
     var content = blocks.filter(function (b) { return b.kind !== 'pageEnd'; });
     return !!coverPath && content.length === 1 && content[0].kind === 'image' && content[0].image.key === coverPath;
   }
 
-  // ---------- dönüştürücü ----------
+  // ---------- converter ----------
   async function convert(file, options) {
     var progress = (options && options.progress) || function () {};
-    // çekirdek bu dönüşümden sonra başka bir dosya seçildiyse false döner: bayat uyarı yazılmaz
+    // the core returns false when another file was chosen after this conversion: no stale warning is written
     var isCurrent = (options && typeof options.isCurrent === 'function') ? options.isCurrent : function () { return true; };
     showWarning('');
     var a = readSettings();
@@ -163,7 +165,7 @@
     var bytes = new Uint8Array(await file.arrayBuffer());
     var zip = MC.epubZip.read(bytes);
     var pkg = await MC.epubPackage.readPackage(zip);
-    var env = { zip: zip, i18n: pkg.i18n, cssCache: new Map(), thumbs: {}, counter: { skippedImage: 0, table: 0 } };
+    var env = { zip: zip, lang: pkg.lang, cssCache: new Map(), images: {}, counter: { skippedImage: 0, table: 0 } };
     var blocks = [];
     var n = pkg.spine.length;
     for (var i = 0; i < n; i++) {
@@ -180,9 +182,9 @@
     var missingChar = MC.writePdf.fixScope(blocks, function (cp) { return k.fk.R.hasGlyphForCodePoint(cp); });
 
     progress(t('epub.progress.typeset'));
-    var genPt = pageWidthMm * MM, heightPt = pageHeightMm * MM;
-    var dz = await MC.epubTypeset.imposeAsync(blocks, {
-      pageWidth: genPt, pageHeight: heightPt,
+    var widthPt = pageWidthMm * MM, heightPt = pageHeightMm * MM;
+    var dz = await MC.epubTypeset.typesetAsync(blocks, {
+      pageWidth: widthPt, pageHeight: heightPt,
       margin: { top: a.top * MM, bottom: a.bottom * MM, inner: a.side * MM, outer: a.side * MM },
       fontSize: a.fontSize, lineSpacing: a.lineSpacing, hyphenate: a.hyphenate, pageNumbers: a.pageNumbers
     }, MC.epubTypeset.fontkitMeasurer(k.fk));
@@ -190,8 +192,8 @@
 
     progress(t('epub.progress.write_pdf', { n: dz.pages.length }));
     var ekWarning = [];
-    var pdf = await MC.writePdf.writePdf(dz.pages, { genPt: genPt, heightPt: heightPt, title: pkg.title, writes: pkg.writes, i18n: pkg.i18n },
-      { PDFLib: root.PDFLib, fontkit: root.fontkit, fonts: k.ttf, thumbs: env.thumbs, warnings: ekWarning, counter: env.counter });
+    var pdf = await MC.writePdf.writePdf(dz.pages, { widthPt: widthPt, heightPt: heightPt, title: pkg.title, author: pkg.author, lang: pkg.lang },
+      { PDFLib: root.PDFLib, fontkit: root.fontkit, fonts: k.ttf, images: env.images, warnings: ekWarning, counter: env.counter });
 
     var s = env.counter;
     var text = [];
@@ -206,8 +208,8 @@
     return pdf;
   }
 
-  // '.epub.zip': Apple Kitaplar'ın klasör paketi EPUB'u Safari/WebKit dosya girişinde klasörün ZIP'i olarak gelir;
-  // zip.js tek üst klasör önekini atar (tekKlasorOneki), içerik sıradan EPUB gibi işlenir.
+  // '.epub.zip': Apple Books' folder package EPUB arrives in Safari/WebKit's file input as a ZIP of the folder;
+  // zip.js drops the single top folder prefix (singleFolderPrefix), the content is handled like a normal EPUB.
   MC.plugins.register({ name: 'EPUB → PDF', extensions: ['.epub', '.epub.zip'], mime: ['application/epub+zip'], settingsUi: settingsUi, convert: convert,
     reset: function () { showWarning(''); } });
   MC.epub = { convert: convert, readSettings: readSettings, DEFAULTS: DEFAULTS };

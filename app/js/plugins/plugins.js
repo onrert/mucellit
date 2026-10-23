@@ -1,27 +1,28 @@
 /*
- * plugins.js — girdi dönüştürücü eklenti noktası.
+ * plugins.js — plug-in point for input converters.
  *
- * Çekirdek yalnız PDF okur. Başka biçimler (ör. EPUB) bir
- * "girdi dönüştürücü" olarak kaydolur: dosyayı alır, PDF bytes döner.
- * Bu dosyada hiçbir dönüştürücü yoktur; yalnız arayüz vardır.
+ * The core reads only PDF. Other formats (e.g. EPUB) register as an
+ * "input converter": it takes the file and returns PDF bytes.
+ * This file has no converter itself; only the interface.
  *
- * Bir eklenti dosyası (ör. js/plugins/epub.js) index.html'de bu dosyadan
- * SONRA klasik <script> olarak eklenir ve şunu çağırır:
+ * A plug-in file (e.g. js/plugins/epub.js) is added to index.html AFTER this
+ * file as a classic <script> and calls:
  *
- *   KitapCilt.eklentiler.kaydet({
- *     ad: 'EPUB → PDF',
- *     uzantilar: ['.epub'],                 // küçük harf, noktalı
- *     mime: ['application/epub+zip'],       // isteğe bağlı
- *     ayarArayuzu: function (kap) { ... },  // isteğe bağlı: Düzenle > ayarlar paneline kendi alanlarını ekler
- *     sifirla: function () { ... },         // isteğe bağlı: yeni bir dosya yüklenmeye başlarken çekirdek çağırır;
- *                                           // eklenti önceki dönüşümden kalan uyarılarını temizler
- *     donustur: async function (dosya, secenek) {
- *       // dosya: File
- *       // secenek: { kitapGen, kitapYuk, ciltPayi, disKenar } (mm; Düzenle > Ölçüler'den)
- *       //          ilerleme(metin): kullanıcıya ara durum bildirir
- *       //          guncelMi(): bu istekten sonra başka dosya seçildiyse false (sonuç atılacak; bayat uyarı yazmayın)
- *       // Sayfa ölçüsü önerisi: (kitapGen − ciltPayi − disKenar) × (kitapYuk − 2·disKenar); çekirdek
- *       // bu ölçüdeki sayfayı içerik kutusuna ölçeklemeden yerleştirir, cilt payını doğru tarafa koyar.
+ *   Mucellit.plugins.register({
+ *     name: 'EPUB → PDF',
+ *     extensions: ['.epub'],                // lower case, with the dot
+ *     mime: ['application/epub+zip'],       // optional
+ *     settingsUi: function (container) { ... },  // optional: adds its own fields to the Imposition > settings panel
+ *     reset: function () { ... },           // optional: called by the core when a new file starts loading;
+ *                                           // the plug-in clears the warnings left from the previous conversion
+ *     convert: async function (file, options) {
+ *       // file: File
+ *       // options: { bookWidth, bookHeight, gutter, outerMargin } (mm; from Imposition > Sizes)
+ *       //          progress(text): reports an intermediate state to the user
+ *       //          isCurrent(): false when another file was chosen after this request (the result is dropped; do
+ *       //          not write stale warnings)
+ *       // Suggested page size: (bookWidth − gutter − outerMargin) × (bookHeight − 2·outerMargin); the core places
+ *       // a page of this size in the content box without scaling and puts the gutter on the right side.
  *       // ...
  *       return pdfBytes; // Uint8Array
  *     }
@@ -60,14 +61,14 @@
     return null;
   }
 
-  /** Dosya girişinin accept değeri: PDF + kayıtlı uzantılar. */
+  /** The accept value of the file input: PDF + the registered extensions. */
   function accept() {
     var l = ['.pdf', 'application/pdf'];
     converters.forEach(function (d) { l = l.concat(d.extensions, d.mime); });
     return l.join(',');
   }
 
-  /** Ayar arayüzü olan her eklentinin alanlarını kap öğesine kurar. Bir eklentinin hatası diğerlerini durdurmaz. */
+  /** Sets up the fields of every plug-in with a settings interface in the container element. One plug-in's error does not stop the others. */
   function setupInterfaces(container) {
     if (!container) return;
     converters.forEach(function (d) {
@@ -81,9 +82,9 @@
     });
   }
 
-  /** Yeni dosya yüklemesi başlarken: her eklentinin önceki dönüşümden kalan uyarısını temizler. */
+  /** When a new file starts loading: clears every plug-in's warning left from the previous conversion. */
   function resetAll() {
-    converters.forEach(function (d) { if (d.reset) { try { d.reset(); } catch (e) { /* bir eklenti diğerlerini durdurmaz */ } } });
+    converters.forEach(function (d) { if (d.reset) { try { d.reset(); } catch (e) { /* one plug-in does not stop the others */ } } });
   }
 
   MC.plugins = {

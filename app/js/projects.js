@@ -1,6 +1,6 @@
 /*
- * projects.js — Süreç sekmesi: kitap listesi, adımlar (işaret, tarih, not,
- * ekle/çıkar/sırala), kitap bilgileri, JSON dışa/içe aktarma.
+ * projects.js — Projects tab: project list, steps (check, date, note,
+ * add/remove/reorder), project details, JSON export/import.
  */
 (function (root) {
   'use strict';
@@ -25,17 +25,17 @@
       k.appendChild(el('div', { class: 'warning', text: t('projects.warning.corrupt', { key: MC.storage.KEY + '.corrupt' }) }));
     }
     if (show || !MC.storage.isPersistent()) {
-      // ortama göre (tarayıcı: surec.uyari.saklama; Mac uygulaması: tauri.uyari_saklama)
+      // depends on the environment (browser: projects.warning.storage; Mac app: tauri.warning_storage)
       k.appendChild(el('div', { class: 'warning', text: (MC.platform && MC.platform.text && MC.platform.text.storageWarning) || t('projects.warning.storage') }));
     }
   }
 
   function selected() { return selectedId ? M.findProject(data, selectedId) : null; }
 
-  /** Kayıtlı Düzenle ayarındaki cilt türü (Türkçede bugünkü gibi ham değer, ör. "formali"; İngilizcede adı). */
+  /** The binding type in saved Imposition settings (in Turkish the raw value as today, e.g. "sewn"; in English its name). */
   function settingsKind(kind) { return D.has('projects.settings_type.' + kind) ? t('projects.settings_type.' + kind) : String(kind); }
 
-  /** Onay penceresi (KC.platform.onayla, Promise) "evet" derse is() çalışır; "hayır"da hiçbir şey olmaz. */
+  /** When the confirmation window (MC.platform.ask, Promise) says "yes", job() runs; on "no" nothing happens. */
   function ask(message, is) {
     return MC.platform.ask(message).then(function (ok) { if (ok) is(); })
       .catch(function (err) { O.notify(t('projects.operation_failed', { error: err && err.message ? err.message : err }), 'error'); });
@@ -74,7 +74,7 @@
       container.appendChild(el('p', { class: 'small', text: t('projects.detail_blank') }));
       return;
     }
-    // sayı alanı type=text + data-sayi (dilin ondalık ayracı; "," ya da "." kabul, ortak.sayiAlanlariKur)
+    // number field type=text + data-number (the language's decimal separator; "," or "." accepted, common.setupNumberFields)
     function infoInput(key, kind, ek) {
       var isNumber = kind === 'number';
       var value = k[key] === undefined ? '' : isNumber ? D.numberField(k[key]) : String(k[key]);
@@ -82,7 +82,7 @@
       var g = el('input', Object.assign(oz, { value: value, 'data-field': key }, ek || {}));
       g.addEventListener('change', function () {
         var n = isNumber ? O.parseNumber(g.value) : g.value;
-        if (isNumber && !isFinite(n)) return; // geçersiz sayı saklanmaz (alan hatası ortak.sayiAlanlariKur'da)
+        if (isNumber && !isFinite(n)) return; // an invalid number is not stored (the field error is in common.setupNumberFields)
         k[key] = n;
         save(); drawList();
       });
@@ -148,7 +148,7 @@
       ]));
     });
     container.appendChild(ul);
-    var yeniAd = el('input', { type: 'text', id: 'step-fresh-name', placeholder: t('projects.step.yeni_ad') });
+    var yeniAd = el('input', { type: 'text', id: 'step-fresh-name', placeholder: t('projects.step.new_name') });
     container.appendChild(el('div', { class: 'line' }, [
       yeniAd,
       el('button', { type: 'button', id: 'step-add', text: t('projects.step.add'), onclick: function () {
@@ -163,7 +163,7 @@
       try {
         var k = M.newProject({
           name: $('yk-name').value, bindingType: $('yk-kind').value,
-          bookWidth: O.requiredNumber('yk-width', 148), bookHeight: O.requiredNumber('yk-height', 210), // O1: geçersiz → hata
+          bookWidth: O.requiredNumber('yk-width', 148), bookHeight: O.requiredNumber('yk-height', 210), // O1: invalid → error
           paper: $('yk-paper').value, paperThickness: O.requiredNumber('yk-thickness', 0.1), pdfName: $('yk-pdf').value,
           created: O.today()
         });
@@ -180,14 +180,14 @@
     $('json-export').addEventListener('click', function () {
       var text = JSON.stringify(data, null, 2);
       var count = data.projects.length;
-      // ok: true (tarayıcı indirmesi), { ad, yol } (yerel Kaydet penceresi yazdı) ya da false (vazgeçildi)
+      // ok: true (browser download), { name, path } (written by the native Save window) or false (cancelled)
       O.download(t('projects.backup_file_name', { date: O.today() }) + '.json', text, 'application/json').then(function (ok) {
         if (ok) O.notify(ok.path ? t('projects.exported_path', { n: count, path: ok.path }) : t('projects.exported', { n: count }));
         else O.notify(t('projects.json_not_saved'), 'error');
       }, function (err) { O.notify(t('projects.export_failed', { error: err.message }), 'error'); });
     });
-    // Tarayıcıda gizli girdi açılır ve seçim aşağıdaki change olayıyla gelir (null döner); yerel diyalog
-    // doğrudan File döndürür (impose.js "PDF seç" ile aynı kalıp). Seçici reddi de bildirime gider.
+    // In the browser the hidden input opens and the choice arrives through the change event below (returns null); the
+    // native dialog returns a File directly (same pattern as "Choose PDF" in impose.js). A rejected picker also goes to the notice.
     $('json-import-button').addEventListener('click', function () {
       MC.platform.pickFile({ input: $('json-import'), extensions: ['json'], mime: 'application/json' })
         .then(function (f) { if (f) return importFile(f); }, function (err) { O.notify(t('projects.import_failed', { error: err.message }), 'error'); });
@@ -197,7 +197,7 @@
       if (!f) return;
       importFile(f).then(function () { e.target.value = ''; });
     });
-    /** Seçilen yedek dosyasını içe aktarır; hatalar bildirime gider, Promise hiç reddedilmez. */
+    /** Imports the chosen backup file; errors go to the notice, the Promise is never rejected. */
     function importFile(f) {
       return f.text().then(function (text) {
         var fresh;
@@ -227,7 +227,7 @@
     });
   }
 
-  /** Düzenle sekmesinden çağrılır. */
+  /** Called from the Imposition tab. */
   function saveSettings(id, settings, pdfName) {
     var k = M.findProject(data, id);
     if (!k) throw new Error(t('projects.book_not_found'));

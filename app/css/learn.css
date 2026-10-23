@@ -30,7 +30,7 @@
 .learn-root .right{display:flex;flex-direction:column;gap:14px;min-width:0}
 .learn-root .side h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px;color:var(--muted)}
 .learn-root .progress{height:8px;border:1.5px solid var(--ink);border-radius:999px;overflow:hidden;background:var(--card)}
-.learn-root #og-progress-bar{height:100%;width:0;background:var(--accent);transition:width .3s}
+.learn-root #guide-progress-bar{height:100%;width:0;background:var(--accent);transition:width .3s}
 .learn-root .stages{list-style:none;margin:8px 0 12px;padding:0;display:grid;gap:5px}
 .learn-root .stage{all:unset;box-sizing:border-box;display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;width:100%;padding:5px 8px;border:1.5px solid var(--rule);border-radius:10px;cursor:pointer;background:var(--card)}
 .learn-root .stage:hover{border-color:var(--ink)}
@@ -46,9 +46,9 @@
 .learn-root .player button.primary{background:var(--ink);color:var(--paper);font-weight:700}
 .learn-root .player button[disabled],.learn-root button.large[disabled]{opacity:.45;cursor:default}
 .learn-root .middle{min-width:0;display:flex;flex-direction:column;gap:14px}
-.learn-root .og-card{background:var(--card);border:1.5px solid var(--ink);border-radius:14px;box-shadow:3px 3px 0 var(--ink);padding:14px 16px}
-.learn-root .og-card h3{font-size:16px;margin:2px 0 6px}
-.learn-root .og-card p{margin:0 0 8px}
+.learn-root .guide-card{background:var(--card);border:1.5px solid var(--ink);border-radius:14px;box-shadow:3px 3px 0 var(--ink);padding:14px 16px}
+.learn-root .guide-card h3{font-size:16px;margin:2px 0 6px}
+.learn-root .guide-card p{margin:0 0 8px}
 .learn-root .stage-name{font-weight:700;margin-bottom:2px!important}
 .learn-root .steps{display:flex;flex-wrap:wrap;gap:4px 6px;list-style:none;margin:0 0 8px;padding:0;counter-reset:a}
 .learn-root .steps li{counter-increment:a;font-size:11.5px;border:1px solid var(--rule);border-radius:999px;padding:1px 9px;color:var(--muted)}
@@ -62,16 +62,16 @@
 .learn-root .box strong{margin-right:6px}
 .learn-root .box[hidden]{display:none}
 .learn-root .player{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-.learn-root .og-card.last h3{color:#3f6b52}
+.learn-root .guide-card.last h3{color:#3f6b52}
 .learn-root .figures{min-width:0}
 .learn-root .numbers details{background:var(--card);border:1.5px solid var(--ink);border-radius:14px;padding:10px 12px}
 .learn-root .numbers summary{font-weight:700;cursor:pointer}
-.learn-root .calculator-al{margin:10px 0 0}
-.learn-root #og-number-form{display:grid;gap:6px;margin:10px 0 6px}
-.learn-root #og-number-form label{display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:center;font-size:12px}
-.learn-root #og-number-form input{width:84px;text-align:right}
-.learn-root #og-number-form input[aria-invalid=true]{border-color:#c23b2a;background:#fde8e4}
-.learn-root #og-number-form button{justify-self:end}
+.learn-root .use-calculator{margin:10px 0 0}
+.learn-root #guide-number-form{display:grid;gap:6px;margin:10px 0 6px}
+.learn-root #guide-number-form label{display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:center;font-size:12px}
+.learn-root #guide-number-form input{width:84px;text-align:right}
+.learn-root #guide-number-form input[aria-invalid=true]{border-color:#c23b2a;background:#fde8e4}
+.learn-root #guide-number-form button{justify-self:end}
 .learn-root .error{color:#a3271a;font-size:12px;margin:4px 0}
 .learn-root .error[hidden],.learn-root .small[hidden]{display:none}
 .learn-root .result{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
@@ -85,7 +85,7 @@
   .learn-root .layout{grid-template-columns:minmax(0,1fr);padding:10px 16px;gap:12px}
   .learn-root .side{position:static}
   .learn-root .right{display:contents}
-  .learn-root .og-card{order:2}.learn-root .middle{order:3}.learn-root .numbers{order:4}
+  .learn-root .guide-card{order:2}.learn-root .middle{order:3}.learn-root .numbers{order:4}
   .learn-root .stages{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
   .learn-root .bottom{padding:8px 16px 20px}
 }
@@ -105,7 +105,7 @@
 /* sönme bitince gizli: opaklığı 0 olan filtreli katman bile WebKit'te her karede boyama yükü getiriyordu (gerçek Safari zincir 30 → 48 fps) */
 .cf-root.cf-motion #figF{opacity:0;visibility:hidden;transition:opacity .14s ease,visibility 0s linear .14s}
 .cf-root.cf-instant #art,.cf-root.cf-instant #figF{transition:none!important}
-@media (prefers-reduced-motion:reduce){.cf-root #art,.cf-root #figF,.cf-root .toast,#og-progress-bar{transition:none!important}.cf-root .stat .v.bump{animation:none}}
+@media (prefers-reduced-motion:reduce){.cf-root #art,.cf-root #figF,.cf-root .toast,#guide-progress-bar{transition:none!important}.cf-root .stat .v.bump{animation:none}}
 .cf-root .stats{position:absolute;top:4px;right:0;display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:2;text-align:right}
 .cf-root .stat .k{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .cf-root .stat .v{font-size:30px;font-weight:800;line-height:1.05;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--ink)}
@@ -158,7 +158,7 @@
 .lgd b{flex:none;min-width:17px;height:17px;padding:0 3px;box-sizing:border-box;border-radius:999px;border:1.2px solid #231e16;background:#fff4d6;text-align:center;font:800 10px/15px ui-monospace,Menlo,monospace}
 .lgd .on b{background:var(--accent,#f4b829)}.lgd .sel{background:rgba(35,30,22,.09)}.lgd .sel b{background:#231e16;color:#fff4d6}
 /* Colorfigures MIT lisansı paneli (rehberin dipnotunun altında, kapalı başlar) */
-.learn-root .og-license{margin:0;padding:0 24px 24px;color:var(--muted);font-size:11.5px}
-.learn-root .og-license summary{cursor:pointer}
-.learn-root .og-license pre{margin:8px 0 0;white-space:pre-wrap;font:11px/1.45 ui-monospace,Menlo,monospace;max-width:80ch}
-@media (max-width:560px){ .learn-root .og-license{padding:0 16px 20px} }
+.learn-root .guide-license{margin:0;padding:0 24px 24px;color:var(--muted);font-size:11.5px}
+.learn-root .guide-license summary{cursor:pointer}
+.learn-root .guide-license pre{margin:8px 0 0;white-space:pre-wrap;font:11px/1.45 ui-monospace,Menlo,monospace;max-width:80ch}
+@media (max-width:560px){ .learn-root .guide-license{padding:0 16px 20px} }

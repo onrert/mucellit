@@ -1,18 +1,18 @@
 /*
- * xhtml-blocks.js — bir EPUB XHTML belgesini blok listesine (IR, bkz. typeset.js) çevirir (KitapCilt.xhtmlBlok).
- * DOMParser ve CSSStyleSheet ister (tarayıcı).
+ * xhtml-blocks.js — turns an EPUB XHTML document into a block list (IR, see typeset.js) (Mucellit.xhtmlBlock).
+ * Needs DOMParser and CSSStyleSheet (browser).
  *
- *   await belgeyiBloklara(xhtmlMetni, yol, ortam) → { bloklar }
- *   ortam: { zip, dil (OPF dc:language), cssOnbellek: Map, resimler: {}, sayac: { atlananResim, tablo } }
- *   ortam.satirIciOnbellek (Map, en çok 2000 girdi) ilk belgede kurulur; dönüşüme özeldir.
- *   ortam.resimler[anahtar] = { tur: 'jpg' | 'png', bytes, pikselGen, pikselYuk }
+ *   await documentToBlocks(xhtmlText, path, env) → { blocks }
+ *   env: { zip, lang (OPF dc:language), cssCache: Map, images: {}, counter: { skippedImage, table } }
+ *   env.inlineCache (Map, at most 2000 entries) is set up on the first document; it belongs to one conversion.
+ *   env.images[key] = { kind: 'jpg' | 'png', bytes, pixelWidth, pixelHeight }
  *
- * Güvenlik ve ağ: belge DOMParser ile ayrıştırılır ve HİÇBİR düğüm canlı belgeye eklenmez; böylece script
- * çalışmaz, resim/CSS url() istenmez. CSS yalnız ayrıştırılır (new CSSStyleSheet().replaceSync, @import atılır).
- * XHTML ayrıştırması hata verirse (ör. DTD'siz &nbsp;) text/html ile yeniden denenir.
+ * Security and network: the document is parsed with DOMParser and NO node is added to the live document; so no
+ * script runs and no image/CSS url() is requested. CSS is only parsed (new CSSStyleSheet().replaceSync, @import dropped).
+ * When XHTML parsing fails (e.g. &nbsp; without a DTD) it is tried again as text/html.
  *
- * CSS alt kümesi: font-style, font-weight, text-align, display:none, page-break-before / break-before,
- * vertical-align: super. Kurallar kaynak sırasıyla, sonra satır içi style uygulanır (özgüllük yok sayılır).
+ * CSS subset: font-style, font-weight, text-align, display:none, page-break-before / break-before,
+ * vertical-align: super. Rules apply in source order, then the inline style (specificity is ignored).
  */
 (function (root) {
   'use strict';
@@ -43,7 +43,7 @@
     try { rules = sheet.cssRules; } catch (e) { return; }
     for (var i = 0; i < rules.length; i++) {
       var r = rules[i];
-      if (r.type !== 1 || !r.selectorText) continue; // yalnız CSSStyleRule (@media vb. atlanır)
+      if (r.type !== 1 || !r.selectorText) continue; // only CSSStyleRule (@media etc. skipped)
       var d = {}, var_ = false;
       FEATURES.forEach(function (o) { var v = r.style.getPropertyValue(o); if (v) { d[o] = v.trim().toLowerCase(); var_ = true; } });
       if (var_) list.push({ picker: r.selectorText, d: d, invalid: false });
@@ -70,7 +70,7 @@
     return list;
   }
 
-  // Satır içi style ayrıştırma önbelleği dönüşüme özeldir (ortam.satirIciOnbellek) ve sınırlıdır.
+  // The inline style parse cache belongs to one conversion (env.inlineCache) and is limited.
   var INLINE_MAX = 2000;
   function inline(attr, cache) {
     if (!attr) return null;
@@ -102,8 +102,8 @@
 
   function flipAlign(v) {
     if (!v) return null;
-    if (v === 'justify') return 'iki';
-    if (v === 'center' || v === '-webkit-center') return 'middle';
+    if (v === 'justify') return 'justify';
+    if (v === 'center' || v === '-webkit-center') return 'center';
     if (v === 'right' || v === 'end') return 'right';
     if (v === 'left' || v === 'start') return 'left';
     return null;
@@ -122,7 +122,7 @@
     return previous;
   }
 
-  // ---------- resimler ----------
+  // ---------- images ----------
   function format(b) {
     if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
     if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
@@ -162,9 +162,9 @@
     return { bytes: new Uint8Array(await blob.arrayBuffer()), w: w, h: h };
   }
 
-  /** Resmi ortam.resimler'e alır; anahtar ya da null (atlandı) döner. */
+  /** Takes the image into env.images; returns the key or null (skipped). */
   async function takeImage(path, env) {
-    if (path in env.thumbs) return env.thumbs[path] ? path : null;
+    if (path in env.images) return env.images[path] ? path : null;
     var r = null;
     try {
       if (env.zip.has(path)) {
@@ -176,11 +176,11 @@
       }
     } catch (e) { r = null; }
     if (r && !(r.pixelWidth > 0 && r.pixelHeight > 0)) r = null;
-    env.thumbs[path] = r;
+    env.images[path] = r;
     return r ? path : null;
   }
 
-  // ---------- ana yürüyüş ----------
+  // ---------- main walk ----------
   async function documentToBlocks(text, path, env) {
     var doc = parse(text);
     var rules = await collectStyles(doc, path, env);
@@ -188,7 +188,7 @@
     var rootEl = doc.documentElement;
     var body = doc.getElementsByTagNameNS('*', 'body')[0] || doc.getElementsByTagName('body')[0] || rootEl;
     var blocks = [];
-    var isOpen = null; // { parcalar, bg }
+    var isOpen = null; // { parts, bg }
 
     function addText(t, bg) {
       t = String(t).normalize('NFC').replace(INVISIBLE, '');
@@ -213,10 +213,10 @@
         });
         return;
       }
-      if (last && !last.lineBreak && last.italic === bg.italic && last.bold === bg.bold && last.top === bg.top && last.small === bg.small && last.i18n === bg.i18n) last.text += t;
+      if (last && !last.lineBreak && last.italic === bg.italic && last.bold === bg.bold && last.top === bg.top && last.small === bg.small && last.lang === bg.lang) last.text += t;
       else l.push(part(t, bg));
     }
-    function part(t, bg) { return { text: t, italic: !!bg.italic, bold: !!bg.bold, top: !!bg.top, small: !!bg.small, i18n: bg.i18n }; }
+    function part(t, bg) { return { text: t, italic: !!bg.italic, bold: !!bg.bold, top: !!bg.top, small: !!bg.small, lang: bg.lang }; }
 
     function lineBreak(bg) {
       if (!isOpen) isOpen = { parts: [], bg: bg };
@@ -234,12 +234,12 @@
       l = l.filter(function (p) { return p.lineBreak || p.text; });
       if (!l.some(function (p) { return !p.lineBreak && p.text.replace(/ /g, ' ').trim(); }) && !l.some(function (p) { return p.lineBreak; })) return;
       if (bg.level) {
-        var b = { kind: 'title', level: bg.level, parts: l, i18n: bg.i18n };
+        var b = { kind: 'title', level: bg.level, parts: l, lang: bg.lang };
         if (bg.titleAlign) b.align = bg.titleAlign;
         blocks.push(b);
         return;
       }
-      var blk = { kind: 'paragraph', align: bg.align || 'iki', indent: !bg.prefixBox && !bg.pre, leftIndent: bg.solG || 0, rightIndent: bg.sagG || 0, small: !!bg.smallBlock, i18n: bg.i18n, parts: l };
+      var blk = { kind: 'paragraph', align: bg.align || 'justify', indent: !bg.prefixBox && !bg.pre, leftIndent: bg.leftLevel || 0, rightIndent: bg.rightLevel || 0, small: !!bg.smallBlock, lang: bg.lang, parts: l };
       if (bg.pre) blk.align = 'left';
       if (bg.prefixBox && !bg.prefixBox.used) { blk.prefix = bg.prefixBox.text; bg.prefixBox.used = true; }
       blocks.push(blk);
@@ -257,11 +257,11 @@
       var a = await takeImage(y, env);
       if (!a) { env.counter.skippedImage += 1; return; }
       close();
-      var r = env.thumbs[a];
+      var r = env.images[a];
       blocks.push({ kind: 'image', image: { key: a, pixelWidth: r.pixelWidth, pixelHeight: r.pixelHeight } });
     }
 
-    /** Hücre metni: script/style vb. (ATLA), hidden ve display:none öğeler atlanır; iç içe tablo hücrenin metnine bir kez girer. */
+    /** Cell text: script/style etc. (SKIP), hidden and display:none elements are skipped; a nested table enters the cell text once. */
     function cellText(isNode) {
       var parts = [];
       (function walk(n) {
@@ -289,14 +289,14 @@
       env.counter.table += 1;
       var all = el.getElementsByTagNameNS('*', 'tr');
       if (!all.length) all = el.getElementsByTagName('tr');
-      // yalnız bu tablonun satırları: iç içe tablonun satırları ayrıca yinelenmez (dış hücrenin metninde yer alır)
+      // only the rows of this table: the rows of a nested table are not repeated (they are in the outer cell's text)
       var rows = Array.prototype.filter.call(all, function (tr) { return nearestTable(tr) === el; });
       rows.forEach(function (tr) {
         var cells = Array.prototype.filter.call(tr.childNodes, function (c) {
           return c.nodeType === 1 && (name(c) === 'td' || name(c) === 'th') && !c.hasAttribute('hidden') && elStyle(c, rules, onb).display !== 'none';
         }).map(cellText).filter(Boolean);
         if (!cells.length) return;
-        blocks.push({ kind: 'paragraph', align: 'left', indent: false, leftIndent: bg.solG || 0, rightIndent: bg.sagG || 0, i18n: bg.i18n, parts: [{ text: cells.join(' · '), italic: !!bg.italic, bold: !!bg.bold, i18n: bg.i18n }] });
+        blocks.push({ kind: 'paragraph', align: 'left', indent: false, leftIndent: bg.leftLevel || 0, rightIndent: bg.rightLevel || 0, lang: bg.lang, parts: [{ text: cells.join(' · '), italic: !!bg.italic, bold: !!bg.bold, lang: bg.lang }] });
       });
     }
 
@@ -315,13 +315,13 @@
         if (st.display === 'none') continue;
         var kind = epubTur(c);
         var y = Object.assign({}, bg);
-        var i18n = c.getAttribute('xml:lang') || c.getAttribute('lang');
-        if (i18n) y.i18n = i18n;
+        var lang = c.getAttribute('xml:lang') || c.getAttribute('lang');
+        if (lang) y.lang = lang;
         if (ITALIC[a]) y.italic = true;
         if (BOLD[a]) y.bold = true;
         if (a === 'sup' || (a === 'a' && /noteref/.test(kind))) y.top = true;
         if (a === 'small' || a === 'sub') y.small = true;
-        if (a === 'center') y.align = 'middle';
+        if (a === 'center') y.align = 'center';
         y.italic = isItalic(st['font-style'], y.italic);
         y.bold = isBold(st['font-weight'], y.bold);
         if (st['vertical-align'] === 'super') y.top = true;
@@ -341,18 +341,18 @@
         if (a === 'hr') { close(); if (newPage) pageEnd(); blocks.push({ kind: 'separator' }); continue; }
         if (a === 'table') { if (newPage) pageEnd(); table(c, y); continue; }
         if (!BLOCK[a] && st.display !== 'block') { await walk(c, y); continue; }
-        // blok öğe
+        // block element
         close();
         if (newPage) pageEnd();
         if (/^h[1-6]$/.test(a)) { y.level = parseInt(a.charAt(1), 10); y.titleAlign = h; y.bold = true; }
-        if (a === 'blockquote') { y.solG = (y.solG || 0) + 1; y.sagG = (y.sagG || 0) + 1; }
-        if (a === 'ul' || a === 'ol') y.solG = (y.solG || 0) + 2;
+        if (a === 'blockquote') { y.leftLevel = (y.leftLevel || 0) + 1; y.rightLevel = (y.rightLevel || 0) + 1; }
+        if (a === 'ul' || a === 'ol') y.leftLevel = (y.leftLevel || 0) + 2;
         if (a === 'li') {
           var top = c.parentNode && name(c.parentNode);
           var prefix = '•';
           if (top === 'ol') { prefix = olCounter + '.'; }
           y.prefixBox = { text: prefix, used: false };
-          if (bg.solG === undefined || bg.solG === 0) y.solG = Math.max(y.solG || 0, 2);
+          if (bg.leftLevel === undefined || bg.leftLevel === 0) y.leftLevel = Math.max(y.leftLevel || 0, 2);
         }
         if (a === 'pre') y.pre = true;
         if (a === 'aside' && /footnote|endnote|rearnote|note/.test(kind)) y.smallBlock = true;
@@ -362,9 +362,9 @@
       }
     }
 
-    var rootI18n = rootEl.getAttribute('xml:lang') || rootEl.getAttribute('lang') || body.getAttribute('xml:lang') || body.getAttribute('lang') || env.i18n || '';
+    var rootLang = rootEl.getAttribute('xml:lang') || rootEl.getAttribute('lang') || body.getAttribute('xml:lang') || body.getAttribute('lang') || env.lang || '';
     var rootStyle = elStyle(body, rules, onb);
-    await walk(body, { i18n: rootI18n, align: flipAlign(rootStyle['text-align']) || null, italic: isItalic(rootStyle['font-style'], false), bold: isBold(rootStyle['font-weight'], false), solG: 0, sagG: 0 });
+    await walk(body, { lang: rootLang, align: flipAlign(rootStyle['text-align']) || null, italic: isItalic(rootStyle['font-style'], false), bold: isBold(rootStyle['font-weight'], false), leftLevel: 0, rightLevel: 0 });
     close();
     while (blocks.length && blocks[blocks.length - 1].kind === 'pageEnd') blocks.pop();
     while (blocks.length && blocks[0].kind === 'pageEnd') blocks.shift();

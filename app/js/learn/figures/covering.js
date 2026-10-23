@@ -1,17 +1,18 @@
 /*
- * figures/covering.js — Aşama 7: kapağı kaplama (tutkal kaplamaya → mukavvalar → köşeler → önce uzun kenarlar (baş/etek),
- * sonra kısa kenarlar (ağız) → deneme).
- * LİSANS NOTU (MIT): Colorfigures motoru ve yöntemiyle yapıldı (ilk sürüm: Öğren prototipi, Şekil 3).
- * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) ve Tolga Cohce (iso-figure). Tam metin: LICENSE.
+ * figures/covering.js — Stage 7: covering the case (glue on the covering → boards → corners → first the long edges
+ * (head/tail), then the short edges (fore-edge) → check).
+ * LICENSE NOTE (MIT): made with the Colorfigures engine and method (first version: the Learn prototype, figure 3).
+ * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) and Tolga Cohce (iso-figure). Full text: LICENSE.
  *
- * Gerçekte nasıl (MEB-2021 s.74-75; MEGEP-2008 s.36): kaplamanın tersine tutkal sürülür (bu rehberin tek yolu); iki
- * mukavva ve sırt şeridi f mafsal boşluğu bırakılarak ortalanır; dört köşe mukavva köşesinden t + 2 … t + 3 mm uzakta 45°
- * kesilir; ÖNCE uzun kenarlar (açık kapakta baş ve etek), SONRA kısa kenarlar (ağız) kıvrılır; ağız payı köşede baş/etek
- * payının üstüne biner. Ölçüler kitabın sayılarından (calc.js).
- * Koordinat: x = yükseklik yönü (mukavva fcXA..fcXB), y = genişlik, z = yukarı; 1 birim = 1 mm.
- * PARÇALAR: kesme altlığı · kaplama (bez yüzü + astar yüzü) · 2 mukavva · sırt şeridi · 4 kıvırma payı · 4 köşe üçgeni ·
- *   fırça. ÇİZİM: x boyunca uzanan her şey (y, z) kesitinde 2B ressam sıralaması (xSort); dönen baş/etek payları ve
- *   kesilen köşeler ayrı.
+ * How it is done in reality (MEB-2021 p.74-75; MEGEP-2008 p.36): glue is brushed on the back of the covering (the only
+ * way in this guide); the two boards and the spine stiffener are centred with a joint gap of f; the four corners are
+ * cut at 45°, t + 2 … t + 3 mm from the board corner; FIRST the long edges (head and tail on the open case), THEN the
+ * short edges (fore-edge) are turned in; at the corner the fore-edge turn-in lies over the head/tail turn-in. The
+ * measurements come from the book's numbers (calc.js).
+ * Coordinates: x = height direction (board fcXA..fcXB), y = width, z = up; 1 unit = 1 mm.
+ * PARTS: cutting mat · covering (cloth face + lining face) · 2 boards · spine stiffener · 4 turn-ins · 4 corner
+ *   triangles · brush. DRAWING: everything along x with the 2D painter's sort in the (y, z) section (xSort); the turning
+ *   head/tail turn-ins and the cut corners apart.
  */
 'use strict';
 (function (root) {
@@ -24,7 +25,7 @@
     const fcXA = 20 + fcE, fcXB = fcXA + Dh, fcCX0 = fcXA - fcE, fcCX1 = fcXB + fcE;
     const fcCY0 = 25.6, fcRB0 = fcCY0 + fcE, fcRB1 = fcRB0 + Db, fcS0 = fcRB1 + F, fcS1 = fcS0 + R, fcLB0 = fcS1 + F, fcLB1 = fcLB0 + Db, fcCY1 = fcLB1 + fcE;
     const fcMW = fcCX1 + 20, fcMD = fcCY1 + 26, fcH = Math.max(160, Db + 20);
-    const H1 = 2.9;                                  // ağız payının menteşe yüksekliği (baş/etek payının üstüne biner)
+    const H1 = 2.9;                                  // hinge height of the fore-edge turn-in (it lies over the head/tail turn-in)
     const fcRot = (p, h, a) => { const c = Math.cos(a), s = Math.sin(a), dy = p[0] - h[0], dz = p[1] - h[1]; return [h[0] + dy*c - dz*s, h[1] + dy*s + dz*c]; };
 
     function fcGeom(st){
@@ -41,7 +42,7 @@
       const rect = (y0, y1, rot) => [[y0, fcZB], [y1, fcZB], [y1, fcZT], [y0, fcZT]].map(rot);
       return { b, rL, rR, cloth, boards: [rect(fcLB0, fcLB1, rL), rect(fcS0, fcS1, p => p), rect(fcRB0, fcRB1, rR)] };
     }
-    // ağız payının x uzunluğu: gövde mukavva boyu; pay köşe kesilince 45°
+    // x length of the fore-edge turn-in: the body board length; the turn-in is at 45° once the corner is cut
     const fcXr = (d, cut) => d < 0 ? [fcXA, fcXB] : !cut ? [fcCX0, fcCX1] : [fcXA - C2 + d, fcXB + C2 - d];
 
     function scene(st, m){
@@ -54,13 +55,13 @@
       for (let i = 0; i + 1 < G.cloth.length; i++){
         const A = G.cloth[i], B = G.cloth[i + 1], a = A.p, b = B.p, tv = [b[0] - a[0], b[1] - a[1]], tl = Math.hypot(...tv); if (tl < 1e-6) continue;
         const nOut = [0, -tv[1]/tl, tv[0]/tl], good = vis(nOut), seen = good ? nOut : nOut.map(v => -v);
-        const body = A.d < 0 || B.d < 0, xa = fcXr(body ? -1 : A.d, st.cut), xb = fcXr(body ? -1 : B.d, st.cut);   // gövde parçası: mukavva boyu
+        const body = A.d < 0 || B.d < 0, xa = fcXr(body ? -1 : A.d, st.cut), xb = fcXr(body ? -1 : B.d, st.cut);   // body part: board length
         const Q = [[xa[0], a[0], a[1]], [xa[1], a[0], a[1]], [xb[1], b[0], b[1]], [xb[0], b[0], b[1]]];
         let sv = face(pd(Q), good ? tone(seen, m) : toneI(seen, fcBACK)) + ink(pd([Q[0], Q[3]], false), 1) + ink(pd([Q[1], Q[2]], false), 1);
         if (i === 0) sv += ink(pd([Q[0], Q[1]], false), 1); if (i === G.cloth.length - 2) sv += ink(pd([Q[3], Q[2]], false), 1);
         items.push({ a, b, bias: body ? 0 : .035, svg: cOp < 1 ? `<g opacity="${f(cOp)}">${sv}</g>` : sv }); all.push(...Q);
       }
-      // tutkal (kaplamanın astar yüzüne, fırçayla)
+      // glue (on the lining face of the covering, with the brush)
       let brush = null;
       if (st.glue > 0 && st.drop < 1){ const yg = fcCY0 + (fcCY1 - fcCY0)*st.glue, zg = fcZ0 + .08;
         const gl = shape([[fcCX0 + 2, fcCY0 + 2, zg], [fcCX1 - 2, fcCY0 + 2, zg], [fcCX1 - 2, yg, zg], [fcCX0 + 2, yg, zg]], '#fffbe6', 0);
@@ -68,7 +69,7 @@
         items.push({ a: [fcCY0 + 2, zg], b: [yg, zg], bias: .005, svg: `<g opacity=".55">${gl}</g><path d="${st2}" fill="none" stroke="#ffffff" stroke-width="1.2" opacity=".6"/>` });
         if (st.glueT >= 0){ const by = Math.min(fcCY1 - 10, yg), bz = fcZ0 + 1.5;
           brush = { box: [[fcCX0 + 60, by - 6, bz], [fcCX1 - 60, by + 6, bz + 30]], svg: box(fcCX0 + 60, by - 5, bz, fcCX1 - 60, by + 5, bz + 6, matOf('#e9d9a6'), toneI, 1) + box(fcCX0 + 90, by - 4, bz + 6, fcCX1 - 90, by + 4, bz + 22, color.kWOOD, toneI, 1.2) }; } }
-      // mukavvalar ve sırt şeridi
+      // boards and spine stiffener
       const dz = 70*(1 - ease(st.drop));
       if (st.drop > 0) G.boards.forEach((Rr, bi) => {
         const P4 = Rr.map(p => [p[0], p[1] + dz]), cen = [(P4[0][0] + P4[2][0])/2, (P4[0][1] + P4[2][1])/2];
@@ -80,7 +81,7 @@
           if (bi !== 1 && i === 2){ const ang = bi === 0 ? G.b : -G.b, U = [0, -Math.cos(ang), -Math.sin(ang)], mid = [(a[0] + b[0])/2 + n[1]*.2, (a[1] + b[1])/2 + n[2]*.2];
             sv += kText([(fcXA + fcXB)/2, mid[0], mid[1]], U, [1, 0, 0], t('learn.size_two', { a: o.number(Db), b: o.number(Dh) }), 11, '#4a443b', 800); }
           items.push({ a, b, bias: .01, svg: sv }); all.push(...Q); } });
-      // katlanmış baş / etek payları (ÖNCE kıvrılır; kapak kapanırken mukavvayla döner)
+      // folded head / tail turn-ins (turned in FIRST; they turn with the board when the case closes)
       const zTop = fcZT + .3;
       const yzTop = [[[fcRB0 + 1.4, zTop], [fcRB1, zTop]], [[fcRB1, zTop], [fcS0, zTop]], [[fcS0, zTop], [fcS1, zTop]], [[fcS1, zTop], [fcLB0, zTop]], [[fcLB0, zTop], [fcLB1 - 1.4, zTop]]];
       const mapTop = (p, j) => j === 0 ? G.rR(p) : j === 4 ? G.rL(p) : j === 1 ? (p[0] === fcRB1 ? G.rR(p) : p) : j === 3 ? (p[0] === fcLB0 ? G.rL(p) : p) : p;
@@ -110,11 +111,11 @@
       const clip = boardTop(0, 0, fcMW, fcMD, fcBH, 8);
       const main = { box: [[fcXA, fcCY0, fcBH], [fcXB, fcCY1, fcH]], svg: xSort(items) };
       s += byDepth([main, ...headSep.filter(h => !h.over), brush]) + headSep.filter(h => h.over).map(h => h.svg).join('');
-      // kesilen köşeler: kalkıp kaybolur
+      // cut corners: lift up and disappear
       if (st.cutT >= 0){ const u = ease(Math.min(1, st.cutT/.9)), z = fcZ0 + .2 + 40*u, L = 2*fcE - C2;
         for (const [cx, cy, sx, sy] of [[fcCX0, fcCY1, 1, -1], [fcCX0, fcCY0, 1, 1], [fcCX1, fcCY1, -1, -1], [fcCX1, fcCY0, -1, 1]])
           s += `<g opacity="${f(1 - u)}">${shape([[cx, cy, z], [cx + sx*L, cy, z], [cx, cy + sy*L, z]], tone([0, 0, 1], m), 1)}</g>`; }
-      // etiketler
+      // labels
       const LB = [], bk = st.drop > .5;
       if (bk){ LB.push({ at: [fcXB, ...G.rL([(fcLB0 + fcLB1)/2, fcZT])], text: t('learn.s.covering.brd', { a: o.number(Db), b: o.number(Dh) }), on: st.dropT >= 0 });
         LB.push({ at: [fcXB, (fcS0 + fcS1)/2, fcZT], text: t('learn.s.covering.strip', { a: o.number(R), b: o.number(Dh) }), on: st.dropT >= 0 });
@@ -134,20 +135,20 @@
           st.anim2 = true; ui.flash(t('learn.s.covering.f_glue'), 2400); kRun(st, ui, 'glueT', 1.6, u => { st.glue = u; }, () => finish(st)); return true; },
         last(st){ st.glue = 1; } },
       place: { action(st, ui){ if (busy(st, ui)) return false; if (st.drop >= 1){ ui.flash(t('learn.s.covering.f_has_brd')); return false; }
-          if (st.glue < 1){ ui.flash(t('learn.s.covering.f_once_glue')); return false; }
+          if (st.glue < 1){ ui.flash(t('learn.s.covering.f_first_glue')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.covering.f_brd', { f: o.number(F) }), 2400); kRun(st, ui, 'dropT', 1, u => { st.drop = u; }, () => finish(st)); return true; },
         last(st){ st.glue = 1; st.drop = 1; } },
-      corner: { action(st, ui){ if (busy(st, ui)) return false; if (st.drop < 1){ ui.flash(t('learn.s.covering.f_once_brd')); return false; }
+      corner: { action(st, ui){ if (busy(st, ui)) return false; if (st.drop < 1){ ui.flash(t('learn.s.covering.f_first_brd')); return false; }
           if (st.cut){ ui.flash(t('learn.s.covering.f_has_corner')); return false; }
           st.anim2 = true; st.cut = true; ui.flash(t('learn.s.covering.f_corner', { a: o.number(O.corner[0]), b: o.number(O.corner[1]) }), 2400);
           kRun(st, ui, 'cutT', .9, () => {}, () => { st.cutT = -1; finish(st); }); return true; },
         last(st){ st.cut = true; st.cutT = -1; } },
-      turnIn: { action(st, ui){ if (busy(st, ui)) return false; if (!st.cut){ ui.flash(t('learn.s.covering.f_once_corner')); return false; }
+      turnIn: { action(st, ui){ if (busy(st, ui)) return false; if (!st.cut){ ui.flash(t('learn.s.covering.f_first_corner')); return false; }
           if (st.foldL >= 1){ ui.flash(t('learn.s.covering.f_has_turn_in')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.covering.f_turn_in'), 3000);
           kRun(st, ui, 'foldT', 2.6, u => { st.foldH = kSeg(u, 0, .45); st.foldL = kSeg(u, .55, 1); }, () => finish(st)); return true; },
         last(st){ st.foldH = 1; st.foldL = 1; } },
-      close: { action(st, ui){ if (busy(st, ui)) return false; if (st.foldL < 1){ ui.flash(t('learn.s.covering.f_turn_in_once')); return false; }
+      close: { action(st, ui){ if (busy(st, ui)) return false; if (st.foldL < 1){ ui.flash(t('learn.s.covering.f_turn_in_first')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.covering.f_close'), 2600);
           kRun(st, ui, 'closeT', 2.4, u => { st.close = u < .5 ? ease(u*2) : 1 - ease((u - .5)*2); }, () => { st.close = 0; st.tried = 1; finish(st); }); return true; },
         last(st){ st.close = 0; st.tried = 1; } }

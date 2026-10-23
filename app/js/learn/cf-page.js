@@ -1,39 +1,39 @@
 /*
- * cf-page.js — Colorfigures sayfa özellikleri (yakınlaştırma, figür üstü uyarı, telefonda etiket listesi, çerçeve
- * yüksekliği, içini-gör gölgesi). Kaynak: colorfigures skill'i scripts/build.py içindeki HEAD/TAIL betikleri.
+ * cf-page.js — Colorfigures page features (zoom, a notice above the figure, the label list on phones, frame height,
+ * the see-inside shadow). Source: the HEAD/TAIL scripts in scripts/build.py of the colorfigures skill.
  *
- * LİSANS NOTU (MIT). MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) ve Tolga Cohce (iso-figure).
- * Telif ve izin notu bütün kopyalarda korunur; yazılım garantisiz verilir. Tam metin: LICENSE.
+ * LICENSE NOTE (MIT). MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) and Tolga Cohce (iso-figure).
+ * The copyright and permission notice is kept in all copies; the software is provided without warranty. Full text: LICENSE.
  *
- * Asıldan farkı: satır içi <script> yerine ayrı dosya (CSP script-src 'self'); her figür kurulumunda çağrılır ve
- * sökülebilir (cfKur → ui.sok); düğme adları (yakınlaştır/uzaklaştır/sıfırla) sözlükten; klavye takımı yok.
- * Stiller css/learn.css içinde.
+ * Difference from the original: a separate file instead of an inline <script> (CSP script-src 'self'); it is called on
+ * every figure setup and can be removed (cfMount → ui.unmount); button names (zoom in / zoom out / reset) come from the
+ * dictionary; no keypad. The styles are in css/learn.css.
  */
 'use strict';
 (function (root) {
 const MC = root.Mucellit.learn, { mountFigure, xrMount } = MC.cf;
-// asıldaki window.FIG_A / window.LBL_U / global cfKur yerine KitapCilt.ogren altında
+// under Mucellit.learn instead of the original window.FIG_A / window.LBL_U / global cfMount
 MC.FIG_A = () => innerWidth <= 560 ? 1.1 : .75;
 MC.LBL_U = () => { if (innerWidth > 560) return 0; const s = document.getElementById('fig'); return s && s.clientWidth && s.viewBox.baseVal.width ? s.viewBox.baseVal.width / s.clientWidth : 0; };
 
-/** Figürü kurar: mountFigure + xrMount + sayfa özellikleri. Dönen ui.sok() hepsini söker. */
-MC.cfKur = function cfKur(cfg){
+/** Sets up a figure: mountFigure + xrMount + page features. The returned ui.unmount() removes all of them. */
+MC.cfMount = function cfMount(cfg){
   const ui = mountFigure(cfg), M = cfg.text || {};
   xrMount(() => ui, { xr: cfg.xr, label: cfg.label, changed: cfg.viewChanged });
   const on = (h, type, fn, opt) => { h.addEventListener(type, fn, opt); ui.clear(() => h.removeEventListener(type, fn, opt)); };
   const observe = (target, fn, opt) => { const o = new MutationObserver(fn); o.observe(target, opt); ui.clear(() => o.disconnect()); return o; };
-  // rAF ve setTimeout kimlikleri ayrı sayaçlardır (aynı sayı ikisinde de olabilir): her biri kendi işleviyle iptal edilir
+  // rAF and setTimeout ids are separate counters (the same number may exist in both): each is cancelled with its own function
   const raf = [], time = [];
   ui.clear(() => { raf.forEach(cancelAnimationFrame); time.forEach(clearTimeout); });
   const fig = document.getElementById('fig'), stage = document.querySelector('.cf-root .stage');
 
-  // anahtarların yeri (masaüstünde istatistiklerin üstünde, telefonda figürün altında)
+  // place of the switches (above the stats on a desktop, under the figure on a phone)
   raf.push(requestAnimationFrame(() => { const v = document.querySelector('.cf-root .vset'), s = document.getElementById('stats'), z = document.querySelector('.cf-root .zwrap');
     if (!v) return; if (z && z.parentNode === v.parentNode) z.after(v); else if (s && s.parentNode) s.parentNode.insertBefore(v, s); }));
 
-  // yakınlaştırma (iki parmak, ctrl/cmd + tekerlek, − 100% + düğmeleri)
+  // zoom (two fingers, ctrl/cmd + wheel, − 100% + buttons)
   const wrap = document.createElement('div'); wrap.className = 'zwrap'; fig.parentNode.insertBefore(wrap, fig); wrap.appendChild(fig);
-  const figF = document.getElementById('figF'); if (figF) wrap.appendChild(figF);   // filtreli durgun katman #fig'in üstünde
+  const figF = document.getElementById('figF'); if (figF) wrap.appendChild(figF);   // the filtered still layer above #fig
   const chip = document.createElement('div'); chip.className = 'zchip';
   const zb = (cls, name, text) => { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.setAttribute('aria-label', name || ''); b.textContent = text; chip.appendChild(b); return b; };
   const zm = zb('zm', M.zoomOut, '−'), zp = zb('zp', M.reset, '100%'), zi = zb('zi', M.zoomIn, '+');
@@ -71,15 +71,15 @@ MC.cfKur = function cfKur(cfg){
   on(wrap, 'pointerup', up, true); on(wrap, 'pointercancel', up, true);
   on(window, 'resize', apply);
 
-  // masaüstünde çerçeve pencereye sığsın
+  // on a desktop the frame fits the window
   const fit = () => { fig.style.maxHeight = ''; if (innerWidth <= 560) return;
     const room = innerHeight * .78; if (room < fig.clientHeight) fig.style.maxHeight = Math.max(320, room) + 'px'; };
   raf.push(requestAnimationFrame(fit)); on(window, 'resize', fit); time.push(setTimeout(fit, 400));
 
-  // uyarı balonu figürün üstünde
+  // the notice bubble above the figure
   const toast = document.getElementById('toast'); if (toast) wrap.appendChild(toast);
 
-  // telefonda etiketler numaralı rozet, adlar figürün altında liste
+  // on a phone the labels are numbered badges and the names a list under the figure
   const lg = document.createElement('div'); lg.className = 'lgd'; wrap.parentNode.insertBefore(lg, wrap.nextSibling);
   const hs = document.createElement('style'); document.head.appendChild(hs); ui.clear(() => hs.remove());
   let sig = '', sel = 0, qq = 0, names = '', num = new Map();
@@ -103,7 +103,7 @@ MC.cfKur = function cfKur(cfg){
   on(window, 'resize', () => { if (!qq) qq = requestAnimationFrame(upd); }); upd();
   ui.clear(() => cancelAnimationFrame(qq));
   void stage;
-  ui.rest(true);   // ilk kare doğrudan filtreli (aşama değişiminde filtresiz kare görünmez)
+  ui.rest(true);   // the first frame is filtered right away (no unfiltered frame shows when the stage changes)
   return ui;
 };
 })(typeof self !== 'undefined' ? self : this);

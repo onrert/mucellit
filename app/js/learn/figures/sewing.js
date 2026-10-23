@@ -1,22 +1,25 @@
 /*
- * figures/sewing.js — Aşama 2 (delme) ve 3 (dikiş): delik şablonu, bız, bütün formaların dikişi, kare düğüm, kettle stitch.
- * LİSANS NOTU (MIT): Colorfigures motoru ve yöntemiyle yapıldı (ilk sürüm: Öğren prototipi, Şekil 2).
- * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) ve Tolga Cohce (iso-figure). Tam metin: LICENSE.
+ * figures/sewing.js — Stage 2 (punching) and 3 (sewing): hole template, awl, sewing all signatures, square knot, kettle stitch.
+ * LICENSE NOTE (MIT): made with the Colorfigures engine and method (first version: the Learn prototype, figure 2).
+ * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) and Tolga Cohce (iso-figure). Full text: LICENSE.
  *
- * Gerçekte nasıl (Cockerell satır 1918-1936; Brighton-kettle; Talas-guide):
- *  1. Katlanmış forma açılıp V delme beşiğine oturtulur; delik şablonu katın dibine konur; bız her işaretten katın
- *     içinden dışa batırılır. Delikler: uçlardan ~15 mm (kettle delikleri) + aradakiler, çift sayıda (learn-measure.js).
- *  2. 1. forma: baştaki kettle deliğinden dışarıdan girilir, içeri-dışarı öteki uca gidilir; ucu dışarıda kalır.
- *  3. 2. forma üstüne konur, ters yönde dikilir; başlangıç ucunda iplik 1. formanın ucuyla KARE DÜĞÜMLE bağlanır
- *     (kettle değil).
- *  4. 3. formadan itibaren her formanın ucunda iğne alttaki iki formanın arasından, aradaki dikişin arkasından geçirilip
- *     ilmekten çekilir: kettle stitch. Uçlarda küçük bir zincir oluşur. Sonda kettle iki kez atılır.
- * Basitleştirme: 4. formadan sonrakiler kapalı iner ve hızlı dikilir (temsilî zincir); 12'den çok formada ilk 12 çizilir.
- * Koordinat: x = sırt boyu (baş fdXA, kuyruk fdXA + H), y = genişlik (+y izleyicinin solu), z = yukarı; 1 birim = 1 mm.
- * Kâğıt arası büyütüldü (2,2 mm'ye kadar; çok formada küçülür), yoksa kâğıtlar tek çizgi görünür.
- * PARÇALAR: kesme altlığı · beşik (iki eğik tahta, iki uç plakası) · formalar (her biri y kâğıt) · şablon · bız ·
- *   delikler · iplik (uç, dış dikiş, iç dikiş, bağlantılar, kare düğüm, kettle ilmekleri) · iğne.
- * ÇİZİM: x boyunca uzanan her şey (y, z) kesitinde 2B ressam sıralamasıyla (xSort); uç plakaları byDepth.
+ * How it is done in reality (Cockerell lines 1918-1936; Brighton-kettle; Talas-guide):
+ *  1. The folded signature is opened and set in a V punching cradle; the hole template is laid in the fold; the awl is
+ *     pushed through each mark from the inside of the fold to the outside. Holes: ~15 mm from the ends (kettle holes)
+ *     + the ones between, an even number (learn-measure.js).
+ *  2. Signature 1: in from the outside at the head kettle hole, in and out to the other end; the tail stays outside.
+ *  3. Signature 2 goes on top and is sewn in the opposite direction; at the start end the thread is tied to the tail of
+ *     signature 1 with a SQUARE KNOT (not a kettle).
+ *  4. From signature 3 on, at the end of every signature the needle goes between the two signatures below, behind the
+ *     stitch between them, and is pulled through the loop: the kettle stitch. A small chain forms at the ends. At the
+ *     end the kettle is made twice.
+ * Simplification: the signatures after the 4th come down closed and are sewn quickly (a representative chain); with
+ * more than 12 signatures the first 12 are drawn.
+ * Coordinates: x = spine length (head fdXA, tail fdXA + H), y = width (+y the viewer's left), z = up; 1 unit = 1 mm.
+ * The gap between the sheets is enlarged (up to 2.2 mm; smaller with many signatures), otherwise the sheets look like one line.
+ * PARTS: cutting mat · cradle (two slanted boards, two end plates) · signatures (y sheets each) · template · awl ·
+ *   holes · thread (tail, outside stitch, inside stitch, links, square knot, kettle loops) · needle.
+ * DRAWING: everything along x with the 2D painter's sort in the (y, z) section (xSort); the end plates byDepth.
  */
 'use strict';
 (function (root) {
@@ -33,10 +36,10 @@
     const fdS0 = 7, fdS1 = Math.max(80, fdL*.72), fdT = 10, fdYC = 43 + fdS1*Math.SQRT1_2, fdZV = fdBH + 30;
     const fdCC = [fdYC, fdZV + fdRO*Math.SQRT2];
     const fdYA = fdYC + (fdS1 + 12)*Math.SQRT1_2 + 46 + fdL;
-    const fdZ = i => fdBH + fdRO + .5 + i*(2*fdRO + fdGAP);               // i. formanın yığındaki kat merkezi (z)
+    const fdZ = i => fdBH + fdRO + .5 + i*(2*fdRO + fdGAP);               // fold centre (z) of signature i in the stack
     const fdBW = HH + 50, fdBD = fdYA + 30, fdH = Math.max(200, fdZ(NS - 1) + fdRO + 30);
 
-    /* ---------- forma kesiti ---------- */
+    /* ---------- signature section ---------- */
     function fdFrame(c, tb){ const w = [Math.cos(tb), Math.sin(tb)], u = [Math.sin(tb), -Math.cos(tb)];
       return { c, w, u, at: ([pu, pw]) => [c[0] + u[0]*pu + w[0]*pw, c[1] + u[1]*pu + w[1]*pw] }; }
     function fdSheet(r, alpha, F, Lh = fdL, rough = false){
@@ -52,14 +55,14 @@
       for (let j = 0; j < NY; j++){
         const op = 1 - (.9 - .2*j/Math.max(1, NY - 1))*k;
         const sp = fdSheet(fdRM + (NY - 1 - j)*fdG, alpha, F, fdL, rough), nSeg = sp.length - 1;
-        // kapalı ve altta kalan formada iç kâğıtların kıvrımı dıştaki kâğıdın içinde görünmez: yalnız iki düz yaprak (hız)
+        // on a closed signature lower in the stack the folds of the inner sheets are hidden inside the outer sheet: only two flat leaves (speed)
         const onlyLeg = rough && j > 0 && k < .05;
         for (let q = 0; q < nSeg; q++){
           if (onlyLeg && q > 0 && q < nSeg - 1) continue;
           const a = sp[q], b = sp[q + 1], tv = [b[0] - a[0], b[1] - a[1]], tl = Math.hypot(...tv); if (tl < 1e-6) continue;
           const n1 = [0, -tv[1]/tl, tv[0]/tl], seen = vis(n1) ? n1 : n1.map(v => -v);
           const Q = [[fdXA, a[0], a[1]], [fdXB, a[0], a[1]], [fdXB, b[0], b[1]], [fdXA, b[0], b[1]]];
-          // (WebKit boyama yükü): bir dilimin mürekkep çizgileri tek path (aynı kalınlık, aynı görünüm)
+          // (WebKit paint cost): the ink lines of one slice are one path (same width, same look)
           let d = pd([Q[0], Q[3]], false) + pd([Q[1], Q[2]], false);
           if (q === 0) d += pd([Q[0], Q[1]], false);
           if (q === nSeg - 1) d += pd([Q[3], Q[2]], false);
@@ -72,7 +75,7 @@
     const fdSpine = (F, off) => [F.c[0] - F.w[0]*(fdRO + off), F.c[1] - F.w[1]*(fdRO + off)];
     const fdInner = (F, off = .3) => [F.c[0] - F.w[0]*off, F.c[1] - F.w[1]*off];
 
-    /* ---------- beşik ---------- */
+    /* ---------- cradle ---------- */
     const FD_CR = [1, -1].map(sg => {
       const V0 = [fdYC, fdZV], d = [sg*Math.SQRT1_2, Math.SQRT1_2], nO = [sg*Math.SQRT1_2, -Math.SQRT1_2];
       const TI = [V0[0] + d[0]*fdS0, V0[1] + d[1]*fdS0], TO = [V0[0] + d[0]*fdS1, V0[1] + d[1]*fdS1];
@@ -97,9 +100,10 @@
         for (const p of P4) pts.push([x0, p[0], p[1]], [x1, p[0], p[1]]); }
     }
 
-    /* ---------- iplik yolu ----------
-       düğüm: [i, 'out'|'in', s] (i. forma, sırtta dışarıda / katın içinde, s. delik) ya da özel adlar. Bütün dikiş tek yol;
-       her adım st.ip'i (yolun kaçıncı düğümüne kadar çizildiği) ilerletir. son[i]: i. formanın bittiği düğüm sayısı. */
+    /* ---------- thread path ----------
+       node: [i, 'out'|'in', s] (signature i, outside on the spine / inside the fold, hole s) or special names. The whole
+       sewing is one path; every step advances st.ip (up to which node of the path it is drawn). last[i]: number of
+       nodes at which signature i is finished. */
     const asc = [...Array(NST).keys()], desc = asc.slice().reverse();
     const path = [], last = [];
     const pairs = (i, order) => order.forEach((s, k) => { if (k % 2 === 0) path.push([i, 'out', s], [i, 'in', s]); else path.push([i, 'in', s], [i, 'out', s]); });
@@ -112,7 +116,7 @@
     if (N >= 3) path.push(['drop2', LAST, SONS], ['gapK2', LAST, SONS], ['kn2', LAST, SONS]);
     const PATH_BIT = path.length;
 
-    /* ---------- forma yerleri ---------- */
+    /* ---------- signature places ---------- */
     function fdFrameB(st){
       const mv = st.moveT < 0 ? (st.placed ? 1 : 0) : st.moveT, lift = 95;
       let c, tb;
@@ -133,7 +137,7 @@
     }
     function fdNode(nd, FR){
       const k = nd[0], ST = s => fdST[s];
-      // iplik ucu altlığa inmez; 1. formanın sırtında, kettle deliğinin dışında kısa bir uç olarak kalır
+      // the thread tail does not go down to the mat; it stays as a short tail on the spine of signature 1, outside the kettle hole
       if (k === 'tail') return [fdST[0] - 9, fdYA + fdRO + 7, fdZ(0) - .5];
       if (k === 'rest0') return [fdST[NST - 1] - 4, fdYA + 22, fdBH + .7];
       if (k === 'restE') return [fdXB - 30, fdYA + 24, fdBH + .7];
@@ -168,14 +172,14 @@
       return rod(eye, type, .55, METAL, toneI, .8, .12, 10) + `<circle cx="${f(P(...p)[0])}" cy="${f(P(...p)[1])}" r=".55" fill="${INK}"/>`;
     }
 
-    /* ---------- bız ---------- */
+    /* ---------- awl ---------- */
     function fdAwl(type, end){
       const d = norm(sub(end, type)), at = l => [type[0] + d[0]*l, type[1] + d[1]*l, type[2] + d[2]*l];
       const parts = [rod(type, at(52), .15, METAL, toneI, .8, 1.3, 10), rod(at(52), at(59), 3.6, fdBRASS, toneI, 1, 4.4, 14),
         rod(at(59), at(132), 6.5, fdHANDLE, toneI, 1.2, 7.6, 16), rod(at(132), at(140), 7.6, fdHANDLE, toneI, 1.2, 5, 16)];
       return depthOf(type) > depthOf(end) ? parts.reverse().join('') : parts.join('');
     }
-    const YR = fdYC + fdS1*.9 + 20;   // bızın dinlenme yeri (beşik ile yığın arası)
+    const YR = fdYC + fdS1*.9 + 20;   // resting place of the awl (between the cradle and the stack)
     const FD_AWL_REST = { type: [fdXA + 70, YR, fdBH + 7.7], end: [fdXA + 210, YR, fdBH + 7.7] };
     const PER = .5, P0 = 1.6, FD_PUNCH_END = P0 + NST*PER + 1.6;
     function fdAwlPose(st){
@@ -215,7 +219,7 @@
         if (vis(nOut.map(v => -v))){ const q = P(fdST[i], ...ii); items.push({ a: ii, r: .4, bias: .04, svg: `<ellipse cx="${f(q[0])}" cy="${f(q[1])}" rx="1.7" ry="1.7" fill="${INK}"/>` }); } }
     }
     const isNode = (p, r = 2.3) => { const Q = P(...p); return `<circle cx="${f(Q[0])}" cy="${f(Q[1])}" r="${r}" fill="${fdTHREAD}" stroke="${INK}" stroke-width="1"/>`; };
-    // kaç forma dikildi (iplik yolu ilerlemesine göre)
+    // how many signatures are sewn (by the progress of the thread path)
     const lastSewn = st => { let n = 0; for (let i = 0; i < NS; i++) if (last[i] && st.ip >= last[i] - .05) n = i + 1; return n === NS && N > NS ? N : n; };
 
     function fdScene(st, m){
@@ -225,16 +229,16 @@
       for (let y = 20; y < fdBD; y += 20) g += pd([[6, y, fdBH + .05], [fdBW - 6, y, fdBH + .05]], false);
       s += `<path d="${g}" fill="none" stroke="#b5dcc0" stroke-width=".6" opacity=".8"/>`;
       const items = [], ptsCr = [], ptsSt = [], ptsB = [], FR = [];
-      const gop = 1 - .65*k;   // içini görde beşik, uç plakaları ve bız soluk (etiketler yığına ait)
-      fdCradleItems(items, ptsCr, gop);
+      const fadeOp = 1 - .65*k;   // with see-inside the cradle, the end plates and the awl are faded (the labels belong to the stack)
+      fdCradleItems(items, ptsCr, fadeOp);
       for (let i = 0; i < NS; i++){ const fr = fdFrameI(st, i); FR[i] = fr; if (!fr) continue;
         const rough = i !== 1 && fr.alpha < .01 && i < NS - 2;
         fdSigItems(fr.F, fr.alpha, k, items, i === 1 ? ptsB : ptsSt, rough);
         fdHoleItems(fr.F, i === 1 ? st.holes : NST, items); }
-      st._drawn = FR.filter(Boolean).length;          // test: figürde çizilen forma sayısı
+      st._drawn = FR.filter(Boolean).length;          // test: number of signatures drawn in the figure
       const FB = FR[1] && FR[1].F;
       if (FB && st.tmpl > 0) fdTemplateItems(FB, FR[1].alpha, (1 - st.tmpl)*70, items);
-      // iplik + iğne
+      // thread + needle
       const innerThr = []; let ndl = null;
       if (st.thread > 0){
         const op = Math.min(1, st.thread);
@@ -242,21 +246,21 @@
           if (st.ipT >= 0 && head) ndl = { p: head.p, dir: head.hole ? [Math.sign(head.dir[0]) || 1, 0, 0] : head.dir };
           else if (st.ip < PATH_BIT - .01){ const e = fdNode(path[Math.max(0, Math.round(st.ip) - 1)], FR), p = [e[0], e[1] + 8, e[2] + 4];
             items.push({ a: [e[1], e[2]], b: [p[1], p[2]], bias: .05, svg: fdThr([e, p]) }); ndl = { p, dir: [0, .35, 1] }; }
-          else { // dikiş bitti: iplik düğümden kısa kesilir, iğne altlıkta (iplik yığından altlığa inmez)
+          else { // sewing finished: the thread is cut short at the knot, the needle lies on the mat (the thread does not go down from the stack to the mat)
             const e = fdNode(path[PATH_BIT - 1], FR), c = [e[0] - 3, e[1] + 6, e[2] + 1];
             items.push({ a: [e[1], e[2]], b: [c[1], c[2]], bias: .05, svg: fdThr([e, c]) }); ndl = { p: fdNode(['restE'], FR), dir: [-1, 0, 0] }; } }
         else { const a = fdNode(['tail'], FR), b = fdNode(['rest0'], FR); items.push({ a: [a[1], a[2]], b: [b[1], b[2]], bias: .05, svg: kOpI(op, fdThr([a, [a[0] + 30, a[1] + 4, a[2]], b])) }); ndl = { p: b, dir: [-1, 0, 0] }; }
         if (Math.abs(ndl.dir[0]) < .5 && st.ipT >= 0) ndl.dir = [ndl.dir[0] >= 0 ? .3 : -.3, ndl.dir[1], ndl.dir[2]];
         const dd = norm(ndl.dir); items.push({ a: [ndl.p[1], ndl.p[2]], b: [ndl.p[1] + dd[1]*46, ndl.p[2] + dd[2]*46], r: .6, bias: .08, svg: kOpI(op, fdNeedle(ndl.p, dd)) });
-        // düğümler: kare düğüm (1→2) ve kettle ilmekleri
+        // knots: square knot (1→2) and kettle loops
         if (N >= 2 && st.ip >= last[1] - .05){ const q = fdNode(['knot', 1, 0], FR); items.push({ a: [q[1], q[2]], r: 1.6, bias: .1, svg: isNode(q, 2.6) }); }
         for (let i = 2; i < NS; i++) if (st.ip >= last[i] - .05){ const q = fdNode(path[last[i] - 1], FR); items.push({ a: [q[1], q[2]], r: 1.6, bias: .1, svg: isNode(q, 2) }); }
         if (N >= 3 && st.ip >= PATH_BIT - .05){ const q = fdNode(path[PATH_BIT - 1], FR); items.push({ a: [q[1], q[2]], r: 1.6, bias: .1, svg: isNode(q, 2) }); }
       }
-      // bız
+      // awl
       const aw = fdAwlPose(st);
-      items.push({ a: [aw.type[1], aw.type[2]], b: [aw.end[1], aw.end[2]], r: 6, svg: kOpI(gop, fdAwl(aw.type, aw.end)) });
-      // gölgeler
+      items.push({ a: [aw.type[1], aw.type[2]], b: [aw.end[1], aw.end[2]], r: 6, svg: kOpI(fadeOp, fdAwl(aw.type, aw.end)) });
+      // shadows
       const clip = boardTop(0, 0, fdBW, fdBD, fdBH, 8), plates = [];
       for (const sd of FD_CR) for (const x of [[fdXA - 16, fdXA - 6], [fdXB + 6, fdXB + 16]]) plates.push({ poly: sd.plate, x });
       const ptsPl = plates.flatMap(p => p.poly.flatMap(q => [[p.x[0], q[0], q[1]], [p.x[1], q[0], q[1]]]));
@@ -265,105 +269,105 @@
       const xb = kBoxOf(all); xb[0][0] = fdXA - 6 + 1e-3; xb[1][0] = fdXB + 6 - 1e-3;
       const xin = k > 0 && innerThr.length ? `<g opacity="${f(.85*k)}">${innerThr.join('')}</g>` : '';
       s += byDepth([{ box: xb, svg: xSort(items) + xin },
-        ...plates.map(p => ({ box: [[p.x[0], Math.min(...p.poly.map(q => q[0])), fdBH], [p.x[1], Math.max(...p.poly.map(q => q[0])), Math.max(...p.poly.map(q => q[1]))]], svg: kOpI(gop, fdPrismX(p.poly, p.x[0], p.x[1], WOOD)) }))]);
-      // etiketler
+        ...plates.map(p => ({ box: [[p.x[0], Math.min(...p.poly.map(q => q[0])), fdBH], [p.x[1], Math.max(...p.poly.map(q => q[0])), Math.max(...p.poly.map(q => q[1]))]], svg: kOpI(fadeOp, fdPrismX(p.poly, p.x[0], p.x[1], WOOD)) }))]);
+      // labels
       const LB = [], spA = fdSpine(FR[0].F, 0), sewn = lastSewn(st);
-      const hasSquare = N >= 2 && st.ip >= last[1] - .05, ketVar = NS >= 3 && st.ip >= last[2] - .05;
+      const hasSquare = N >= 2 && st.ip >= last[1] - .05, hasKettle = NS >= 3 && st.ip >= last[2] - .05;
       if (k > .6){
         LB.push({ at: [(fdST[0] + fdST[1])/2, ...fdInner(FR[0].F)], text: t('learn.s.sewing.inner_sewing'), on: false });
         if (st.ip > 0) LB.push({ at: [(fdST[1] + fdST[2])/2, ...fdSpine(FR[0].F, .5)], text: t('learn.s.sewing.outer_sewing'), on: false });
         if (hasSquare) LB.push({ at: fdNode(['knot', 1, 0], FR), text: t('learn.s.sewing.square_knot'), on: false });
-        if (ketVar) LB.push({ at: fdNode(path[last[2] - 1], FR), text: t('learn.s.sewing.kettle'), on: st.ipT >= 0 });
+        if (hasKettle) LB.push({ at: fdNode(path[last[2] - 1], FR), text: t('learn.s.sewing.kettle'), on: st.ipT >= 0 });
         if (FB && !st.placed) LB.push({ at: [fdST[Math.floor(NST/2)], ...fdSpine(FB, 0)], text: t('learn.s.sewing.holes', { a: st.holes, n: NST }), on: st.punchT >= 0 });
-        if (st.thread > 0) LB.push({ at: fdNode(['tail'], FR), text: t('learn.s.sewing.uc'), on: false });
+        if (st.thread > 0) LB.push({ at: fdNode(['tail'], FR), text: t('learn.s.sewing.tail'), on: false });
       } else {
         LB.push({ at: [fdXA + 30, ...spA], text: sewn >= 1 ? t('learn.s.sewing.signature_sewn', { n: 1 }) : t('learn.s.sewing.signature_n', { n: 1 }), on: false });
         if (FB && !st.placed) LB.push({ at: [fdXB - 20, ...fdSpine(FB, 0)], text: t('learn.s.sewing.signature_n', { n: 2 }), on: st.punchT >= 0 });
         LB.push({ at: [fdXB + 11, FD_CR[1].slab[1][0] + 10, FD_CR[1].slab[1][1] - 12], text: t('learn.s.sewing.cradle'), on: false });
-        LB.push({ at: [(aw.type[0] + aw.end[0])/2, (aw.type[1] + aw.end[1])/2, (aw.type[2] + aw.end[2])/2], text: t('learn.s.sewing.biz'), on: st.punchT >= 0 });
+        LB.push({ at: [(aw.type[0] + aw.end[0])/2, (aw.type[1] + aw.end[1])/2, (aw.type[2] + aw.end[2])/2], text: t('learn.s.sewing.awl'), on: st.punchT >= 0 });
         if (FB && st.tmpl > .5) LB.push({ at: [fdXA + 60, ...fdInner(FB, fdRM - .4)], text: t('learn.s.sewing.template', { n: NST }), on: st.tmplT >= 0 });
         if (ndl && st.thread > 0) LB.push({ at: ndl.p, text: t('learn.s.sewing.needle'), on: st.ipT >= 0 });
         const top = Math.min(sewn, NS) - 1;
         if (top >= 1 && FR[top]) LB.push({ at: [fdXB - 40, ...fdSpine(FR[top].F, 0)], text: t('learn.s.sewing.signature_n', { n: top + 1 }), on: st.ipT >= 0 });
         if (N > NS && sewn >= N) LB.push({ at: [fdXB - 90, ...fdSpine(FR[NS - 1].F, 0)], text: t('learn.s.sewing.schematic', { n: N - NS }), on: false });
         if (N >= 3 && st.ip >= PATH_BIT - .05) LB.push({ at: fdNode(path[PATH_BIT - 1], FR), text: t('learn.s.sewing.double_kettle'), on: true });
-        else if (ketVar) LB.push({ at: fdNode(path[last[Math.min(sewn, NS) - 1] - 1], FR), text: t('learn.s.sewing.kettle'), on: st.ipT >= 0 });
-        if (hasSquare && (!ketVar || sewn <= 3)) LB.push({ at: fdNode(['knot', 1, 0], FR), text: t('learn.s.sewing.square_knot'), on: st.ipT >= 0 && sewn <= 2 });
+        else if (hasKettle) LB.push({ at: fdNode(path[last[Math.min(sewn, NS) - 1] - 1], FR), text: t('learn.s.sewing.kettle'), on: st.ipT >= 0 });
+        if (hasSquare && (!hasKettle || sewn <= 3)) LB.push({ at: fdNode(['knot', 1, 0], FR), text: t('learn.s.sewing.square_knot'), on: st.ipT >= 0 && sewn <= 2 });
       }
-      // içini görde etiketler yığının sınırına göre dizilir (oklar beşiğin üstünden geçmez, iki yana dağılır)
+      // with see-inside the labels are placed by the bounds of the stack (the arrows do not cross the cradle, they spread to both sides)
       const top = FR.reduce((z, fr, i) => fr ? Math.max(z, fdZ(i) + fdRO) : z, fdBH + 10);
       s += xrCallouts(LB, k > .6 ? [fdXA, fdXB, fdYA - fdL - 4, fdYA + fdRO + 10, fdBH, top] : [0, fdBW, 0, fdBD, 0, fdH]);
       return s;
     }
     const kOpI = (op, svg) => op < 1 ? `<g opacity="${f(op)}">${svg}</g>` : svg;
 
-    /* ---------- davranış ---------- */
+    /* ---------- behaviour ---------- */
     const isBusy = (st, ui) => { if (st.anim2){ ui.flash(t('learn.f.busy')); return true; } return false; };
     const st0 = { tmpl: 0, tmplT: -1, holes: 0, punchT: -1, punched: 1, delT: -1, moveT: -1, placed: false,
       alpha: new Array(NS).fill(Math.PI/2), drop: new Array(NS).fill(0), thread: 0, threadT: -1, ip: 0, ipT: -1, anim: 0, anim2: false };
     st0.alpha[0] = 0;
-    const ipKos = (st, ui, target, sure, done) => { const i0 = st.ip; kRun(st, ui, 'ipT', sure, u => { st.ip = kLerp(i0, target, u); }, () => { st.ip = target; st.ipT = -1; if (done) done(); }); };
-    const close = (st, i, sure) => ['kapT', sure, u => { st.alpha[i] = Math.PI/2*(1 - ease(u)); }];
-    const dus = (st, i, sure) => ['dusT', sure, u => { st.drop[i] = u; st.alpha[i] = Math.PI/2; }];
-    const blank = () => ['bosT', .4, () => {}];
+    const runThread = (st, ui, target, duration, done) => { const i0 = st.ip; kRun(st, ui, 'ipT', duration, u => { st.ip = kLerp(i0, target, u); }, () => { st.ip = target; st.ipT = -1; if (done) done(); }); };
+    const close = (st, i, duration) => ['closeT', duration, u => { st.alpha[i] = Math.PI/2*(1 - ease(u)); }];
+    const dropDown = (st, i, duration) => ['dropT', duration, u => { st.drop[i] = u; st.alpha[i] = Math.PI/2; }];
+    const blank = () => ['blankT', .4, () => {}];
     const finish = st => { st.anim2 = false; };
     const step = {
-      // ---- delme
+      // ---- punching
       template: { action(st, ui){ if (isBusy(st, ui)) return false; if (st.tmpl >= 1){ ui.flash(t('learn.s.sewing.f_template_already')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.sewing.f_template', { n: NST, a: o.number(O.station.range, 0) }), 2600);
           kRun(st, ui, 'tmplT', .8, u => { st.tmpl = ease(u); }, () => { st.tmpl = 1; finish(st); }); return true; },
         last(st){ st.tmpl = 1; } },
-      del: { action(st, ui){ if (isBusy(st, ui)) return false;
-          if (st.tmpl < 1){ ui.flash(t('learn.s.sewing.f_once_template')); return false; }
+      punch: { action(st, ui){ if (isBusy(st, ui)) return false;
+          if (st.tmpl < 1){ ui.flash(t('learn.s.sewing.f_first_template')); return false; }
           if (st.holes >= NST){ ui.flash(t('learn.s.sewing.f_punched', { n: NST })); return false; }
           st.anim2 = true;
           kRun(st, ui, 'punchT', FD_PUNCH_END, u => { const tt = u*FD_PUNCH_END, i = Math.floor((tt - P0)/PER), w = (tt - P0 - i*PER)/PER;
             if (i >= 0 && i < NST && w >= .55) st.holes = Math.max(st.holes, i + 1); }, () => { st.holes = NST; st.punched = Math.max(st.punched, Math.min(2, N)); st.punchT = -1; finish(st); }); return true; },
         last(st){ st.holes = NST; st.punched = Math.max(st.punched, Math.min(2, N)); } },
       all: { action(st, ui){ if (isBusy(st, ui)) return false;
-          if (st.holes < NST){ ui.flash(t('learn.s.sewing.f_once_del')); return false; }
+          if (st.holes < NST){ ui.flash(t('learn.s.sewing.f_first_del')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.sewing.f_all', { n: N }), 2600); const d0 = st.punched;
           kRun(st, ui, 'delT', Math.max(.6, Math.min(3, .25*N)), u => { st.punched = Math.round(kLerp(d0, N, u)); st.tmpl = 1 - u; }, () => { st.punched = N; st.tmpl = 0; finish(st); }); return true; },
         last(st){ st.punched = N; st.tmpl = 0; st.holes = NST; } },
-      // ---- dikiş
+      // ---- sewing
       prepare: { action(st, ui){ if (isBusy(st, ui)) return false; if (st.thread >= 1){ ui.flash(t('learn.s.sewing.f_thread_already')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.sewing.f_thread', { mm: o.number(O.thread, 0) }), 2800);
           kRun(st, ui, 'threadT', .8, u => { st.thread = u; }, () => { st.thread = 1; finish(st); }); return true; },
         last(st){ st.thread = 1; } },
-      first: { action(st, ui){ if (isBusy(st, ui)) return false; if (st.thread < 1){ ui.flash(t('learn.s.sewing.f_once_thread')); return false; }
+      first: { action(st, ui){ if (isBusy(st, ui)) return false; if (st.thread < 1){ ui.flash(t('learn.s.sewing.f_first_thread')); return false; }
           if (st.ip >= last[0]){ ui.flash(t('learn.s.sewing.f_sewn', { n: 1 })); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.sewing.f_ilk'), 2600); ipKos(st, ui, last[0], 3.2, () => finish(st)); return true; },
+          st.anim2 = true; ui.flash(t('learn.s.sewing.f_sig1'), 2600); runThread(st, ui, last[0], 3.2, () => finish(st)); return true; },
         last(st){ st.thread = 1; st.ip = Math.max(st.ip, last[0]); } },
       second: { action(st, ui){ if (isBusy(st, ui)) return false;
           if (N < 2){ ui.flash(t('learn.s.sewing.f_single_signature')); st.anim2 = true; kOrder(st, ui, [blank()], () => finish(st)); return true; }
-          if (st.ip < last[0]){ ui.flash(t('learn.s.sewing.f_once_ilk')); return false; }
+          if (st.ip < last[0]){ ui.flash(t('learn.s.sewing.f_first_sig1')); return false; }
           if (st.ip >= last[1]){ ui.flash(t('learn.s.sewing.f_sewn', { n: 2 })); return false; }
           st.anim2 = true; ui.flash(t('learn.s.sewing.f_second'), 3000);
           kRun(st, ui, 'moveK', 2.2, u => { st.tmpl = 0; st.moveT = u; }, () => { st.moveT = -1; st.placed = true; st.alpha[1] = Math.PI/2;
-            ipKos(st, ui, last[1], 3.6, () => { ui.flash(t('learn.s.sewing.f_square'), 2600); finish(st); }); }); return true; },
+            runThread(st, ui, last[1], 3.6, () => { ui.flash(t('learn.s.sewing.f_square'), 2600); finish(st); }); }); return true; },
         last(st){ if (N < 2) return; st.placed = true; st.tmpl = 0; st.moveT = -1; st.alpha[1] = Math.PI/2; st.ip = Math.max(st.ip, last[1]); } },
       third: { action(st, ui){ if (isBusy(st, ui)) return false;
           if (N < 3){ ui.flash(t('learn.s.sewing.f', { n: 3, f: N })); st.anim2 = true; kOrder(st, ui, N >= 2 ? [close(st, 1, .8)] : [blank()], () => finish(st)); return true; }
-          if (st.ip < last[1]){ ui.flash(t('learn.s.sewing.f_once_second')); return false; }
+          if (st.ip < last[1]){ ui.flash(t('learn.s.sewing.f_first_second')); return false; }
           if (st.ip >= last[2]){ ui.flash(t('learn.s.sewing.f_sewn', { n: 3 })); return false; }
           st.anim2 = true; ui.flash(t('learn.s.sewing.f_third'), 3000);
-          kOrder(st, ui, [close(st, 1, .8), dus(st, 2, .8)], () => ipKos(st, ui, last[2], 4, () => { ui.flash(t('learn.s.sewing.f_kettle'), 2600);
+          kOrder(st, ui, [close(st, 1, .8), dropDown(st, 2, .8)], () => runThread(st, ui, last[2], 4, () => { ui.flash(t('learn.s.sewing.f_kettle'), 2600);
             kOrder(st, ui, [close(st, 2, .7)], () => finish(st)); })); return true; },
         last(st){ if (N >= 2) st.alpha[1] = 0; if (N < 3) return; st.drop[2] = 1; st.alpha[2] = 0; st.ip = Math.max(st.ip, last[2]); } },
       chain: { action(st, ui){ if (isBusy(st, ui)) return false;
           if (N < 4){ ui.flash(t('learn.s.sewing.f', { n: 4, f: N })); st.anim2 = true; kOrder(st, ui, [blank()], () => finish(st)); return true; }
-          if (st.ip < last[2]){ ui.flash(t('learn.s.sewing.f_once_third')); return false; }
+          if (st.ip < last[2]){ ui.flash(t('learn.s.sewing.f_first_third')); return false; }
           if (st.ip >= last[NS - 1]){ ui.flash(t('learn.s.sewing.f_chain_already')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.sewing.f_chain', { a: 4, b: N }), 3000);
-          const git = i => { if (i >= NS){ if (N > NS) ui.flash(t('learn.s.sewing.f_schematic', { n: N - NS }), 2600); finish(st); return; }
-            kOrder(st, ui, [dus(st, i, .55)], () => ipKos(st, ui, last[i], 1.3, () => kOrder(st, ui, [close(st, i, .4)], () => git(i + 1)))); };
-          git(3); return true; },
+          const sewNext = i => { if (i >= NS){ if (N > NS) ui.flash(t('learn.s.sewing.f_schematic', { n: N - NS }), 2600); finish(st); return; }
+            kOrder(st, ui, [dropDown(st, i, .55)], () => runThread(st, ui, last[i], 1.3, () => kOrder(st, ui, [close(st, i, .4)], () => sewNext(i + 1)))); };
+          sewNext(3); return true; },
         last(st){ for (let i = 3; i < NS; i++){ st.drop[i] = 1; st.alpha[i] = 0; } if (NS >= 4) st.ip = Math.max(st.ip, last[NS - 1]); } },
       last: { action(st, ui){ if (isBusy(st, ui)) return false;
           if (st.ip >= PATH_BIT){ ui.flash(t('learn.s.sewing.f_finished')); return false; }
-          if (N < 3){ ui.flash(t('learn.s.sewing.f_son_az')); st.anim2 = true; ipKos(st, ui, PATH_BIT, .8, () => finish(st)); return true; }
-          if (st.ip < last[NS - 1]){ ui.flash(t('learn.s.sewing.f_once_chain')); return false; }
-          st.anim2 = true; ipKos(st, ui, PATH_BIT, 1.6, () => { ui.flash(t('learn.s.sewing.f_double'), 2600); finish(st); }); return true; },
+          if (N < 3){ ui.flash(t('learn.s.sewing.f_last_few')); st.anim2 = true; runThread(st, ui, PATH_BIT, .8, () => finish(st)); return true; }
+          if (st.ip < last[NS - 1]){ ui.flash(t('learn.s.sewing.f_first_chain')); return false; }
+          st.anim2 = true; runThread(st, ui, PATH_BIT, 1.6, () => { ui.flash(t('learn.s.sewing.f_double'), 2600); finish(st); }); return true; },
         last(st){ st.ip = PATH_BIT; } }
     };
     return {

@@ -1,11 +1,11 @@
 /*
  * migrate.js — one-time migration of data saved by versions before the English code base.
  *
- * Earlier versions stored their data under Turkish names: localStorage keys (kitapCilt.*), a sessionStorage key,
- * field names inside the project records and enum values (e.g. bindingType "formali"). On load, every legacy key that
- * is found is converted to the current format, written under its new key and then removed, so nothing the user saved
- * is lost. A legacy key is only removed after its new key has been written; when the new key already exists, the
- * legacy key is left alone (the current data wins and nothing is overwritten).
+ * Earlier versions stored their data under Turkish names: localStorage keys with the old app prefix, a sessionStorage
+ * key, field names inside the project records and enum values (see the legacy-names block below). On load, every
+ * legacy key that is found is converted to the current format, written under its new key and then removed, so nothing
+ * the user saved is lost. A legacy key is only removed after its new key has been written; when the new key already
+ * exists, the legacy key is left alone (the current data wins and nothing is overwritten).
  *
  * The same converters are used for files the user imports (a JSON backup exported by an earlier version) and for the
  * automatic backup the Mac app restores (platform-tauri.js). Unknown fields are kept as they are.

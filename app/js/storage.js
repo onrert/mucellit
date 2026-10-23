@@ -1,7 +1,7 @@
 /*
- * storage.js — süreç verisini tarayıcıda saklar (localStorage, try/catch ile).
- * Saklama kullanılamazsa (gizli pencere, engellenmiş site verisi) veri yalnız
- * bu oturumda bellekte durur ve kullanıcı uyarılır; JSON yedeği her zaman çalışır.
+ * storage.js — keeps the project data in the browser (localStorage, inside try/catch).
+ * When storage is unavailable (private window, blocked site data) the data stays in memory for this session only and
+ * the user is warned; the JSON backup always works.
  */
 (function (root) {
   'use strict';
@@ -15,8 +15,8 @@
   function memoryCopy() { return JSON.parse(JSON.stringify(memory)); }
 
   function read() {
-    // Son kalıcı yazım başarısızsa (kota dolu, saklama kapalı) localStorage'daki kayıt ESKİDİR;
-    // en yeni veri bellektedir.
+    // If the last persistent write failed (quota full, storage off), the record in localStorage is OUT OF DATE;
+    // the newest data is in memory.
     if (!persistent && memory) return memoryCopy();
     var raw;
     try {
@@ -32,9 +32,9 @@
       MC.projectModel.validate(data);
       return data;
     } catch {
-      // Bozuk kayıt: üzerine yazılmadan önce ayrı anahtara yedeklenir, kullanıcı uyarılır.
+      // Corrupt record: before it is overwritten it is backed up under a separate key and the user is warned.
       corruptRecord = true;
-      try { root.localStorage.setItem(KEY + '.corrupt', raw); } catch { /* yer yok */ }
+      try { root.localStorage.setItem(KEY + '.corrupt', raw); } catch { /* no room */ }
       return MC.projectModel.emptyData();
     }
   }
@@ -44,7 +44,7 @@
     try {
       root.localStorage.setItem(KEY, JSON.stringify(data));
       persistent = true;
-      corruptRecord = false; // başarılı yazım bozuk kaydın üzerine yazdı; uyarı artık geçerli değil
+      corruptRecord = false; // the successful write overwrote the corrupt record; the warning no longer applies
       return true;
     } catch {
       persistent = false;
@@ -53,10 +53,10 @@
   }
 
   function clear() {
-    // Bellek BOŞ veri olur (null değil): removeItem başarısız olursa oku() localStorage'daki eski kaydı döndürmesin.
+    // Memory becomes EMPTY data (not null): if removeItem fails, read() must not return the old record in localStorage.
     memory = MC.projectModel.emptyData();
     corruptRecord = false;
-    try { root.localStorage.removeItem(KEY); persistent = true; } catch { persistent = false; /* silinemedi: bellek geçerli */ }
+    try { root.localStorage.removeItem(KEY); persistent = true; } catch { persistent = false; /* could not remove: memory is valid */ }
   }
 
   MC.storage = { read: read, write: write, clear: clear, isPersistent: function () { return persistent; }, isCorrupt: function () { return corruptRecord; }, KEY: KEY };

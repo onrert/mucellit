@@ -1,18 +1,18 @@
 /*
- * figures/folding.js — Aşama 1: kâğıt lif yönü, forma dizimi, katlama, kemik, ağırlık altında bekletme.
- * LİSANS NOTU (MIT): Colorfigures motoru ve yöntemiyle yapıldı (ilk sürüm: Öğren prototipi, Şekil 1).
- * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) ve Tolga Cohce (iso-figure). Tam metin: LICENSE.
+ * figures/folding.js — Stage 1: paper grain direction, signature imposition, folding, bone folder, resting under a weight.
+ * LICENSE NOTE (MIT): made with the Colorfigures engine and method (first version: the Learn prototype, figure 1).
+ * MIT License. Copyright (c) 2026 April Zhu (Colorfigures; iso-glow) and Tolga Cohce (iso-figure). Full text: LICENSE.
  *
- * Gerçekte nasıl: bir forma y adet baskı kâğıdından (2W × H) oluşur; her kâğıdın iki yüzüne yan yana iki sayfa basılır.
- * p = 4y sayfalık formada i. kâğıt (0 = en üst): dış yüz [p − 2i | 1 + 2i], iç yüz [p − 1 − 2i | 2 + 2i]
- * (y = 4: 16|1, 14|3, 12|5, 10|7; ortada 8|9). Kâğıtlar 1. kâğıt üstte, "p | 1" yüzü yukarı dizilir ve deste ortadan
- * katlanır (yarılar aşağı iner): 1. kâğıt dışta kalır (elle deneme). Katlama çizgisi kemikle
- * bastırılır; formalar ağırlık altında bekletilir. Lif: A4'te lif çoğunlukla uzun kenara paralel (Brighton-grain), A5'e
- * katlayınca kat liflere dik düşer.
- * Koordinat: x = sayfa boyu (fkXA … fkXA + H), y = genişlik (+y izleyicinin solu), z = yukarı; 1 birim = 1 mm.
- * Kâğıt arası 2,6 mm'ye büyütüldü (gerçekte ~0,1 mm), yoksa kâğıtlar tek çizgi görünür.
- * PARÇALAR: kesme altlığı · y kâğıt (iki yarı + kıvrım) · baskı (satırlar, sayfa numarası) · lif çizgileri · kemik ·
- *   ağırlık tahtası. ÇİZİM: kâğıt şeritleri (y, z) kesitinde 2B ressam sıralaması (xSort); kemik ve tahta byDepth.
+ * How it is done in reality: a signature is made of y printed sheets (2W × H); two pages are printed side by side on
+ * both faces of every sheet. In a signature of p = 4y pages, sheet i (0 = top): outer face [p − 2i | 1 + 2i], inner face
+ * [p − 1 − 2i | 2 + 2i] (y = 4: 16|1, 14|3, 12|5, 10|7; 8|9 in the middle). The sheets are stacked with sheet 1 on top,
+ * the "p | 1" face up, and the pile is folded in the middle (the halves come down): sheet 1 stays outside (tried by
+ * hand). The fold is creased with the bone folder; the signatures rest under a weight. Grain: on A4 the grain mostly
+ * runs parallel to the long edge (Brighton-grain); folded to A5 the fold runs across the grain.
+ * Coordinates: x = page height (fkXA … fkXA + H), y = width (+y the viewer's left), z = up; 1 unit = 1 mm.
+ * The gap between the sheets is enlarged to 2.6 mm (~0.1 mm in reality), otherwise the sheets look like one line.
+ * PARTS: cutting mat · y sheets (two halves + fold) · print (lines, page number) · grain lines · bone folder ·
+ *   weight board. DRAWING: paper strips with the 2D painter's sort in the (y, z) section (xSort); bone folder and board byDepth.
  */
 'use strict';
 (function (root) {
@@ -26,7 +26,7 @@
     const SC = Math.min(fkL / 148, fkHH / 210);
     const NUM = i => [PG - 2 * i, 1 + 2 * i, PG - 1 - 2 * i, 2 + 2 * i];
     const fkAdd = (p, d, k) => [p[0] + d[0]*k, p[1] + d[1]*k, p[2] + d[2]*k];
-    // yatırma (pres adımı): kesit noktası (y, z) kat çevresinde -90° döner ve masaya iner
+    // laying down (press step): the section point (y, z) turns -90° around the fold and comes down onto the table
     const lay = (st, zc) => { const a = -Math.PI/2 * st.lie; if (!a) return p => p;
       const c = Math.cos(a), s = Math.sin(a), hy = fkYF, hz = zc, dz = (fkBH + .6 + fkR0 + (NY - 1)*fkG - hz) * st.lie, dy = (fkL*.5) * st.lie;
       return p => [hy + (p[0] - hy)*c - (p[1] - hz)*s + dy, hz + (p[0] - hy)*s + (p[1] - hz)*c + dz]; };
@@ -78,7 +78,7 @@
             const nums = NUM(i), num = half === 'L' ? (outerSeen ? nums[0] : nums[2]) : (outerSeen ? nums[1] : nums[3]);
             const pr = fkPrint(fold, edge, half, outerSeen, num, i === 0 && outerSeen ? m.d : null, phi, r, RN), to = i < NY - 1 ? 1 - k : 1;
             if (to > .01) sv += to < 1 ? `<g opacity="${f(to)}">${pr}</g>` : pr;
-            // lif çizgileri (1. kâğıdın üst yüzünde, uzun kenara paralel)
+            // grain lines (on the top face of sheet 1, parallel to the long edge)
             if (i === 0 && st.grain > 0 && outerSeen){ let g = ''; const e2 = [0, edge[0] - fold[0], edge[1] - fold[1]], L2 = Math.hypot(e2[1], e2[2]);
               for (let x = fkXA + 10; x < fkXB - 4; x += 12){ g += pd([[x, fold[0] + seen[1]*.5, fold[1] + seen[2]*.5], [x, fold[0] + e2[1]*.92 + seen[1]*.5, fold[1] + e2[2]*.92 + seen[2]*.5]], false); }
               void L2; sv += `<g opacity="${f(.85*st.grain)}"><path d="${g}" fill="none" stroke="#8a6a3c" stroke-width="1" stroke-dasharray="7 4"/></g>`; }
@@ -113,7 +113,7 @@
       const paper = fkPaper(st, m, k), clip = boardTop(0, 0, fkBW, fkBD, fkBH, 8);
       const top = paper.pts.length ? Math.max(...paper.pts.map(p => p[2])) : fkBH;
       const fo = fkFolderPose(st, top), folder = kBone(...fo);
-      // ağırlık tahtası (pres adımı): yatırılmış formanın üstüne iner
+      // weight board (press step): comes down onto the laid-down signature
       let plank = null;
       if (st.weight > 0 && paper.pts.length){ const b = kBoxOf(paper.pts), zt = b[1][2] + 60*(1 - ease(st.weight));
         const y0 = b[0][1] - 8, y1 = b[1][1] + 8, x0 = fkXA - 6, x1 = fkXB + 6;
@@ -122,7 +122,7 @@
       s += byDepth([
         paper.pts.length ? { box: kBoxOf(paper.pts), svg: paper.svg } : null,
         { box: folder.box, svg: act('folder', folder.svg) }, plank ]);
-      // etiketler
+      // labels
       const phi = st.phi, zc = paper.zc, R = lay(st, zc), on = i => st.dz[i] != null;
       const s0 = on(0) ? fkSheet(0, phi, zc + st.dz[0], R) : null, sL = on(NY - 1) && NY > 1 ? fkSheet(NY - 1, phi, zc + st.dz[NY - 1], R) : null;
       const items = [], mid = sh => { const p = sh.pts[sh.pts.length - 1], q = sh.pts[sh.pts.length - 2]; return [(p[0]*.35 + q[0]*.65), (p[1]*.35 + q[1]*.65)]; };
@@ -146,34 +146,34 @@
       return s;
     }
 
-    /* ---------- davranış ---------- */
+    /* ---------- behaviour ---------- */
     const busy = (st, ui) => { if (st.anim2){ ui.flash(t('learn.f.busy')); return true; } return false; };
     const step = {
       grain: { action(st, ui){ if (busy(st, ui)) return false;
-          ui.flash(t('learn.s.folding.f_lif'), 2600); st.anim2 = true;
+          ui.flash(t('learn.s.folding.f_grain'), 2600); st.anim2 = true;
           kRun(st, ui, 'lifT', 2.2, u => { st.grain = Math.min(1, u*3); st.phi = .42*Math.sin(Math.PI*Math.min(1, Math.max(0, (u - .25)/.75))); }, () => { st.phi = 0; st.anim2 = false; }); return true; },
         last(st){ st.grain = 1; st.phi = 0; } },
       impose: { action(st, ui){ if (busy(st, ui)) return false;
-          if (st.phi > .01) { ui.flash(t('learn.s.folding.f_once_ac')); return false; }
+          if (st.phi > .01) { ui.flash(t('learn.s.folding.f_first_open')); return false; }
           st.dz = new Array(NY).fill(null); st.anim2 = true;
           ui.flash(t('learn.s.folding.f_impose', { p: PG }), 2600);
-          const T = (NY - 1)*.4 + .5, lif0 = st.grain;   // lif çizgileri dizerken söner (son() ile aynı son durum)
+          const T = (NY - 1)*.4 + .5, lif0 = st.grain;   // the grain lines fade out while stacking (the same end state as last())
           kRun(st, ui, 'dropT', T, u => { st.grain = Math.max(0, lif0*(1 - u*4)); const tt = u*T; for (let i = 0; i < NY; i++){ const t0 = (NY - 1 - i)*.4, w = (tt - t0)/.5; st.dz[i] = w < 0 ? null : w >= 1 ? 0 : 90*(1 - ease(w)); } },
             () => { st.dz = new Array(NY).fill(0); st.grain = 0; st.anim2 = false; }); return true; },
         last(st){ st.dz = new Array(NY).fill(0); st.grain = 0; } },
       fold: { action(st, ui){ if (busy(st, ui)) return false;
-          if (st.dz.some(v => v == null)) { ui.flash(t('learn.s.folding.f_impose_once')); return false; }
+          if (st.dz.some(v => v == null)) { ui.flash(t('learn.s.folding.f_impose_first')); return false; }
           if (st.phi > 1.5) { ui.flash(t('learn.s.folding.f_already_folded')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.folding.f_fold'), 2400);
           kRun(st, ui, 'foldT', 1.7, u => { st.phi = ease(u)*Math.PI/2; }, () => { st.anim2 = false; }); return true; },
         last(st){ st.phi = Math.PI/2; } },
       boneFolder: { action(st, ui){ if (busy(st, ui)) return false;
-          if (st.phi < Math.PI/2 - .01) { ui.flash(t('learn.s.folding.f_fold_once')); return false; }
+          if (st.phi < Math.PI/2 - .01) { ui.flash(t('learn.s.folding.f_fold_first')); return false; }
           st.anim2 = true; kRun(st, ui, 'creaseT', 4.1, u => { if (u*4.1 > 2.2) st.creased = true; }, () => { st.anim2 = false; st.creaseT = -1; }); return true; },
         last(st){ st.creased = true; st.creaseT = -1; } },
       press: { action(st, ui){ if (busy(st, ui)) return false;
-          if (!st.creased) { ui.flash(t('learn.s.folding.f_once_bone_folder')); return false; }
-          st.anim2 = true; ui.flash(t('learn.s.folding.f_pres', { n: O.N }), 2600);
+          if (!st.creased) { ui.flash(t('learn.s.folding.f_first_bone_folder')); return false; }
+          st.anim2 = true; ui.flash(t('learn.s.folding.f_press', { n: O.N }), 2600);
           kRun(st, ui, 'yatT', 1.2, u => { st.lie = ease(u); }, () => kRun(st, ui, 'weightT', 1, u => { st.weight = u; }, () => { st.anim2 = false; st.folded = O.N; })); return true; },
         last(st){ st.lie = 1; st.weight = 1; st.folded = O.N; } }
     };
