@@ -79,7 +79,7 @@ pub fn symmetric_margin(width: f64, height: f64, field: (f64, f64, f64, f64), ba
 }
 
 /// With a page rotation (degrees) of 90/270 width and height swap.
-pub fn frozen_size(width: f64, height: f64, rotation: i64) -> (f64, f64) {
+pub fn rotated_size(width: f64, height: f64, rotation: i64) -> (f64, f64) {
     if rotation.rem_euclid(180) == 90 {
         (height, width)
     } else {
@@ -258,7 +258,7 @@ pub async fn open_in_preview<R: Runtime>(
 pub mod mac {
     //! macOS: PDFKit / AppKit calls. `NSPrintInfo` and `PDFDocument` can be set up on any thread (the unit tests test
     //! them without opening a print dialog); the print operation and the sheet on the main thread.
-    use super::{frozen_size, print_settings, wait_result, PrintSettings, PRINTING_TIMEOUT};
+    use super::{print_settings, rotated_size, wait_result, PrintSettings, PRINTING_TIMEOUT};
     use crate::i18n::text;
     use objc2::rc::Retained;
     use objc2::runtime::{AnyObject, Bool, NSObject, NSObjectProtocol};
@@ -284,7 +284,7 @@ pub mod mac {
     pub const PREVIEW: &str = "com.apple.Preview";
 
     /// A PDF document from raw bytes and the MediaBox size (pt) of the first page (rotation applied).
-    pub fn pdf_ac(bytes: Vec<u8>) -> Result<(Retained<PDFDocument>, f64, f64), String> {
+    pub fn open_pdf(bytes: Vec<u8>) -> Result<(Retained<PDFDocument>, f64, f64), String> {
         let data = NSData::from_vec(bytes); // without a copy (low 5)
         let document = unsafe { PDFDocument::initWithData(PDFDocument::alloc(), &data) }
             .ok_or_else(|| text("rust.pdf_unreadable", &[]))?;
@@ -294,7 +294,7 @@ pub mod mac {
         let page =
             unsafe { document.pageAtIndex(0) }.ok_or_else(|| text("rust.pdf_unreadable", &[]))?;
         let rect = unsafe { page.boundsForBox(PDFDisplayBox::MediaBox) };
-        let (g, y) = frozen_size(
+        let (g, y) = rotated_size(
             rect.size.width,
             rect.size.height,
             unsafe { page.rotation() } as i64,
@@ -355,7 +355,7 @@ pub mod mac {
 
     /// Sends the result when the print sheet ends (`printOperationDidRun:success:contextInfo:`). The document and the
     /// operation are held here so that they do not drop while the sheet is open.
-    pub struct Ivarlar {
+    pub struct Ivars {
         send: RefCell<Option<mpsc::Sender<PrintOutcome>>>,
         _document: RefCell<Option<Retained<PDFDocument>>>,
         _operation: RefCell<Option<Retained<NSPrintOperation>>>,
@@ -366,7 +366,7 @@ pub mod mac {
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
         #[name = "MucellitPrintDelegate"]
-        #[ivars = Ivarlar]
+        #[ivars = Ivars]
         pub struct PrintDelegate;
 
         impl PrintDelegate {
@@ -394,7 +394,7 @@ pub mod mac {
             document: Option<Retained<PDFDocument>>,
             operation: Option<Retained<NSPrintOperation>>,
         ) -> Retained<Self> {
-            let t = Self::alloc(mtm).set_ivars(Ivarlar {
+            let t = Self::alloc(mtm).set_ivars(Ivars {
                 send: RefCell::new(Some(send)),
                 _document: RefCell::new(document),
                 _operation: RefCell::new(operation),
@@ -456,7 +456,7 @@ pub mod mac {
         }
         let setup =
             move || -> Result<(Retained<PDFDocument>, Retained<NSPrintOperation>), String> {
-                let (document, g, y) = pdf_ac(bytes)?;
+                let (document, g, y) = open_pdf(bytes)?;
                 let a = print_settings(g, y)?;
                 let info = setup_print_info(&a);
                 let operation = print_operation(&document, &info, &a, mtm)
@@ -645,10 +645,10 @@ mod tests {
         ] {
             assert!(print_settings(g, y).is_err(), "{g} × {y}");
         }
-        assert_eq!(frozen_size(100.0, 200.0, 90), (200.0, 100.0));
-        assert_eq!(frozen_size(100.0, 200.0, -90), (200.0, 100.0));
-        assert_eq!(frozen_size(100.0, 200.0, 180), (100.0, 200.0));
-        assert_eq!(frozen_size(100.0, 200.0, 270), (200.0, 100.0));
+        assert_eq!(rotated_size(100.0, 200.0, 90), (200.0, 100.0));
+        assert_eq!(rotated_size(100.0, 200.0, -90), (200.0, 100.0));
+        assert_eq!(rotated_size(100.0, 200.0, 180), (100.0, 200.0));
+        assert_eq!(rotated_size(100.0, 200.0, 270), (200.0, 100.0));
     }
 
     #[test]
@@ -729,13 +729,13 @@ mod tests {
         // "Uzun Türkçe kitap adı " ×20 = 440 characters / 500 bytes; in JS encodeURIComponent form (every byte %XX).  // turkish-ok: Turkish test text (a long Turkish name)
         // Observation: the APFS limit counts characters (only a name with multi-byte characters stayed at ~150 characters in 255 bytes and passed);
         // this name is 255 bytes ≈ 240 characters after safe_name, the temp name +45 → the limit was passed.
-        let name: String = "Uzun Türkçe kitap adı ".repeat(20) + "-dizilmis.pdf";  // turkish-ok: Turkish test text (a long Turkish name)
+        let name: String = "Uzun Türkçe kitap adı ".repeat(20) + "-dizilmis.pdf"; // turkish-ok: Turkish test text (a long Turkish name)
         let encoded: String = name.bytes().map(|b| format!("%{b:02X}")).collect();
         for (n, b) in [(1, &b"%PDF-1"[..]), (2, &b"%PDF-2"[..])] {
             let y = write_output(&d, &encoded, b).unwrap_or_else(|e| panic!("write {n}: {e}"));
             let a = y.file_name().unwrap().to_string_lossy().into_owned();
             assert!(a.len() <= crate::files::NAME_MAX_BYTES, "{} bytes", a.len());
-            assert!(a.ends_with(".pdf") && a.starts_with("Uzun Türkçe"), "{a}");  // turkish-ok: Turkish test text (a long Turkish name)
+            assert!(a.ends_with(".pdf") && a.starts_with("Uzun Türkçe"), "{a}"); // turkish-ok: Turkish test text (a long Turkish name)
             assert_eq!(fs::read(&y).unwrap(), b);
         }
         let rest: Vec<_> = fs::read_dir(&d)
@@ -776,7 +776,7 @@ mod tests {
             ), // rotated page
             (907.09, 623.62, 0, 907.09, 623.62, true), // 320 × 220 mm, non-standard
         ] {
-            let (_document, pg, py) = mac::pdf_ac(single_page_pdf(g, y, rotate)).unwrap();
+            let (_document, pg, py) = mac::open_pdf(single_page_pdf(g, y, rotate)).unwrap();
             assert!(near(pg, expected_g) && near(py, expected_y), "{pg} × {py}");
             let a = print_settings(pg, py).unwrap();
             let info = mac::setup_print_info(&a);
@@ -826,7 +826,7 @@ mod tests {
         assert_eq!(mac::SCALE_MODE.0, 0, "kPDFPrintPageScaleNone");
         // broken / empty / pageless input
         for b in [&b""[..], b"this is not a pdf", b"%PDF-1.4\n%%EOF\n"] {
-            assert!(mac::pdf_ac(b.to_vec()).is_err());
+            assert!(mac::open_pdf(b.to_vec()).is_err());
         }
     }
 
@@ -891,7 +891,10 @@ mod tests {
     #[test]
     fn print_result_awaited_with_timeout_in_source() {
         let g = mac_print_body();
-        assert!(!g.contains("al.recv()"), "the result is awaited without a limit");
+        assert!(
+            !g.contains("al.recv()"),
+            "the result is awaited without a limit"
+        );
         assert!(
             g.contains("wait_result(") && g.contains("release_timeout"),
             "{g}"

@@ -71,7 +71,7 @@
         parts.push({ box: [[G.XB0 - 14, yP0, BH], [G.XB1 + 14, yP1, BH + BED]], svg: yb }); }
       // book layer: the box top ends above the book (and the rods); the platen stays apart in z and is drawn in front
       parts.push({ box: [[G.XB0 - 8, 20, BH + BED], [G.XB1 + 8, D2 - 20, st.press > 0 ? bookTop + 4.2 : HMAX]], svg: xSort(items) });
-      // pres
+      // press
       if (st.press > 0){ const pz = kLerp(bookTop + 70, bookTop + 4.2, ease(st.press)), zK = bookTop + 120, xc = xm;
         for (const [x0, x1] of [[6, 22], [W2 - 22, W2 - 6]]) parts.push({ box: [[x0, yPc - 18, BH], [x1, yPc + 18, zK]], svg: box(x0, yPc - 18, BH, x1, yPc + 18, zK, s5WOOD, toneI, 1.4) });
         parts.push({ box: [[6, yPc - 18, zK], [W2 - 6, yPc + 18, zK + 16]], svg: box(6, yPc - 18, zK, W2 - 6, yPc + 18, zK + 16, s5WOOD, toneI, 1.6) });
@@ -141,7 +141,7 @@
           st.anim2 = true; ui.flash(t('learn.s.casingIn.f_groove'), 2400);
           kRun(st, ui, 'boneFolderT', 2.4, u => { st.boneFolderX = u < .5 ? ease(u*2) : 1 - ease((u - .5)*2); st.groove = Math.min(1, u*1.6); }, () => { st.groove = 1; st.boneFolderT = -1; finish(st); }); return true; },
         last(st){ st.groove = 1; st.boneFolderT = -1; } },
-      // ---- pres
+      // ---- press
       waxed: { action(st, ui){ if (busy(st, ui)) return false; if (st.wax >= 1){ ui.flash(t('learn.s.casingIn.f_has_wax')); return false; }
           st.anim2 = true; ui.flash(t('learn.s.casingIn.f_wax'), 2600); kRun(st, ui, 'mumT', 1.2, u => { st.wax = u; }, () => { st.wax = 1; finish(st); }); return true; },
         last(st){ st.wax = 1; } },

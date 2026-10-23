@@ -1,10 +1,10 @@
-//! Yerel menü. Uygulama menüsü; Dosya (Aç ⌘O, Son Açılanlar alt menüsü, Dizilmiş PDF'i
-//! Kaydet ⌘S, Yazdır… ⌘P ve Önizleme'de Aç ⌥⌘P, JSON yedeği, Pencereyi Kapat ⌘W); Düzen (öntanımlı öğeler; WKWebView metin kutularında
-//! ⌘C/⌘V/⌘Z bunlarla çalışır); Görünüm (⌘1-4 sekmeler — ⌘4 Öğren —, tam ekran); Pencere.
-//! Menü olayı webview'e `menu` olayıyla öğe kimliği olarak gider (app/js/platform-tauri.js dinler);
-//! "Menüyü Temizle" Rust'ta işlenir. Son Açılanlar her değişimde `yenile` ile yeniden kurulur.
-//! bütün etiketler (öntanımlı öğeler dahil: Hakkında, Gizle, Çık, Pencereyi Kapat, Geri Al …) sözlükten,
-//! şu anki dilde (`crate::dil`); Görünüm > Dil alt menüsü (`dil:<seçim>`, JS işler); dil değişince menü yeniden kurulur.
+//! Native menu. The app menu; File (Open ⌘O, the Open Recent submenu, Save Imposed PDF
+//! ⌘S, Print… ⌘P and Open in Preview ⌥⌘P, JSON backup, Close Window ⌘W); Edit (default items; ⌘C/⌘V/⌘Z work with
+//! them in the WKWebView text boxes); View (⌘1-4 tabs — ⌘4 Learn —, full screen); Window.
+//! A menu event goes to the webview as the item id with the `menu` event (app/js/platform-tauri.js listens);
+//! "Clear Menu" is handled in Rust. Open Recent is built again with `refresh` on every change.
+//! every label (the default items included: About, Hide, Quit, Close Window, Undo …) comes from the dictionary,
+//! in the current language (`crate::i18n`); the View > Language submenu (`i18n:<choice>`, handled by JS); the menu is built again when the language changes.
 
 use crate::files::FileState;
 use crate::i18n::{self, text};
@@ -13,8 +13,8 @@ use tauri::menu::{
 };
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-/// Görünüm menüsündeki sekme öğeleri: (kimlik, sözlük anahtarı, kısayol). Kimlikler platform-tauri.js'teki
-/// `SEKME_OGESI` ile aynı olmalı.
+/// The tab items in the View menu: (id, dictionary key, shortcut). The ids must be the same as `TAB_ITEMS` in
+/// platform-tauri.js.
 pub const TABS: [(&str, &str, &str); 4] = [
     ("tab-impose", "tab.impose", "CmdOrCtrl+1"),
     ("tab-projects", "tab.projects", "CmdOrCtrl+2"),
@@ -22,9 +22,9 @@ pub const TABS: [(&str, &str, &str); 4] = [
     ("tab-learn", "tab.learn", "CmdOrCtrl+4"),
 ];
 
-/// Dosya menüsünün webview'e giden öğeleri: (kimlik, sözlük anahtarı, kısayol). Kimlikler platform-tauri.js'teki
-/// `DOSYA_OGESI` ile aynı olmalı.
-/// Yazdır… ⌘P (HIG: Dosya menüsü), Önizleme'de Aç ⌥⌘P.
+/// The File menu items that go to the webview: (id, dictionary key, shortcut). The ids must be the same as
+/// `FILE_ITEMS` in platform-tauri.js.
+/// Print… ⌘P (HIG: File menu), Open in Preview ⌥⌘P.
 pub const FILE_ITEMS: [(&str, &str, Option<&str>); 6] = [
     ("file-open", "menu.open", Some("CmdOrCtrl+O")),
     ("file-save", "menu.save", Some("CmdOrCtrl+S")),
@@ -34,14 +34,14 @@ pub const FILE_ITEMS: [(&str, &str, Option<&str>); 6] = [
     ("json-import", "menu.json_import", None),
 ];
 
-/// Son açılan öğesinin kimlik öneki: "son:<uuid>".
+/// The id prefix of a recent file item: "last:<uuid>".
 pub const RECENT_PREFIX: &str = "last:";
-/// Dil öğesinin kimlik öneki: "dil:sistem" | "dil:<kod>" (JS `KitapCilt.uygulama.dilDegistir`).
+/// The id prefix of a language item: "i18n:system" | "i18n:<code>" (JS `Mucellit.app.changeLanguage`).
 pub const LANGUAGE_PREFIX: &str = "i18n:";
-/// Rust'ta işlenen öğe.
+/// An item handled in Rust.
 pub const CLEAR_LAST: &str = "last-clear";
 
-/// Webview'e iletilecek menü öğesi mi?
+/// Is it a menu item to pass to the webview?
 pub fn is_forwarded(id: &str) -> bool {
     TABS.iter().any(|(k, _, _)| *k == id)
         || FILE_ITEMS.iter().any(|(k, _, _)| *k == id)
@@ -53,7 +53,7 @@ pub fn is_forwarded(id: &str) -> bool {
             .is_some_and(|s| s == "system" || i18n::is_supported(s))
 }
 
-/// Menü etiketi: muda macOS'ta tek `&`'yi (anımsatıcı) siler; dosya adındaki `&` görünsün diye ikilenir.
+/// Menu label: muda removes a single `&` (mnemonic) on macOS; doubled so that a `&` in a file name shows.
 pub fn escape_label(name: &str) -> String {
     name.replace('&', "&&")
 }
@@ -99,7 +99,7 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     }
     let last = last.build()?;
 
-    let [open, save, print, preview, json_disa, json_ice] =
+    let [open, save, print, preview, json_export, json_import] =
         FILE_ITEMS.map(|(id, key, shortcut)| {
             let mut b = MenuItemBuilder::with_id(id, text(key, &[]));
             if let Some(k) = shortcut {
@@ -116,8 +116,8 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&print?)
         .item(&preview?)
         .separator()
-        .item(&json_disa?)
-        .item(&json_ice?)
+        .item(&json_export?)
+        .item(&json_import?)
         .separator()
         .close_window_with_text(text("menu.close_window", &[]))
         .build()?;
@@ -158,11 +158,11 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     Menu::with_items(app, &[&app_menu, &file, &layout, &view, &window])
 }
 
-/// Görünüm > Dil: sistem dili ("Sistem Dili (X)", Title Case: menu.dil_sistem) + her sözlük (kendi adıyla); şu anki
-/// seçim işaretli.
+/// View > Language: the system language ("System Language (X)", Title Case: menu.language_system) + every dictionary
+/// (with its own name); the current choice is checked.
 fn language_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Submenu<R>> {
     let choice = i18n::choice();
-    // seçicideki "Sistem dili (X)" ile aynı kaynak (i18n::sistem_kodu; JS dil_oku.sistem ile alır)
+    // the same source as "System language (X)" in the picker (i18n::system_code; JS gets it with read_language.system)
     let mut m = SubmenuBuilder::new(app, text("menu.language", &[])).item(
         &CheckMenuItemBuilder::with_id(format!("{LANGUAGE_PREFIX}system"), i18n::system_label())
             .checked(choice.is_none())
@@ -181,11 +181,11 @@ fn language_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::S
     m.build()
 }
 
-/// Menüyü (Son Açılanlar dahil) yeniden kurar.
+/// Builds the menu (Open Recent included) again.
 pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
     match create(app).and_then(|m| app.set_menu(m)) {
         Ok(_) => {}
-        Err(e) => eprintln!("menü yenilenemedi: {e}"),
+        Err(e) => eprintln!("the menu could not be refreshed: {e}"),
     }
 }
 
@@ -195,12 +195,12 @@ pub fn on_event<R: Runtime>(app: &AppHandle<R>, on_event: MenuEvent) {
         crate::files::clear_recent_files(app);
     } else if is_forwarded(id) {
         if id.starts_with(LANGUAGE_PREFIX) {
-            // İşaretli öğe tıklanınca kendiliğinden değişir; JS vazgeçerse yanlış kalmasın diye menü şimdiki
-            // seçimle yeniden kurulur (JS kabul ederse dil_ayarla yeniden kurar).
+            // A checked item changes on its own when clicked; so that it does not stay wrong when JS cancels, the menu is built
+            // again with the current choice (when JS accepts, set_language builds it again).
             refresh(app);
         }
         if let Err(e) = app.emit("menu", id) {
-            eprintln!("menü olayı iletilemedi ({id}): {e}");
+            eprintln!("the menu event could not be sent ({id}): {e}");
         }
     }
 }
@@ -222,7 +222,7 @@ mod tests {
             "TAB-PROJECTS",
             "tab-learn ",
             "tab-LEARN",
-            "tab-ogren2",
+            "tab-learn2",
         ] {
             assert!(!is_forwarded(k), "{k:?}");
         }
@@ -265,16 +265,16 @@ mod tests {
             "i18n:",
             "i18n:xx",
             "i18n:TR",
-            "dil:tr ",
-            "dil:../en",
-            "i18n:sistem2",
+            "i18n:tr ",
+            "i18n:../en",
+            "i18n:system2",
             "i18n",
         ] {
             assert!(!is_forwarded(k), "{k:?}");
         }
     }
 
-    /// Menüdeki her sözlük anahtarı her dilde var (eksik anahtar menüde anahtar adı olarak görünürdü).
+    /// Every dictionary key in the menu exists in every language (a missing key would show as the key name in the menu).
     #[test]
     fn menu_keys_in_every_language() {
         let mut keys: Vec<&str> = TABS.iter().map(|(_, a, _)| *a).collect();
@@ -291,21 +291,21 @@ mod tests {
         );
         assert_eq!(
             crate::i18n::text_in("tr", "menu.close_window", &[]),
-            "Pencereyi Kapat"
+            "Pencereyi Kapat" // turkish-ok: expected Turkish UI text
         );
-        // AppKit toggleFullScreen: öğesini menü doğrulanırken kendi metniyle yeniden adlandırır; sözlük o
-        // metinle aynı (MenuCommands.loctable "Enter Full Screen": en/tr), doğrulamadan önce/sonra ad değişmez.
+        // AppKit renames the toggleFullScreen: item with its own text when the menu is validated; the dictionary has that
+        // text (MenuCommands.loctable "Enter Full Screen": en/tr), the name does not change before/after validation.
         assert_eq!(
             crate::i18n::text_in("en", "menu.full_screen", &[]),
             "Enter Full Screen"
         );
         assert_eq!(
             crate::i18n::text_in("tr", "menu.full_screen", &[]),
-            "Tam Ekrana Geç"
+            "Tam Ekrana Geç" // turkish-ok: expected Turkish UI text
         );
     }
 
-    /// Görünüm menüsünde 4. sekme Öğren ⌘4; etiket iki dilde sözlükten ("Learn" / "Öğren").
+    /// In the View menu the 4th tab is Learn ⌘4; the label from the dictionary in both languages ("Learn" / "Öğren").  // turkish-ok: expected Turkish UI text
     #[test]
     fn learn_tab_has_shortcut_four_in_both_languages() {
         assert_eq!(TABS.len(), 4);
@@ -314,17 +314,20 @@ mod tests {
             assert_eq!(
                 *k,
                 format!("CmdOrCtrl+{}", i + 1),
-                "sekme kısayolları sırayla ⌘1-⌘4"
+                "tab shortcuts in order ⌘1-⌘4"
             );
         }
         assert_eq!(crate::i18n::text_in("en", "tab.learn", &[]), "Learn");
-        assert_eq!(crate::i18n::text_in("tr", "tab.learn", &[]), "Öğren");
+        assert_eq!(crate::i18n::text_in("tr", "tab.learn", &[]), "Öğren"); // turkish-ok: expected Turkish UI text
     }
 
     #[test]
     fn label_ampersand_is_doubled() {
-        assert_eq!(escape_label("Suç & Ceza.epub"), "Suç && Ceza.epub");
-        assert_eq!(escape_label("düz.pdf"), "düz.pdf");
+        assert_eq!(
+            escape_label("Crime & Punishment.epub"),
+            "Crime && Punishment.epub"
+        );
+        assert_eq!(escape_label("plain.pdf"), "plain.pdf");
     }
 
     #[test]
@@ -339,18 +342,18 @@ mod tests {
         for id in ids {
             assert!(
                 js.contains(&format!("'{id}'")),
-                "platform-tauri.js içinde {id} yok"
+                "{id} not in platform-tauri.js"
             );
         }
         assert!(
             js.contains(&format!("'{RECENT_PREFIX}'")),
-            "platform-tauri.js son: öneki"
+            "platform-tauri.js last: prefix"
         );
         let mut all: Vec<&str> = TABS.iter().map(|(_, _, k)| *k).collect();
         all.extend(FILE_ITEMS.iter().filter_map(|(_, _, k)| *k));
         let n = all.len();
         all.sort_unstable();
         all.dedup();
-        assert_eq!(all.len(), n, "kısayollar benzersiz");
+        assert_eq!(all.len(), n, "unique shortcuts");
     }
 }

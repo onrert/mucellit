@@ -647,7 +647,11 @@ pub(crate) mod tests {
         let bag = d.join("bag.pdf");
         symlink(&target, &bag).unwrap();
         let entry = make_entry(&AppleBookmarks, &bag, "bag.pdf", "pdf", 1);
-        assert_eq!(entry.path, bag.to_string_lossy(), "the entry keeps the link path");
+        assert_eq!(
+            entry.path,
+            bag.to_string_lossy(),
+            "the entry keeps the link path"
+        );
         assert_eq!(entry.name, "bag.pdf");
         let bookmark = entry
             .bookmark
@@ -655,11 +659,7 @@ pub(crate) mod tests {
             .map(|b| base64::engine::general_purpose::STANDARD.decode(b).unwrap());
         eprintln!(
             "0b observation: bookmark {}",
-            if bookmark.is_some() {
-                "made"
-            } else {
-                "none"
-            }
+            if bookmark.is_some() { "made" } else { "none" }
         );
         if let Some(b) = bookmark {
             let o = AppleBookmarks
@@ -668,7 +668,10 @@ pub(crate) mod tests {
             eprintln!("0b observation: resolved path {}", o.path.display());
             assert_eq!(o.bytes, b"%PDF-1.4 0b");
             // Observation (macOS 26.6.2): a bookmark made from a link path resolves to the TARGET file.
-            assert_eq!(o.path, target, "the bookmark follows the link, gives the path of the target");
+            assert_eq!(
+                o.path, target,
+                "the bookmark follows the link, gives the path of the target"
+            );
             // on the first successful open from Recent Items the entry path is updated to the resolved (target) path; the name stays.
             let mut l = RecentList::default();
             let id = l.add(entry.clone());
@@ -832,7 +835,10 @@ pub(crate) mod tests {
             result[3]
         );
         for id in [&ka, &kb, &mc] {
-            assert!(l.find(id).is_some(), "the entry of a package whose content cannot be read stays");
+            assert!(
+                l.find(id).is_some(),
+                "the entry of a package whose content cannot be read stays"
+            );
         }
         assert!(l.find(&kd).is_none(), "a really invalid folder is removed");
         // the same entry opens when the permission comes back
@@ -890,8 +896,14 @@ pub(crate) mod tests {
         let ha = error(&mut l, &ka);
         let hb = error(&mut l, &kb);
         let hc = error(&mut l, &mc);
-        assert!(ha.starts_with("NOTFOUND:"), "dead link (with bookmark): {ha}");
-        assert!(hb.starts_with("NOTFOUND:"), "dead link (without bookmark): {hb}");
+        assert!(
+            ha.starts_with("NOTFOUND:"),
+            "dead link (with bookmark): {ha}"
+        );
+        assert!(
+            hb.starts_with("NOTFOUND:"),
+            "dead link (without bookmark): {hb}"
+        );
         assert!(
             hc.starts_with("NODISK:") && hc.contains(&disk),
             "the target of the link is on an unmounted disk: {hc}"
@@ -961,7 +973,11 @@ pub(crate) mod tests {
         symlink(format!("{vol}/a.pdf"), d.join("chain2.pdf")).unwrap();
         symlink(d.join("chain2.pdf"), d.join("chain1.pdf")).unwrap();
         // a relative target (does not carry the /Volumes prefix without normalising) and a relative chain
-        symlink(format!("{deep}Volumes/{disk}/b.pdf"), d.join("relative.pdf")).unwrap();
+        symlink(
+            format!("{deep}Volumes/{disk}/b.pdf"),
+            d.join("relative.pdf"),
+        )
+        .unwrap();
         symlink("relative.pdf", d.join("relative-chain.pdf")).unwrap();
         symlink(
             format!("./alt/../{deep}Volumes/./{disk}/c.pdf"),
@@ -973,11 +989,7 @@ pub(crate) mod tests {
         // a chain of 10 links
         symlink(format!("{vol}/long.pdf"), d.join("link0.pdf")).unwrap();
         for i in 1..10 {
-            symlink(
-                format!("link{}.pdf", i - 1),
-                d.join(format!("link{i}.pdf")),
-            )
-            .unwrap();
+            symlink(format!("link{}.pdf", i - 1), d.join(format!("link{i}.pdf"))).unwrap();
         }
         let paths = [
             d.join("chain1.pdf"),
@@ -1018,14 +1030,14 @@ pub(crate) mod tests {
         assert!(failed.is_empty(), "{failed:#?}");
         let mut l = RecentList::default();
         // a loop and a chain over the limit: it ends, not NODISK, the entry stays (no permanent removal)
-        symlink(d.join("dongu2.pdf"), d.join("dongu1.pdf")).unwrap();
-        symlink(d.join("dongu1.pdf"), d.join("dongu2.pdf")).unwrap();
+        symlink(d.join("loop2.pdf"), d.join("loop1.pdf")).unwrap();
+        symlink(d.join("loop1.pdf"), d.join("loop2.pdf")).unwrap();
         symlink(format!("{vol}/very-long.pdf"), d.join("u0.pdf")).unwrap();
         for i in 1..=SYMLINK_LIMIT + 5 {
             symlink(format!("u{}.pdf", i - 1), d.join(format!("u{i}.pdf"))).unwrap();
         }
         for y in [
-            d.join("dongu1.pdf"),
+            d.join("loop1.pdf"),
             d.join(format!("u{}.pdf", SYMLINK_LIMIT + 5)),
         ] {
             let id = l.add(make_entry(&Unresolvable, &y, "x.pdf", "pdf", 1));
@@ -1063,8 +1075,8 @@ pub(crate) mod tests {
             y
         };
         let u = || uuid::Uuid::new_v4().to_string();
-        let artik1 = old(&format!(".projects.json.{}.temp", u()));
-        let artik2 = old(&format!(".recent-files.json.{}.temp", u()));
+        let leftover1 = old(&format!(".projects.json.{}.temp", u()));
+        let leftover2 = old(&format!(".recent-files.json.{}.temp", u()));
         let fresh = d.join(format!(".projects.json.{}.temp", u()));
         fs::write(&fresh, "{}").unwrap();
         let without_pattern = old(".hidden.temp");
@@ -1078,7 +1090,7 @@ pub(crate) mod tests {
         let n = remove_leftover_temps(&d, Duration::from_secs(60));
         assert_eq!(n, 2, "two old leftovers removed");
         assert!(
-            !artik1.exists() && !artik2.exists(),
+            !leftover1.exists() && !leftover2.exists(),
             "old leftovers removed"
         );
         for rest in [
@@ -1091,7 +1103,10 @@ pub(crate) mod tests {
         ] {
             assert!(rest.exists(), "must not be touched: {}", rest.display());
         }
-        assert!(fs::symlink_metadata(&bag).is_ok(), "the link was not touched");
+        assert!(
+            fs::symlink_metadata(&bag).is_ok(),
+            "the link was not touched"
+        );
         assert_eq!(
             remove_leftover_temps(&d.join("none"), Duration::from_secs(60)),
             0,
@@ -1476,7 +1491,10 @@ pub(crate) mod tests {
         let source = include_str!("recent.rs");
         let body = &source[source.find("pub fn write_atomic").unwrap()..];
         let body = &body[..body.find("\n}\n").unwrap()];
-        assert!(body.contains(".sync_all()"), "no sync_all before the rename");
+        assert!(
+            body.contains(".sync_all()"),
+            "no sync_all before the rename"
+        );
         fs::remove_dir_all(&d).unwrap();
     }
 
@@ -1516,14 +1534,14 @@ pub(crate) mod tests {
         assert_eq!(l.entries[0].name, "Mavi Pusula.epub");
         assert_eq!(l.entries[0].kind, "epub");
         assert!(l.entries[0].bookmark.is_some());
-        assert_eq!(l.entries[1].name, "Çiğdemköy & Ekler.pdf");  // turkish-ok: Turkish test text (UTF-8 names)
+        assert_eq!(l.entries[1].name, "Çiğdemköy & Ekler.pdf"); // turkish-ok: Turkish test text (UTF-8 names)
         assert_eq!(
             l.entries[1].bookmark, None,
             "an old entry without the bookmark field"
         );
         let summary = serde_json::to_string(&l.summaries()).unwrap();
         assert!(
-            summary.contains("Çiğdemköy & Ekler.pdf") && !summary.contains("/Users/"),  // turkish-ok: Turkish test text (UTF-8 names)
+            summary.contains("Çiğdemköy & Ekler.pdf") && !summary.contains("/Users/"), // turkish-ok: Turkish test text (UTF-8 names)
             "{summary}"
         );
     }

@@ -224,7 +224,7 @@ test('zip (.epub.zip): cases where the prefix is kept (container at the root, tw
   assert.equal(two.rootPrefix(), '');
   assert.equal(two.has('META-INF/container.xml'), false);
   // a file at the root outside the prefix
-  const rootFile = Z.read(await prefixedZip('A.epub/', [{ name: 'okubeni.txt', data: 'x' }]));
+  const rootFile = Z.read(await prefixedZip('A.epub/', [{ name: 'readme.txt', data: 'x' }]));
   assert.equal(rootFile.rootPrefix(), '');
   // one folder but no container inside
   const noContainer = Z.read(U.makeZip([{ name: 'A/mimetype', data: 'application/epub+zip' }, { name: 'A/OEBPS/b.xhtml', data: '<x/>' }]));

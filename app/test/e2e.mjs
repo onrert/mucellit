@@ -1014,7 +1014,7 @@ async function confirmFlow(page, address, iz, label) {
     iz.confirmRed = false;
     const afterA = await readStorage(page);
     check(O, iz.confirms.length === 1 && isDeepStrictEqual(afterA, once) && (await stepCount()) === stepOnce,
-      `${label}: ${is.name}: native confirm "no" → data unchanged`, `confirmation penceresi ${iz.confirms.length}, projects ${afterA && afterA.projects.length}`);
+      `${label}: ${is.name}: native confirm "no" → data unchanged`, `confirm dialogs ${iz.confirms.length}, projects ${afterA && afterA.projects.length}`);
     // (b) like the Tauri dialog plug-in: confirm returns Promise<false>
     await asyncConfirm(false);
     await is.trigger();
@@ -1041,7 +1041,7 @@ async function confirmFlow(page, address, iz, label) {
   await page.setInputFiles('#json-import', backup2);
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 2, null, { timeout: 10000 }).catch(() => {});
   const importData = await readStorage(page);
-  check(O, iz.confirms.length === 1 && isDeepStrictEqual(importData, first), `${label}: Import: native confirm "yes" → the data changed with the backup`, `confirmation penceresi ${iz.confirms.length}, projects ${importData.projects.length}`);
+  check(O, iz.confirms.length === 1 && isDeepStrictEqual(importData, first), `${label}: Import: native confirm "yes" → the data changed with the backup`, `confirm dialogs ${iz.confirms.length}, projects ${importData.projects.length}`);
 
   // D9: Remove step "yes" (a confirm returning a Promise, Tauri-like) → the first step of the selected project is removed
   const stepBook = await page.textContent('#book-detail h2');
@@ -1063,7 +1063,7 @@ async function confirmFlow(page, address, iz, label) {
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 0, null, { timeout: 10000 }).catch(() => {});
   const clean = await readStorage(page);
   check('confirmation', iz.confirms.length === 1 && (!clean || clean.projects.length === 0) && (await page.locator('#book-list li').count()) === 0,
-    `${label}: Clear all: native confirm "yes" → all projects removed`, `confirmation penceresi ${iz.confirms.length}, projects ${clean ? clean.projects.length : 0}`);
+    `${label}: Clear all: native confirm "yes" → all projects removed`, `confirm dialogs ${iz.confirms.length}, projects ${clean ? clean.projects.length : 0}`);
   await fsp.rm(dirname(backupPath), { recursive: true, force: true });
 }
 
@@ -1232,7 +1232,7 @@ async function m2EpubZipFlow(page, address, label) {
 
   // faulty: two top folders → the prefix is not dropped → E2 (no container); 0 cards, download disabled
   await freshPage(page, address);
-  const two = await prefixedEpubZip(U, tr, 'A.epub/', [{ name: 'B/okubeni.txt', data: 'x' }]);
+  const two = await prefixedEpubZip(U, tr, 'A.epub/', [{ name: 'B/readme.txt', data: 'x' }]);
   const r = await pickEpub(page, 'two-folders.epub.zip', two);
   check('file', r.notice.includes(E_MESSAGE.E2) && r.card === 0 && await page.isDisabled('#export-transfer'),
     `${label}: .epub.zip with two top folders: E2 Turkish message, 0 cards, download disabled`, r.notice);

@@ -40,7 +40,7 @@ test('validate: accepts a valid backup, rejects faulty backups', () => {
     { version: 2, projects: [{ id: 'x', name: 'a', bindingType: 'single', steps: [{ id: 'a', name: 'b', done: 'yes' }] }] },
     { version: 2, projects: [{ id: 'x', name: 'a', bindingType: 'single', steps: [] }, { id: 'x', name: 'b', bindingType: 'single', steps: [] }] }
   ];
-  bad.forEach((v, i) => assert.throws(() => m.validate(v), Error, 'faulty backup ' + i + ' reddedilmeli'));
+  bad.forEach((v, i) => assert.throws(() => m.validate(v), Error, 'faulty backup ' + i + ' must be rejected'));
 });
 
 // ---- D10: import validation ----

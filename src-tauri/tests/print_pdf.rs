@@ -1,18 +1,19 @@
-//! S9 ölçümü: uygulamanın gerçek baskı yolu (`pdf_ac` → `baski_ayari` → `print_info_kur` →
-//! `baski_islemi`) panel göstermeden PDF'e "basılır" (`NSPrintSaveJob` + `NSPrintJobSavingURL`); çıktı girdiyle
-//! karşılaştırılır: sayfa sayısı, her sayfanın ölçüsü ±0,5 mm, 1. sayfada ölçek (ilk–son karakter uzaklığı, ±%0,2) ve
-//! kayma (ilk karakterin sayfa köşesine göre yeri, ±0,5 mm). Kâğıtlar: A4 yatay, A5 dikey, 320 × 220 mm (standart dışı).
+//! S9 measurement: the app's real print path (`open_pdf` → `print_settings` → `setup_print_info` →
+//! `print_operation`) "prints" to a PDF without showing a panel (`NSPrintSaveJob` + `NSPrintJobSavingURL`); the output is
+//! compared with the input: page count, the size of every page ±0.5 mm, the scale on page 1 (distance between the first
+//! and last character, ±0.2%) and the shift (the place of the first character from the page corner, ±0.5 mm). Papers:
+//! A4 landscape, A5 portrait, 320 × 220 mm (non-standard).
 //!
-//! Bu Mac'te yazıcı olmasa da çalışır (AppKit'in "yazıcı yok" kâğıt biçimi; `imageablePageBounds` raporlanır).
-//! Baskı işlemi ana iş parçacığı ister: test `harness = false` ile kendi `main`'inde koşar (Cargo.toml `[[test]]`).
+//! Works without a printer on this Mac too (AppKit's "no printer" paper format; `imageablePageBounds` is reported).
+//! The print operation needs the main thread: the test runs in its own `main` with `harness = false` (Cargo.toml `[[test]]`).
 //!
-//! Ortam: `KC_BASKI_KLASOR` girdi/çıktı PDF'lerinin klasörü (öntanımlı `CARGO_TARGET_TMPDIR/baski-pdf`);
-//! `KC_PDF_OLCEK` verilirse her çifti o araçla da ölçer (`pdf-olcek <girdi> <cikti>`, çıkış 0 = GEÇTİ) ve sonucu
-//! testin sonucuna katar. Güvenlik: iş `NSPrintSaveJob` değilse baskı başlatılmaz (gerçek yazıcıya gitmesin).
+//! Environment: `MC_PRINT_DIR` the folder of the input/output PDFs (default `CARGO_TARGET_TMPDIR/printing-pdf`);
+//! with `MC_PDF_MEASURE` every pair is measured with that tool too (`<tool> <input> <output>`, exit 0 = PASS) and the
+//! result is added to the test result. Safety: when the job is not `NSPrintSaveJob` no print starts (it must not reach a real printer).
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
-    println!("printing_pdf: yalnız macOS (atlandı)");
+    println!("printing_pdf: macOS only (skipped)");
 }
 
 #[cfg(target_os = "macos")]
@@ -37,11 +38,11 @@ mod mac {
     const CREEP_TOL_MM: f64 = 0.5;
     const SCALE_TOL: f64 = 0.002;
 
-    /// Metinli test PDF'i: her sayfada sol üstte "Mücellit <n>", sağ altta "SON" (Helvetica, gömülü değil).
+    /// A test PDF with text: "Mücellit <n>" at the top left of every page, "LAST" at the bottom right (Helvetica, not embedded).
     pub fn with_text_pdf(width: f64, height: f64, page: usize) -> Vec<u8> {
         let mut objects = vec![
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
-            String::new(), // sayfalar (çocuk listesi aşağıda)
+            String::new(), // pages (the child list below)
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
                 .to_string(),
         ];
@@ -91,30 +92,30 @@ mod mac {
         s.into_bytes()
     }
 
-    /// Uygulamanın baskı yolunu panelsiz, PDF'e kaydederek çalıştırır. Kâğıt ve yazdırılabilir alan döner.
+    /// Runs the app's print path without a panel, saving to a PDF. Returns the paper and the printable area.
     fn print_to_pdf(
         mtm: MainThreadMarker,
         bytes: &[u8],
         output: &Path,
     ) -> Result<(String, String), String> {
-        let (document, g, y) = printing::pdf_ac(bytes.to_vec())?;
+        let (document, g, y) = printing::open_pdf(bytes.to_vec())?;
         let a = print_settings(g, y)?;
         let info: Retained<NSPrintInfo> = printing::setup_print_info(&a);
         info.setJobDisposition(unsafe { NSPrintSaveJob });
-        let url = NSURL::from_file_path(output).ok_or("çıktı adresi kurulamadı")?;
+        let url = NSURL::from_file_path(output).ok_or("the output URL could not be set up")?;
         unsafe {
             let dictionary = info.dictionary();
             let value: &AnyObject = &url;
             dictionary.insert(NSPrintJobSavingURL, value);
         }
-        // Güvenlik: yalnız dosyaya kaydetme işi başlatılır.
+        // Safety: only a save-to-file job is started.
         if info.jobDisposition().to_string() != unsafe { NSPrintSaveJob }.to_string() {
-            return Err("iş NSPrintSaveJob değil: baskı başlatılmadı".into());
+            return Err("the job is not NSPrintSaveJob: no print started".into());
         }
         let k = info.paperSize();
         let ib = info.imageablePageBounds();
         let info_text = format!(
-            "NSPrintInfo kâğıt {:.2} × {:.2} pt, margin left {:.1} sağ {:.1} üst {:.1} alt {:.1}, ortalı {}/{}",
+            "NSPrintInfo paper {:.2} × {:.2} pt, margin left {:.1} right {:.1} top {:.1} bottom {:.1}, centred {}/{}",
             k.width,
             k.height,
             info.leftMargin(),
@@ -125,7 +126,7 @@ mod mac {
             info.isVerticallyCentered()
         );
         let field = format!(
-            "yazdırılabilir field x {:.1} y {:.1} g {:.1} y {:.1} (donanım kenarı left {:.1} sağ {:.1} alt {:.1} üst {:.1})",
+            "printable field x {:.1} y {:.1} w {:.1} h {:.1} (hardware margin left {:.1} right {:.1} bottom {:.1} top {:.1})",
             ib.origin.x,
             ib.origin.y,
             ib.size.width,
@@ -136,7 +137,7 @@ mod mac {
             k.height - ib.origin.y - ib.size.height
         );
         let operation = printing::print_operation(&document, &info, &a, mtm)
-            .ok_or("PDFKit baskı işlemi kurulamadı")?;
+            .ok_or("the PDFKit print operation could not be set up")?;
         operation.setShowsPrintPanel(false);
         operation.setShowsProgressPanel(false);
         if !operation.runOperation() {
@@ -155,7 +156,7 @@ mod mac {
         }
     }
 
-    /// Sınır kutusu boş olmayan karakterlerin merkezleri (sayfa köşesine göre, pt), dizinle.
+    /// The centres of the characters with a non-empty bounding box (from the page corner, pt), with their index.
     fn chars(p: &PDFPage) -> (String, Vec<Option<NSPoint>>) {
         let text = unsafe { p.string() }
             .map(|s| s.to_string())
@@ -178,14 +179,14 @@ mod mac {
 
     fn open_document(path: &Path) -> Result<Retained<PDFDocument>, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        Ok(printing::pdf_ac(bytes)?.0)
+        Ok(printing::open_pdf(bytes)?.0)
     }
 
-    /// Girdi ve çıktıyı karşılaştırır; satırlar ve geçti mi.
+    /// Compares the input and the output; the lines and whether it passed.
     pub fn compare(input: &Path, output: &Path) -> Result<(Vec<String>, bool), String> {
         let (gb, cb) = (open_document(input)?, open_document(output)?);
         let (gn, cn) = unsafe { (gb.pageCount(), cb.pageCount()) };
-        let mut line = vec![format!("sayfa: girdi {gn}, çıktı {cn}")];
+        let mut line = vec![format!("pages: input {gn}, output {cn}")];
         let mut done = gn == cn;
         for i in 0..gn.min(cn) {
             let (gp, cp) = unsafe { (gb.pageAtIndex(i).unwrap(), cb.pageAtIndex(i).unwrap()) };
@@ -194,9 +195,9 @@ mod mac {
             done &= good;
             if i == 0 || !good {
                 line.push(format!(
-                    "s.{}: input {gg:.2} × {gy:.2} mm, çıktı {cg:.2} × {cy:.2} mm → {}",
+                    "p.{}: input {gg:.2} × {gy:.2} mm, output {cg:.2} × {cy:.2} mm → {}",
                     i + 1,
-                    if good { "GEÇTİ (±0,5 mm)" } else { "FAIL" }
+                    if good { "PASS (±0.5 mm)" } else { "FAIL" }
                 ));
             }
         }
@@ -205,7 +206,7 @@ mod mac {
         let plain = |s: &str| s.split_whitespace().collect::<String>();
         if plain(&gm).is_empty() || plain(&gm) != plain(&cm) || gk.len() != ck.len() {
             return Err(format!(
-                "ölçek ölçülemedi: 1. page text farklı ya da none ({gm:?} / {cm:?})"
+                "scale could not be measured: the text of page 1 differs or is missing ({gm:?} / {cm:?})"
             ));
         }
         let common: Vec<(NSPoint, NSPoint)> = gk
@@ -214,27 +215,23 @@ mod mac {
             .filter_map(|(a, b)| Some(((*a)?, (*b)?)))
             .collect();
         let (Some(first), Some(last)) = (common.first(), common.last()) else {
-            return Err("ölçek ölçülemedi: ölçülebilir karakter yok".into());
+            return Err("scale could not be measured: no measurable character".into());
         };
         let far = |a: NSPoint, b: NSPoint| (b.x - a.x).hypot(b.y - a.y);
         let (dg, dc) = (far(first.0, last.0), far(first.1, last.1));
         if dg < 10.0 * MM {
-            return Err("ölçek ölçülemedi: metin çok dar".into());
+            return Err("scale could not be measured: the text is too narrow".into());
         }
         let scaling = dc / dg;
         let creep = ((first.1.x - first.0.x) / MM, (first.1.y - first.0.y) / MM);
         let scale_good = (scaling - 1.0).abs() <= SCALE_TOL;
         let creep_good = creep.0.abs() <= CREEP_TOL_MM && creep.1.abs() <= CREEP_TOL_MM;
         line.push(format!(
-            "ölçek {scaling:.4} ({}), creep {:.2} / {:.2} mm ({})",
-            if scale_good { "GEÇTİ ±%0,2" } else { "FAIL" },
+            "scale {scaling:.4} ({}), shift {:.2} / {:.2} mm ({})",
+            if scale_good { "PASS ±0.2%" } else { "FAIL" },
             creep.0,
             creep.1,
-            if creep_good {
-                "GEÇTİ ±0,5 mm"
-            } else {
-                "FAIL"
-            }
+            if creep_good { "PASS ±0.5 mm" } else { "FAIL" }
         ));
         done &= scale_good && creep_good;
         Ok((line, done))
@@ -246,8 +243,8 @@ mod mac {
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("printing-pdf"))
     }
 
-    /// Ölçücünün kendisi kusurlu girdiyle sınanır (aynı → geçer; kaymış, ölçekli, eksik sayfa, farklı boy → kalır;
-    /// metinsiz/bozuk → ölçülemez). Ölçücü yanlışsa baskı ölçümüne güvenilmez.
+    /// The measurer itself is tested with faulty input (the same → passes; shifted, scaled, a missing page, a different
+    /// size → fails; without text/broken → cannot be measured). When the measurer is wrong the print measurement cannot be trusted.
     fn measurer_test(d: &Path) -> Result<(), String> {
         let (g, y) = (297.0 * MM, 210.0 * MM);
         let write = |name: &str, b: &[u8]| -> PathBuf {
@@ -255,9 +252,9 @@ mod mac {
             std::fs::write(&p, b).unwrap();
             p
         };
-        let input = write("sina-girdi.pdf", &with_text_pdf(g, y, 2));
+        let input = write("probe-input.pdf", &with_text_pdf(g, y, 2));
         let shift = |dx: f64, scaling: f64, width: f64, height: f64, page: usize| -> Vec<u8> {
-            // aynı içerik, dönüşümlü (cm): önce ölçek, sonra öteleme
+            // the same content, transformed (cm): first the scale, then the translation
             let s = String::from_utf8(with_text_pdf(g, y, page)).unwrap();
             let s = s.replace(
                 "BT /F1",
@@ -268,36 +265,36 @@ mod mac {
                 &format!("[0 0 {g} {y}]"),
                 &format!("[0 0 {width} {height}]"),
             );
-            // /Length ve xref eskidi: PDFKit onarır (sınama girdisi; ölçülen bayt değil)
+            // /Length and xref are stale: PDFKit repairs them (a probe input; not the measured bytes)
             s.into_bytes()
         };
         let states: Vec<(&str, Vec<u8>, Option<bool>)> = vec![
-            ("aynı", with_text_pdf(g, y, 2), Some(true)),
-            ("2 mm kaymış", shift(2.0 * MM, 1.0, g, y, 2), Some(false)),
-            ("0,4 mm kaymış (sınır içi)", shift(0.4 * MM, 1.0, g, y, 2), Some(true)),
-            ("%97 ölçek", shift(0.0, 0.97, g, y, 2), Some(false)),
+            ("same", with_text_pdf(g, y, 2), Some(true)),
+            ("shifted 2 mm", shift(2.0 * MM, 1.0, g, y, 2), Some(false)),
+            ("shifted 0.4 mm (within the limit)", shift(0.4 * MM, 1.0, g, y, 2), Some(true)),
+            ("97% scale", shift(0.0, 0.97, g, y, 2), Some(false)),
             ("missing page", with_text_pdf(g, y, 1), Some(false)),
             ("297 × 212 mm", shift(0.0, 1.0, g, 212.0 * MM, 2), Some(false)),
             ("withoutText", b"%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 841.89 595.28] >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n".to_vec(), None),
-            ("boş", Vec::new(), None),
+            ("empty", Vec::new(), None),
             ("skeleton", b"%PDF-1.4\n%%EOF\n".to_vec(), None),
         ];
         for (name, b, expected) in states {
-            let c = write("sina-cikti.pdf", &b);
+            let c = write("probe-output.pdf", &b);
             let result = compare(&input, &c).map(|(_, t)| t).ok();
             if result != expected {
                 return Err(format!(
-                    "ölçücü sınaması: {name} → {result:?}, expected {expected:?}"
+                    "measurer test: {name} → {result:?}, expected {expected:?}"
                 ));
             }
-            println!("ölçücü sınaması: {name} → {result:?} (expected)");
+            println!("measurer test: {name} → {result:?} (expected)");
         }
         Ok(())
     }
 
     pub fn run() -> i32 {
         let Some(mtm) = MainThreadMarker::new() else {
-            eprintln!("printing_pdf: ana iş parçacığında değil");
+            eprintln!("printing_pdf: not on the main thread");
             return 1;
         };
         let d = folder();
@@ -316,19 +313,19 @@ mod mac {
         .into_iter()
         .map(|(name, g, y)| (name.to_string(), with_text_pdf(g, y, 3)))
         .collect();
-        // İsteğe bağlı: uygulamanın ürettiği gerçek bir dizilmiş PDF (ör. elle S9 girdisi) aynı yoldan.
+        // Optional: a real imposed PDF made by the app (e.g. a manual S9 input) through the same path.
         if let Some(ek) = std::env::var_os("MC_PRINT_EXTRA") {
             match std::fs::read(&ek) {
                 Ok(b) => papers.push(("ek".to_string(), b)),
                 Err(e) => {
-                    println!("MC_PRINT_EXTRA okunamadı: {e}");
+                    println!("MC_PRINT_EXTRA could not be read: {e}");
                     rest += 1;
                 }
             }
         }
         for (name, bytes) in &papers {
-            let input = d.join(format!("{name}-girdi.pdf"));
-            let output = d.join(format!("{name}-baski.pdf"));
+            let input = d.join(format!("{name}-input.pdf"));
+            let output = d.join(format!("{name}-print.pdf"));
             let _ = std::fs::remove_file(&output);
             std::fs::write(&input, bytes).unwrap();
             println!("== {name}");
@@ -341,13 +338,13 @@ mod mac {
                     for s in rows {
                         println!("{s}");
                     }
-                    println!("SONUÇ ({name}): {}", if done { "GEÇTİ" } else { "FAIL" });
+                    println!("RESULT ({name}): {}", if done { "PASS" } else { "FAIL" });
                     if !done {
                         rest += 1;
                     }
                 }
                 Err(e) => {
-                    println!("SONUÇ ({name}): FAIL ({e})");
+                    println!("RESULT ({name}): FAIL ({e})");
                     rest += 1;
                 }
             }
@@ -363,15 +360,15 @@ mod mac {
                         }
                     }
                     Err(e) => {
-                        println!("pdf-scaling çalıştırılamadı: {e}");
+                        println!("the measuring tool could not be run: {e}");
                         rest += 1;
                     }
                 }
             }
         }
-        println!("girdi/çıktı: {}", d.display());
+        println!("input/output: {}", d.display());
         if rest == 0 {
-            println!("printing_pdf: {} kâğıt GEÇTİ", papers.len());
+            println!("printing_pdf: {} papers PASS", papers.len());
             0
         } else {
             println!("printing_pdf: {rest} FAIL");

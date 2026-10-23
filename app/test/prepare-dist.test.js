@@ -166,9 +166,9 @@ test('O3 faulty: a target outside the repository (absolute path, leaving with ..
 test('O3 faulty: the target is a file or the repository root → exit 1', () => {
   const repo = fakeRepo();
   const k = skeleton(repo);
-  write(repo, 'README.md', 'okubeni');
+  write(repo, 'README.md', 'readme');
   assert.equal(run(repo, '--source', k, '--target', path.join(repo, 'README.md')).code, 1);
-  assert.equal(fs.readFileSync(path.join(repo, 'README.md'), 'utf8'), 'okubeni');
+  assert.equal(fs.readFileSync(path.join(repo, 'README.md'), 'utf8'), 'readme');
   assert.equal(run(repo, '--source', k, '--target', repo).code, 1);
   assert.ok(fs.existsSync(path.join(repo, 'tools', 'prepare-dist.mjs')));
 });

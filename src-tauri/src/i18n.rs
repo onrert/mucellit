@@ -1,17 +1,17 @@
-//! Arayüz dili, Rust tarafı: menüler, Aç/Kaydet pencere başlıkları ve kullanıcıya giden hata metinleri.
+//! Interface language, Rust side: menus, Open/Save dialog titles and the error texts that go to the user.
 //!
-//! Sözlükler JS ile ortaktır: `app/i18n/<kod>.js`, iki `/*JSON*/` işareti arasında katı JSON (bkz. app/js/i18n.js).
-//! `build.rs` klasördeki her sözlüğü bulur ve derlemede gömer; yeni dil için Rust'ta kod değişmez.
-//! Eksik anahtar İngilizceye (`en`), o da yoksa anahtarın kendisine düşer (testler eksik anahtarı yakalar).
+//! The dictionaries are shared with JS: `app/i18n/<code>.js`, strict JSON between two `/*JSON*/` markers (see app/js/i18n.js).
+//! `build.rs` finds every dictionary in the folder and embeds it at build time; a new language needs no code change in Rust.
+//! A missing key falls back to English (`en`), and without that to the key itself (the tests catch missing keys).
 //!
-//! Seçim: JS (localStorage) asıl kayıttır; elle seçim ayrıca `app_data_dir/dil.txt`'ye yazılır (WebKit verisi
-//! silinirse JS `dil_oku` ile geri alır). Açılışta menü JS'ten önce kurulur: dil.txt varsa o, yoksa sistem dili.
-//! JS açılınca `dil_ayarla` ile kendi kararını bildirir.
+//! Choice: JS (localStorage) is the main record; a manual choice is also written to `app_data_dir/language.txt` (when the
+//! WebKit data is removed JS takes it back with `read_language`). At start-up the menu is built before JS: language.txt when it exists, otherwise the system language.
+//! When JS opens it reports its own decision with `set_language`.
 //!
-//! Sistem dili: Apple kuralı — macOS'un tercih edilen diller listesinde
-//! (`NSLocale.preferredLanguages`) birincil alt etiketi desteklenen İLK dil; hiçbiri yoksa en. JS'e `dil_oku` ile
-//! `sistem` olarak gider; menüdeki "Sistem dili (X)" ile seçicideki aynı kaynaktan (`sistem_kodu`) gelir.
-//! Parametreler tek geçişte doldurulur (`doldur`; JS ile aynı). Ortak test vektörleri:
+//! System language: the Apple rule — in the preferred languages list of macOS
+//! (`NSLocale.preferredLanguages`) the FIRST language whose primary subtag is supported; en when there is none. It goes to
+//! JS with `read_language` as `system`; the "System Language (X)" item of the menu and the picker come from the same source (`system_code`).
+//! Parameters are filled in a single pass (`fill`; the same as JS). Shared test vectors:
 //! `app/test/fixtures/i18n-vectors.json`.
 
 use serde::Serialize;
@@ -23,16 +23,16 @@ use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 use tauri::{AppHandle, Manager, Runtime};
 
-// `pub const SOZLUK_DOSYALARI: &[(&str, &str)]` — (kod, dosya metni); build.rs üretir.
+// `pub const DICTIONARY_FILES: &[(&str, &str)]` — (code, file text); written by build.rs.
 include!(concat!(env!("OUT_DIR"), "/dictionaries.rs"));
 
-/// Ana (öntanımlı, eksik anahtarda düşülen) dil.
+/// The main language (the default, the fallback for a missing key).
 pub const MAIN: &str = "en";
-/// Elle seçimin yedeği (`app_data_dir` içinde): "en" | "tr" …; yoksa sistem dili.
+/// The backup of the manual choice (inside `app_data_dir`): "en" | "tr" …; the system language when missing.
 pub const CHOICE_FILE: &str = "language.txt";
 const MARKER: &str = "/*JSON*/";
 
-/// Sözlük dosyası metninden JSON gövdesini (iki işaret arası) ayrıştırır.
+/// Parses the JSON body (between the two markers) from the text of a dictionary file.
 pub fn extract_json(text: &str) -> Result<Map<String, Value>, String> {
     let a = text
         .find(MARKER)
@@ -41,7 +41,7 @@ pub fn extract_json(text: &str) -> Result<Map<String, Value>, String> {
         .rfind(MARKER)
         .filter(|b| *b > a)
         .ok_or("dictionary: missing closing marker")?;
-    // Geliştirici hatası (sözlük dosyası bozuk); kullanıcıya gitmez, testler yakalar.
+    // A developer error (a broken dictionary file); it does not reach the user, the tests catch it.
     match serde_json::from_str::<Value>(&text[a + MARKER.len()..b]) {
         Ok(Value::Object(m)) => Ok(m),
         Ok(_) => Err("dictionary: body must be a JSON object".into()),
@@ -57,7 +57,7 @@ fn dictionaries() -> &'static BTreeMap<String, Map<String, Value>> {
             .filter_map(|(code, text)| match extract_json(text) {
                 Ok(m) => Some((code.to_string(), m)),
                 Err(e) => {
-                    eprintln!("sözlük okunamadı ({code}): {e}");
+                    eprintln!("dictionary could not be read ({code}): {e}");
                     None
                 }
             })
@@ -65,7 +65,7 @@ fn dictionaries() -> &'static BTreeMap<String, Map<String, Value>> {
     })
 }
 
-/// Desteklenen diller (en önce).
+/// The supported languages (en first).
 pub fn languages() -> Vec<String> {
     let mut l: Vec<String> = dictionaries().keys().cloned().collect();
     l.sort_by_key(|k| (k != MAIN, k.clone()));
@@ -76,7 +76,7 @@ pub fn is_supported(code: &str) -> bool {
     dictionaries().contains_key(code)
 }
 
-/// Dilin kendi adı (`_ad`: "English", "Türkçe").
+/// The language's own name (`_name`: "English", "Türkçe").  // turkish-ok: expected Turkish UI text
 pub fn name(code: &str) -> String {
     dictionaries()
         .get(code)
@@ -86,7 +86,7 @@ pub fn name(code: &str) -> String {
         .to_string()
 }
 
-/// Seçili dil ve elle seçim (None = sistem dili).
+/// The chosen language and the manual choice (None = the system language).
 struct LanguageState {
     code: String,
     choice: Option<String>,
@@ -102,7 +102,7 @@ fn state() -> &'static RwLock<LanguageState> {
     })
 }
 
-/// Şu anki dil.
+/// The current language.
 pub fn code() -> String {
     state()
         .read()
@@ -110,12 +110,12 @@ pub fn code() -> String {
         .unwrap_or_else(|_| MAIN.into())
 }
 
-/// Şu anki elle seçim ("sistem" ise None).
+/// The current manual choice (None when "system").
 pub fn choice() -> Option<String> {
     state().read().ok().and_then(|d| d.choice.clone())
 }
 
-/// Dili ve seçimi ayarlar (desteklenmeyen kod → en). Değiştiyse true.
+/// Sets the language and the choice (an unsupported code → en). true when it changed.
 pub fn set(code: &str, choice: Option<&str>) -> bool {
     let code = if is_supported(code) { code } else { MAIN };
     let choice = choice.filter(|s| is_supported(s)).map(str::to_string);
@@ -135,26 +135,26 @@ fn raw<'a>(code: &str, key: &str) -> Option<&'a Value> {
     dictionaries().get(code).and_then(|s| s.get(key))
 }
 
-/// Metin (verilen dilde): eksikse en'e, o da yoksa anahtara düşer. Parametre `{ad}` biçiminde; tekil/çoğul
-/// nesnede `n` parametresi 1 ise "one", değilse "other".
+/// Text (in the given language): falls back to en when missing, and to the key without that. Parameters in the
+/// `{name}` form; in a singular/plural object "one" when the `n` parameter is 1, otherwise "other".
 pub fn text_in(code: &str, key: &str, p: &[(&str, &str)]) -> String {
     let value = raw(code, key).or_else(|| raw(MAIN, key));
-    let ham_metin = match value {
+    let raw_text = match value {
         Some(Value::String(s)) => s.as_str(),
         Some(Value::Object(m)) => {
-            let bir = p.iter().any(|(a, d)| *a == "n" && *d == "1");
-            m.get(if bir { "one" } else { "other" })
+            let is_one = p.iter().any(|(a, d)| *a == "n" && *d == "1");
+            m.get(if is_one { "one" } else { "other" })
                 .or_else(|| m.get("other"))
                 .and_then(Value::as_str)
                 .unwrap_or(key)
         }
         _ => key,
     };
-    fill(ham_metin, p)
+    fill(raw_text, p)
 }
 
-/// `{ad}` parametrelerini TEK geçişte doldurur: yerine konan değer yeniden taranmaz (değer içindeki `{x}` aynen
-/// kalır), parametre sırası önemsizdir; bilinmeyen parametre `{ad}` olarak kalır (JS `doldur` ile aynı).
+/// Fills the `{name}` parameters in ONE pass: a value put in is not scanned again (a `{x}` inside a value stays as it
+/// is), the parameter order does not matter; an unknown parameter stays as `{name}` (the same as JS `fill`).
 pub fn fill(text: &str, p: &[(&str, &str)]) -> String {
     let mut s = String::with_capacity(text.len());
     let mut rest = text;
@@ -183,20 +183,20 @@ pub fn fill(text: &str, p: &[(&str, &str)]) -> String {
     s
 }
 
-/// Metin (şu anki dilde).
+/// Text (in the current language).
 pub fn text(key: &str, p: &[(&str, &str)]) -> String {
     text_in(&code(), key, p)
 }
 
-/// Testlerde dilden bağımsız karşılaştırma: metnin ilk parametreye (`{`) kadarki sabit başı (şu anki dilde).
+/// For language independent comparisons in the tests: the fixed start of the text up to the first parameter (`{`) (in the current language).
 #[cfg(test)]
 pub fn prefix_of(key: &str) -> String {
     let m = text(key, &[]);
     m.split('{').next().unwrap_or("").to_string()
 }
 
-/// Tercih edilen dil listesinden arayüz dili, Apple kuralı: birincil alt etiketi (bölge/yazı kodu atılır)
-/// desteklenen İLK dil; hiçbiri yoksa en (JS `sistemDili` ile aynı kural, ortak vektörler).
+/// The interface language from the preferred languages list, the Apple rule: the FIRST language whose primary subtag
+/// (region/script code dropped) is supported; en when there is none (the same rule as JS `systemLanguage`, shared vectors).
 pub fn system_language(list: &[String]) -> String {
     list.iter()
         .filter(|s| !s.is_empty())
@@ -211,15 +211,15 @@ pub fn system_language(list: &[String]) -> String {
         .unwrap_or_else(|| MAIN.into())
 }
 
-/// Bu Mac'in sistem dili (menü, `dil_oku` ve açılış aynı kaynaktan).
+/// The system language of this Mac (the menu, `read_language` and the start-up from the same source).
 pub fn system_code() -> String {
     system_language(&system_preferences())
 }
 
-/// sayfa betiklerinden önce çalışan ön betik (`WebviewWindowBuilder::initialization_script`): JS `i18n.js`
-/// ilk karede de menüyle aynı sistem dilini kullanır (WKWebView `navigator.languages` tek dil verebilir; eskiden
-/// açılışta önce tarayıcı dili, `dil_oku` dönünce Rust'ın dili görünüyordu). Değer JSON olarak kaçışlanır; nesne
-/// dondurulur ve yeniden tanımlanamaz.
+/// The pre-script that runs before the page scripts (`WebviewWindowBuilder::initialization_script`): JS `i18n.js`
+/// uses the same system language as the menu in the first frame too (WKWebView `navigator.languages` may give one
+/// language; in the past at start-up first the browser language showed, then Rust's when `read_language` returned).
+/// The value is escaped as JSON; the object is frozen and cannot be redefined.
 pub fn init_script_for(code: &str) -> String {
     let value = serde_json::json!({ "system": code });
     format!(
@@ -227,18 +227,18 @@ pub fn init_script_for(code: &str) -> String {
     )
 }
 
-/// Bu Mac'in sistem diliyle ön betik (pencere kurulurken bir kez; JS `dil_oku` yine eşitler).
+/// The pre-script with the system language of this Mac (once when the window is set up; JS `read_language` still syncs).
 pub fn init_script() -> String {
     init_script_for(&system_code())
 }
 
-/// Görünüm > Dil menüsündeki "Sistem Dili (X)" öğesinin etiketi (şu anki dilde).
+/// The label of the "System Language (X)" item in the View > Language menu (in the current language).
 pub fn system_label() -> String {
     text("menu.language_system", &[("name", &name(&system_code()))])
 }
 
-/// İşletim sisteminin tercih ettiği diller (macOS: `NSLocale.preferredLanguages`, uygulamaya özel dil ayarı
-/// dahil; başka platform: `LANG`).
+/// The languages the operating system prefers (macOS: `NSLocale.preferredLanguages`, the per-app language setting
+/// included; other platforms: `LANG`).
 pub fn system_preferences() -> Vec<String> {
     #[cfg(target_os = "macos")]
     {
@@ -253,14 +253,14 @@ pub fn system_preferences() -> Vec<String> {
     }
 }
 
-/// Yedeklenmiş elle seçim (yoksa, boşsa ya da desteklenmiyorsa None).
+/// The backed-up manual choice (None when missing, empty or unsupported).
 pub fn read_choice(file: &Path) -> Option<String> {
     let s = fs::read_to_string(file).ok()?;
     let s = s.trim();
     is_supported(s).then(|| s.to_string())
 }
 
-/// Elle seçimi yedekler; None (sistem) dosyayı siler.
+/// Backs up the manual choice; None (system) removes the file.
 pub fn write_choice(file: &Path, choice: Option<&str>) -> io::Result<()> {
     match choice {
         Some(s) => crate::recent::write_atomic(file, format!("{s}\n").as_bytes()),
@@ -275,24 +275,24 @@ fn choice_file<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|d| d.join(CHOICE_FILE))
 }
 
-/// Açılışta (menü kurulmadan önce): yedeklenmiş elle seçim, yoksa sistem dili.
+/// At start-up (before the menu is built): the backed-up manual choice, otherwise the system language.
 pub fn start<R: Runtime>(app: &AppHandle<R>) {
     let choice = choice_file(app).as_deref().and_then(read_choice);
     let code = choice.clone().unwrap_or_else(system_code);
     set(&code, choice.as_deref());
 }
 
-/// JS'e verilen dil bilgisi.
+/// The language information given to JS.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LanguageInfo {
     pub code: String,
-    /// "sistem" | dil kodu
+    /// "system" | a language code
     pub choice: String,
-    /// Sistem dili (Apple kuralı; menüdeki "Sistem dili (X)" ile aynı kaynak). JS "sistem" seçiminde bunu kullanır.
+    /// The system language (the Apple rule; the same source as "System Language (X)" in the menu). JS uses it for the "system" choice.
     pub system: String,
 }
 
-/// Dil bilgisi; `secim`: yedeklenmiş elle seçim (None = sistem).
+/// Language information; `choice`: the backed-up manual choice (None = system).
 pub fn language_info(choice: Option<String>) -> LanguageInfo {
     LanguageInfo {
         code: code(),
@@ -301,15 +301,15 @@ pub fn language_info(choice: Option<String>) -> LanguageInfo {
     }
 }
 
-/// Rust'taki dil, yedeklenmiş elle seçim ve sistem dili.
+/// The language in Rust, the backed-up manual choice and the system language.
 #[tauri::command]
 pub fn read_language<R: Runtime>(app: AppHandle<R>) -> LanguageInfo {
     let choice = choice_file(&app).as_deref().and_then(read_choice);
     language_info(choice)
 }
 
-/// JS'in kararı: `kod` görünen dil, `secim` "sistem" ya da elle seçilen dil. Seçim yedeklenir, dil
-/// değiştiyse menü yeniden kurulur.
+/// The decision of JS: `code` the shown language, `choice` "system" or the manually chosen language. The choice is
+/// backed up; when the language changed the menu is built again.
 #[tauri::command]
 pub fn set_language<R: Runtime>(
     app: AppHandle<R>,
@@ -340,7 +340,7 @@ pub fn set_language<R: Runtime>(
 mod tests {
     use super::*;
 
-    /// ön betik sistem dilini JSON kaçışıyla taşır (kusurlu kod da betiği bozmaz).
+    /// the pre-script carries the system language with JSON escaping (a faulty code does not break the script either).
     #[test]
     fn init_script_carries_system_language_escaped() {
         assert_eq!(
@@ -362,8 +362,8 @@ mod tests {
         assert_eq!(d.first().map(String::as_str), Some("en"), "{d:?}");
         assert!(d.iter().any(|k| k == "tr"), "{d:?}");
         assert_eq!(name("en"), "English");
-        assert_eq!(name("tr"), "Türkçe");
-        // derlemede gömülen dosya sayısı = app/i18n/*.js sayısı (yeni dil kendiliğinden gelir)
+        assert_eq!(name("tr"), "Türkçe"); // turkish-ok: expected Turkish UI text
+                                          // the number of files embedded at build time = the number of app/i18n/*.js (a new language comes on its own)
         let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/i18n");
         let n = fs::read_dir(folder)
             .unwrap()
@@ -373,12 +373,12 @@ mod tests {
             })
             .count();
         assert_eq!(DICTIONARY_FILES.len(), n);
-        assert_eq!(dictionaries().len(), n, "her sözlük ayrıştırıldı");
+        assert_eq!(dictionaries().len(), n, "every dictionary parsed");
     }
 
     #[test]
     fn text_parameters_plurals_and_missing_keys() {
-        assert_eq!(text_in("tr", "menu.file", &[]), "Dosya");
+        assert_eq!(text_in("tr", "menu.file", &[]), "Dosya"); // turkish-ok: expected Turkish UI text
         assert_eq!(text_in("en", "menu.file", &[]), "File");
         assert_eq!(
             text_in("en", "rust.unsupported", &[("name", "a.txt")]),
@@ -386,17 +386,13 @@ mod tests {
         );
         assert_eq!(
             text_in("tr", "rust.unsupported", &[("name", "a.txt")]),
-            "desteklenmeyen dosya: a.txt"
+            "desteklenmeyen dosya: a.txt" // turkish-ok: expected Turkish UI text
         );
-        // eksik anahtar: bilinmeyen dil → en; hiçbir dilde yok → anahtar
+        // missing key: an unknown language → en; in no language → the key
         assert_eq!(text_in("xx", "menu.file", &[]), "File");
         assert_eq!(text_in("tr", "none.such.key", &[]), "none.such.key");
-        assert_eq!(
-            text_in("tr", "_name", &[]),
-            "_name",
-            "üst veri metin değildir"
-        );
-        // tekil/çoğul (en'de nesne, tr'de tek biçim)
+        assert_eq!(text_in("tr", "_name", &[]), "_name", "metadata is not text");
+        // singular/plural (an object in en, one form in tr)
         assert_eq!(
             text_in("en", "impose.selected", &[("n", "1")]),
             "1 page selected."
@@ -407,7 +403,7 @@ mod tests {
         );
         assert_eq!(
             text_in("tr", "impose.selected", &[("n", "3")]),
-            "3 sayfa seçildi."
+            "3 sayfa seçildi." // turkish-ok: expected Turkish UI text
         );
     }
 
@@ -421,11 +417,15 @@ mod tests {
         assert_eq!(
             system_language(&l(&["de-DE", "tr-TR"])),
             "tr",
-            "Apple kuralı: listede desteklenen ilk dil"
+            "Apple rule: the first supported language in the list"
         );
         assert_eq!(system_language(&l(&["de-DE", "fr-FR"])), "en");
         assert_eq!(system_language(&l(&[])), "en");
-        assert_eq!(system_language(&l(&["", "tr"])), "tr", "boş girdi atlanır");
+        assert_eq!(
+            system_language(&l(&["", "tr"])),
+            "tr",
+            "an empty entry is skipped"
+        );
         assert_eq!(system_language(&l(&["kind"])), "en");
     }
 
@@ -433,7 +433,7 @@ mod tests {
     fn choice_file_round_trip_and_faulty_input() {
         let d = std::env::temp_dir().join(format!("mc-i18n-{}", uuid::Uuid::new_v4()));
         let y = d.join(CHOICE_FILE);
-        assert_eq!(read_choice(&y), None, "dosya yok");
+        assert_eq!(read_choice(&y), None, "no file");
         write_choice(&y, Some("tr")).unwrap();
         assert_eq!(read_choice(&y).as_deref(), Some("tr"));
         for bad in ["", "xx", "../tr", "tr tr", "TR"] {
@@ -441,21 +441,24 @@ mod tests {
             assert_eq!(read_choice(&y), None, "{bad:?}");
         }
         fs::write(&y, " en \n").unwrap();
-        assert_eq!(read_choice(&y).as_deref(), Some("en"), "boşluk kırpılır");
+        assert_eq!(read_choice(&y).as_deref(), Some("en"), "spaces are trimmed");
         write_choice(&y, None).unwrap();
-        assert!(!y.exists(), "sistem seçimi dosyayı siler");
+        assert!(!y.exists(), "the system choice removes the file");
         write_choice(&y, None).unwrap();
         fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn extract_json_faulty_dictionary() {
-        assert!(extract_json("{}").is_err(), "işaret yok");
-        assert!(extract_json("/*JSON*/{}").is_err(), "kapanış yok");
-        assert!(extract_json("/*JSON*/[1]/*JSON*/").is_err(), "nesne değil");
+        assert!(extract_json("{}").is_err(), "no markers");
+        assert!(extract_json("/*JSON*/{}").is_err(), "no closing");
+        assert!(
+            extract_json("/*JSON*/[1]/*JSON*/").is_err(),
+            "not an object"
+        );
         assert!(
             extract_json("/*JSON*/{\"a\":}/*JSON*/").is_err(),
-            "bozuk JSON"
+            "broken JSON"
         );
         assert_eq!(
             extract_json("x(/*JSON*/{\"a\":\"b\"}/*JSON*/);").unwrap()["a"],
@@ -463,7 +466,7 @@ mod tests {
         );
     }
 
-    /// JS ile ortak vektörler (app/test/fixtures/i18n-vectors.json; i18n.test.js aynı dosyayı sınar).
+    /// Vectors shared with JS (app/test/fixtures/i18n-vectors.json; i18n.test.js tests the same file).
     fn vectors() -> Value {
         serde_json::from_str(include_str!("../../app/test/fixtures/i18n-vectors.json")).unwrap()
     }
@@ -509,7 +512,7 @@ mod tests {
         assert!(failed.is_empty(), "{failed:#?}");
     }
 
-    /// menüdeki "Sistem dili (X)" ve JS'e giden sistem dili aynı kaynaktan (`sistem_kodu`).
+    /// "System Language (X)" in the menu and the system language that goes to JS come from the same source (`system_code`).
     #[test]
     fn system_language_menu_and_js_share_source() {
         let b = language_info(None);
@@ -524,11 +527,11 @@ mod tests {
         assert_eq!(
             text_in("en", "menu.language_system", &[("name", "English")]),
             "System Language (English)",
-            "menü Title Case"
+            "menu in Title Case"
         );
     }
 
-    /// Rust kaynaklarında `metin("…")` / `metin_dilde(_, "…")` ile kullanılan her anahtar her sözlükte var.
+    /// Every key used in the Rust sources with `text("…")` / `text_in(_, "…")` is in every dictionary.
     #[test]
     fn rust_keys_exist_in_every_dictionary() {
         let sources = [
@@ -542,7 +545,7 @@ mod tests {
         ];
         let mut keys = std::collections::BTreeSet::new();
         for k in sources {
-            // test modülünden önceki kısım (cfg(test) işlevler, ör. `kalip`, dahil)
+            // the part before the test module (cfg(test) functions included)
             let body = k
                 .split("#[cfg(test)]\nmod tests")
                 .next()
@@ -554,11 +557,14 @@ mod tests {
                 keys.insert(part.split('"').next().unwrap().to_string());
             }
         }
-        assert!(keys.len() > 30, "key taraması çalışıyor: {keys:?}");
+        assert!(keys.len() > 30, "the key scan works: {keys:?}");
         for code in languages() {
             let s = &dictionaries()[&code];
             let missing: Vec<_> = keys.iter().filter(|a| !s.contains_key(*a)).collect();
-            assert!(missing.is_empty(), "{code} sözlüğünde eksik: {missing:?}");
+            assert!(
+                missing.is_empty(),
+                "missing in the {code} dictionary: {missing:?}"
+            );
         }
     }
 }

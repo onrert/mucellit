@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 fn main() {
     embed_dictionaries();
-    // Uygulama komutları için allow-/deny- izinleri üretilir; capabilities/default.json yalnız kullanılanları
-    // açar (komut listesi lib.rs generate_handler! ile aynı olmalı; app/test/tauri-security.test.js denetler).
+    // allow-/deny- permissions are made for the app commands; capabilities/default.json turns on only the used ones
+    // (the command list must be the same as lib.rs generate_handler!; app/test/tauri-security.test.js checks it).
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "open_file",
@@ -21,11 +21,11 @@ fn main() {
             "open_in_preview",
         ]),
     ))
-    .expect("tauri-build başarısız");
+    .expect("tauri-build failed");
 }
 
-/// Arayüz sözlükleri: `../app/i18n/<kod>.js` dosyalarının hepsi `OUT_DIR/sozlukler.rs` içinde
-/// `include_str!` ile gömülür (src/i18n.rs). Yeni dil için Rust'ta kod değişmez.
+/// Interface dictionaries: every `../app/i18n/<code>.js` file is embedded in `OUT_DIR/dictionaries.rs` with
+/// `include_str!` (src/i18n.rs). A new language needs no code change in Rust.
 fn embed_dictionaries() {
     let folder = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -33,7 +33,12 @@ fn embed_dictionaries() {
         .join("i18n");
     println!("cargo:rerun-if-changed={}", folder.display());
     let mut files: Vec<(String, PathBuf)> = std::fs::read_dir(&folder)
-        .unwrap_or_else(|e| panic!("sözlük klasörü okunamadı ({}): {e}", folder.display()))
+        .unwrap_or_else(|e| {
+            panic!(
+                "the dictionary folder could not be read ({}): {e}",
+                folder.display()
+            )
+        })
         .filter_map(Result::ok)
         .filter_map(|g| {
             let path = g.path();
@@ -47,7 +52,7 @@ fn embed_dictionaries() {
     files.sort();
     assert!(
         files.iter().any(|(k, _)| k == "en"),
-        "app/i18n/en.js (ana sözlük) yok"
+        "app/i18n/en.js (the main dictionary) missing"
     );
     let mut source = String::from("pub const DICTIONARY_FILES: &[(&str, &str)] = &[\n");
     for (code, path) in &files {
@@ -61,5 +66,5 @@ fn embed_dictionaries() {
     }
     source.push_str("];\n");
     let output = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("dictionaries.rs");
-    std::fs::write(output, source).expect("sozlukler.rs yazılamadı");
+    std::fs::write(output, source).expect("dictionaries.rs could not be written");
 }

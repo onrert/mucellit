@@ -1,4 +1,4 @@
-// Release'te Windows'ta ek konsol penceresi açılmasın (macOS'ta etkisiz).
+// No extra console window on Windows in release (no effect on macOS).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {

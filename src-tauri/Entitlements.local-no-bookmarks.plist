@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<!-- YALNIZ SINAMA (elle senaryo S12): Entitlements.local.plist ile aynı, ama
-     com.apple.security.files.bookmarks.app-scope YOK. Güncel macOS'ta yer imi için bu anahtar gerçekten gerekli mi
-     sorusunu yanıtlamak için ikinci yerel derleme. Dağıtıma girmez. -->
+<!-- TEST ONLY (manual scenario S12): the same as Entitlements.local.plist, but WITHOUT
+     com.apple.security.files.bookmarks.app-scope. A second local build to answer whether this key is really needed for
+     bookmarks on current macOS. Not distributed. -->
 <dict>
   <key>com.apple.security.app-sandbox</key>
   <true/>
@@ -11,7 +11,7 @@
   <true/>
   <key>com.apple.security.print</key>
   <true/>
-  <!-- WKWebView içerik yüklemesi sandbox'ta bunu istiyor (kök neden: WebKit yardımcı süreçleri). -->
+  <!-- WKWebView content loading asks for this in the sandbox (root cause: the WebKit helper processes). -->
   <key>com.apple.security.network.client</key>
   <true/>
 </dict>

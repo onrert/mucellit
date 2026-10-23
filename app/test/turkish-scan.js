@@ -18,7 +18,8 @@
  *     "legacy-names" block (storage names of earlier versions, read once for the data migration); a block starts with
  *     a line containing "<name>: begin" and ends with a line containing "<name>: end";
  *   - a single line marked "turkish-ok: <reason>" (the reason is required);
- *   - the product name Mücellit (productName; written as Mucellit in code);
+ *   - the product name Mücellit (productName; written as Mucellit in code), the author's name in copyright lines and
+ *     the [Türkçe](README.tr.md) link at the top of README.md;
  *   - app/vendor/** (third-party code) and binary files are not scanned.
  */
 
@@ -29,6 +30,8 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const TURKISH_LETTER = /[çğıöşüâîûÇĞİÖŞÜÂÎÛ]/; // turkish-ok: the letters the scan looks for
 const BRAND = /Mücellit|MÜCELLİT/g; // turkish-ok: the product name
+const AUTHOR = /Onur Mert Ertuğrul/g; // turkish-ok: the author's name (copyright lines)
+const README_LINK = /\[Türkçe\]\(README\.tr\.md\)/g; // turkish-ok: the link to the Turkish readme
 const BINARY = /\.(png|jpe?g|gif|ico|icns|pdf|epub|ttf|otf|woff2?|gz|zip|lock)$/i;
 const SKIP_DIR = /^app\/vendor\//;
 const WHOLE_FILE = new Set(['README.tr.md']);
@@ -135,6 +138,8 @@ const WORDS = new Set([
     'yetimler yetki yigin yildiz yinele yinelenen yok yoksa yol yola yoldan yolla yollar yolu yolunu yon yonerge',
     'yontem yorum yuk yukari yukle yukleme yuklendi yuklenen yukleyerek yuksek yuksekligi yukseklik yumusak yuru',
     'yuva yuvalar yuvarla yuvarlak yuvarlatma yuz yuzey yuzler yyon zaten zemin zincir zinciri zipi zipli zorunlu'
+,
+    'penceresi reddedilmeli okubeni dongu pres'
 ].join(' ').split(' '));
 const SUFFIX = /^[a-z]{2,}(?:amadi|emedi|amiyor|emiyor|iyor|uyor|lari|leri|larin|lerin|siniz|sunuz|ilsin|insin|ildi|uldu|ilir|ulur|ecek|acak|landi|lendi)$/;
 // turkish-data: end
@@ -171,7 +176,7 @@ function words(text) {
 
 /** Why this text counts as Turkish (a short reason), or null. */
 function turkishIn(text) {
-  text = String(text).replace(BRAND, 'Mucellit');
+  text = String(text).replace(BRAND, 'Mucellit').replace(AUTHOR, 'the author').replace(README_LINK, '[Turkish](README.tr.md)');
   const m = TURKISH_LETTER.exec(text);
   if (m) return 'letter "' + m[0] + '"';
   for (const w of words(text)) {
@@ -243,12 +248,35 @@ function allowances(text) {
   };
 }
 
-/** Files of the repository (tracked and new, not ignored), relative paths with forward slashes. */
+/** Files of the repository (tracked and new, not ignored), relative paths with forward slashes. Without git (a plain
+ * copy of the folder) the folder is walked instead (node_modules, .git, dist and build output skipped). */
 function repoFiles(root = ROOT) {
-  const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root });
-  return [...new Set(out.toString('utf8').split('\0').filter(Boolean))]
+  let list;
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] });
+    list = out.toString('utf8').split('\0').filter(Boolean);
+  } catch (e) {
+    list = [];
+    (function walk(dir, rel) {
+      for (const g of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (['.git', 'node_modules', 'dist', 'target', 'gen'].includes(g.name)) continue;
+        const r = rel ? rel + '/' + g.name : g.name;
+        if (g.isDirectory()) walk(path.join(dir, g.name), r); else list.push(r);
+      }
+    })(root, '');
+  }
+  return [...new Set(list)]
     .filter((f) => fs.existsSync(path.join(root, f)) && fs.statSync(path.join(root, f)).isFile())
     .sort();
+}
+
+/** Problems of a repository scan result (empty = passed): no findings, and enough files scanned (an empty or broken
+ * file list must not pass). */
+function resultProblems(r, minFiles = 100) {
+  const p = [];
+  if (!r || typeof r.files !== 'number' || r.files < minFiles) p.push(`only ${r && r.files} files scanned (at least ${minFiles} expected)`);
+  for (const f of (r && r.findings) || []) p.push(`${f.file}:${f.line}: ${f.reason}: ${f.text}`);
+  return p;
 }
 
 /** Scans the repository: { files (scanned), findings, allow: { file: { blocks, lines } } }. */
@@ -272,7 +300,7 @@ function scanRepo(root = ROOT) {
   return { files: scanned, findings, allow };
 }
 
-module.exports = { turkishIn, words, scanText, scanRepo, repoFiles, isScanned, allowances, WORDS };
+module.exports = { turkishIn, words, scanText, scanRepo, repoFiles, resultProblems, isScanned, allowances, WORDS };
 
 if (require.main === module) {
   const r = scanRepo();

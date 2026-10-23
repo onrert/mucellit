@@ -1,12 +1,12 @@
-//! Yerel Aç/Kaydet ve dosya okuma komutları, son açılanlar komutları (§4.3).
+//! Native Open/Save and file read commands, recent files commands (§4.3).
 //!
-//! Güvenlik ilkesi: **JS hiçbir zaman yol vermez.** Aç penceresi (ya da Dock/Finder'dan açma) seçilen yolu
-//! Rust'taki oturum tablosuna koyar ve JS'e yalnız rastgele bir kimlik (uuid) döner; `dosya_oku` ve
-//! `son_acilani_oku` yalnız tabloda/listede olan kimliği okur. Kaydetmede yolu yalnız kullanıcı Kaydet
-//! penceresinde seçer; JS yalnız önerilen adı ve baytı verir.
+//! Security principle: **JS never gives a path.** The Open dialog (or opening from the Dock/Finder) puts the chosen path
+//! into the session table in Rust and returns only a random id (uuid) to JS; `read_file` and
+//! `read_recent_file` read only an id that is in the table/list. On saving only the user chooses the path in the Save
+//! dialog; JS gives only the suggested name and the bytes.
 //!
-//! Klasör paketi EPUB (Apple Kitaplar) seçilirse `epub_folder::zip_uret` bellekte EPUB ZIP'i üretir; JS onu
-//! sıradan bir `.epub` olarak alır (gerekçe: JS'in EPUB yolu değişmez, tek okuma ile tek IPC aktarımı).
+//! When a folder package EPUB (Apple Books) is chosen, `epub_folder::build_zip` builds an EPUB ZIP in memory; JS takes
+//! it as an ordinary `.epub` (reason: the EPUB path of JS does not change, one read and one IPC transfer).
 
 use crate::i18n::text;
 use crate::recent::{self, AppleBookmarks, Bookmarks, ReadError, RecentList, Summary};
@@ -22,18 +22,18 @@ use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
-/// Okunacak tek dosyanın üst sınırı (bellek ve IPC).
+/// The upper limit of a single file to read (memory and IPC).
 pub const MAX_FILE: u64 = 1 << 30;
 
-// Kullanıcıya görünen metinler sözlükte (`crate::dil`): pencere başlıkları `dialog.*`, hatalar `rust.*`.
+// The texts the user sees are in the dictionary (`crate::i18n`): dialog titles `dialog.*`, errors `rust.*`.
 
-/// Oturumda açılmış bir dosya (yalnız Rust'ta).
+/// A file opened in the session (only in Rust).
 #[derive(Debug, Clone)]
 struct Session {
     path: PathBuf,
 }
 
-/// JS'e dönen açılış bilgisi (yol yok).
+/// The open information returned to JS (no path).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Opened {
     pub id: String,
@@ -42,50 +42,50 @@ pub struct Opened {
     pub kind: String,
 }
 
-/// Kaydedilen dosya: kullanıcıya gösterilecek ad ve klasör.
+/// The saved file: the name and folder to show the user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Saved {
     pub name: String,
     pub path: String,
 }
 
-/// Uygulama durumu (`tauri::Builder::manage`).
+/// App state (`tauri::Builder::manage`).
 #[derive(Default)]
 pub struct FileState {
     session: Mutex<HashMap<String, Session>>,
-    /// Son açılanlar; ilk kullanımda dosyadan yüklenir.
+    /// Recent files; loaded from the file on first use.
     last: Mutex<Option<RecentList>>,
-    /// Webview hazır olmadan gelen dış açılışlar (Dock'a bırakma, Finder "Birlikte Aç").
+    /// Outside opens that arrive before the webview is ready (a drop on the Dock, Finder "Open With").
     pending: Mutex<Vec<Opened>>,
 }
 
 impl FileState {
-    /// Oturum tablosuna ekler, kimliği döner.
+    /// Adds to the session table, returns the id.
     fn add_to_table(&self, path: PathBuf) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         self.session
             .lock()
-            .expect("oturum kilidi")
+            .expect("session lock")
             .insert(id.clone(), Session { path });
         id
     }
 
-    /// Kimliğin yolu; kimlik **tek kullanımlıktır**: alınınca tablodan silinir, tablo süreç boyunca
-    /// büyümez. Bilinmeyen/geçersiz kimlik (keyfi yol dahil) reddedilir. Son açılanlar bu tabloyu
-    /// kullanmaz (kalıcı kimlik `recent::Kayit`).
+    /// The path of the id; an id is **single use**: removed from the table when taken, the table does not grow for the
+    /// life of the process. An unknown/invalid id (an arbitrary path included) is rejected. The recent files do not use
+    /// this table (the persistent id is `recent::Entry`).
     fn take_from_table(&self, id: &str) -> Result<PathBuf, String> {
         if uuid::Uuid::parse_str(id).is_err() {
             return Err(unknown());
         }
         self.session
             .lock()
-            .expect("oturum kilidi")
+            .expect("session lock")
             .remove(id)
             .map(|o| o.path)
             .ok_or_else(unknown)
     }
 
-    /// Son açılanlar listesi üzerinde işlem (gerekirse dosyadan yükler).
+    /// An operation on the recent files list (loads it from the file when needed).
     fn with_recent<R: Runtime, T>(
         &self,
         app: &AppHandle<R>,
@@ -94,23 +94,23 @@ impl FileState {
         self.with_recent_loading(|| load_recent(app), f)
     }
 
-    /// `son_ile`; liste henüz yüklenmediyse `yukle` ile yüklenir (testte uygulama tutamacı gerekmez).
+    /// `with_recent`; when the list is not loaded yet it is loaded with `load` (no app handle needed in the test).
     fn with_recent_loading<T>(
         &self,
         load: impl FnOnce() -> RecentList,
         f: impl FnOnce(&mut RecentList) -> T,
     ) -> T {
-        let mut lock = self.last.lock().expect("son açılanlar kilidi");
+        let mut lock = self.last.lock().expect("recent files lock");
         f(lock.get_or_insert_with(load))
     }
 
-    /// Menü için güncel özetler.
+    /// The current summaries for the menu.
     pub fn recent_summaries<R: Runtime>(&self, app: &AppHandle<R>) -> Vec<Summary> {
         self.with_recent(app, |l| l.summaries())
     }
 }
 
-/// "BILINMEYEN:" kodlu hata (kod makine için sabit, açıklama şu anki dilde).
+/// An error with the "UNKNOWN:" code (the code is fixed for the machine, the description in the current language).
 fn unknown() -> String {
     format!("UNKNOWN: {}", text("rust.unknown_id", &[]))
 }
@@ -136,18 +136,18 @@ fn load_recent<R: Runtime>(app: &AppHandle<R>) -> RecentList {
     }
 }
 
-/// Listeyi diske yazar ve Son Açılanlar menüsünü yeniden kurar.
+/// Writes the list to disk and builds the Recent Items menu again.
 fn save_recent_and_refresh_menu<R: Runtime>(app: &AppHandle<R>, state: &FileState) {
     if let Some(y) = recent_file_path(app) {
         let write = state.with_recent(app, |l| l.save(&y));
         if let Err(e) = write {
-            eprintln!("son açılanlar yazılamadı ({}): {e}", y.display());
+            eprintln!("recent files could not be written ({}): {e}", y.display());
         }
     }
     menu::refresh(app);
 }
 
-/// Dosyanın türü: uzantıdan; klasör ancak EPUB paketiyse "epub". Bilinmeyen → None.
+/// The kind of the file: from the extension; a folder is "epub" only when it is an EPUB package. Unknown → None.
 pub fn detect_kind(path: &Path) -> Option<&'static str> {
     let extension = path.extension()?.to_string_lossy().to_lowercase();
     if path.is_dir() {
@@ -167,7 +167,7 @@ fn find_name(path: &Path) -> String {
         .unwrap_or_else(|| text("impose.document", &[]))
 }
 
-/// Dosyanın içeriği: klasör paketi EPUB ise bellekte üretilen EPUB ZIP'i, değilse dosyanın baytları.
+/// The content of the file: the EPUB ZIP built in memory for a folder package EPUB, otherwise the bytes of the file.
 pub fn read_content(path: &Path) -> io::Result<Vec<u8>> {
     if path.is_dir() {
         return epub_folder::build_zip(path);
@@ -182,7 +182,7 @@ pub fn read_content(path: &Path) -> io::Result<Vec<u8>> {
     fs::read(path)
 }
 
-/// Seçilen/bırakılan belgeyi oturuma ve (PDF/EPUB ise) son açılanlara ekler.
+/// Adds the chosen/dropped document to the session and (for PDF/EPUB) to the recent files.
 pub fn save_document<R: Runtime>(
     app: &AppHandle<R>,
     state: &FileState,
@@ -192,7 +192,7 @@ pub fn save_document<R: Runtime>(
         .ok_or_else(|| text("rust.unsupported", &[("name", &path.display().to_string())]))?;
     let name = find_name(&path);
     if kind == "pdf" || kind == "epub" {
-        // yer imi seçim anında, erişim canlıyken
+        // the bookmark at the moment of the choice, while the access is alive
         let entry = recent::make_entry(&AppleBookmarks, &path, &name, kind, now());
         state.with_recent(app, |l| l.add(entry));
         save_recent_and_refresh_menu(app, state);
@@ -205,8 +205,8 @@ pub fn save_document<R: Runtime>(
     })
 }
 
-/// Aç penceresi. `amac`: "belge" (PDF/EPUB, klasör paketi EPUB dahil) ya da "yedek" (JSON).
-/// Vazgeçilirse `None`.
+/// Open dialog. `purpose`: "document" (PDF/EPUB, folder package EPUB included) or "backup" (JSON).
+/// `None` when cancelled.
 #[tauri::command]
 pub async fn open_file<R: Runtime>(
     app: AppHandle<R>,
@@ -215,8 +215,8 @@ pub async fn open_file<R: Runtime>(
     purpose: String,
 ) -> Result<Option<Opened>, String> {
     let (title, filter, extensions): (String, String, &[&str]) = match purpose.as_str() {
-        // "com.apple.ibooks.epub": Apple Kitaplar'ın klasör paketi türü (com.apple.package'a uyar). NSOpenPanel
-        // setAllowedFileTypes uzantıların yanında tür kimliği de kabul eder; paket böylece seçilebilir kalır.
+        // "com.apple.ibooks.epub": the folder package type of Apple Books (conforms to com.apple.package). NSOpenPanel
+        // setAllowedFileTypes accepts type ids besides extensions; so the package stays selectable.
         "document" => (
             text("dialog.open_title", &[]),
             text("dialog.filter_document", &[]),
@@ -253,7 +253,7 @@ pub async fn open_file<R: Runtime>(
     }
 }
 
-/// Oturumda açılmış dosyanın baytları (ham ArrayBuffer). Yalnız kimlik; keyfi yol yok.
+/// The bytes of a file opened in the session (raw ArrayBuffer). Only an id; no arbitrary path.
 #[tauri::command]
 pub async fn read_file(state: State<'_, FileState>, id: String) -> Result<Response, String> {
     let path = state.take_from_table(&id)?;
@@ -262,7 +262,7 @@ pub async fn read_file(state: State<'_, FileState>, id: String) -> Result<Respon
         .map_err(|e| text("rust.unreadable", &[("error", &e.to_string())]))
 }
 
-/// Son açılanlar (en yeni başta; yol ve yer imi verilmez).
+/// Recent files (the newest first; no path and no bookmark given).
 #[tauri::command]
 pub async fn recent_files<R: Runtime>(
     app: AppHandle<R>,
@@ -271,8 +271,8 @@ pub async fn recent_files<R: Runtime>(
     Ok(state.recent_summaries(&app))
 }
 
-/// Son açılan kaydın baytları (yer imini çöz → oku → erişimi bırak). Yalnız kimlik; keyfi yol yok.
-/// Okunamayan kayıt listeden çıkar; hata metni "BULUNAMADI:" / "ERISIM:" / "BILINMEYEN:" ile başlar.
+/// The bytes of a recent file entry (resolve the bookmark → read → release the access). Only an id; no arbitrary path.
+/// An unreadable entry leaves the list; the error text starts with "NOTFOUND:" / "ACCESS:" / "UNKNOWN:".
 #[tauri::command]
 pub async fn read_recent_file<R: Runtime>(
     app: AppHandle<R>,
@@ -294,7 +294,7 @@ pub async fn read_recent_file<R: Runtime>(
         }
         Err(ReadError::Unknown) => Err(ReadError::Unknown.to_string()),
         Err(e) => {
-            eprintln!("son açılan okunamadı ({id}): {e}");
+            eprintln!("recent file could not be read ({id}): {e}");
             if e.is_permanent() {
                 save_recent_and_refresh_menu(&app, &state);
             }
@@ -303,9 +303,9 @@ pub async fn read_recent_file<R: Runtime>(
     }
 }
 
-/// Son açılan kaydı okur ve listeyi günceller: kayıt kilitle **kopyalanır**, kilit bırakılır, okuma
-/// (yer imi çözme + büyük EPUB) kilitsiz yapılır, sonuç yeniden kilitle işlenir. Böylece ana iş parçacığı
-/// (menü kurma, Dock'tan açma, Menüyü Temizle) okuma boyunca beklemez.
+/// Reads a recent file entry and updates the list: the entry is **copied** under the lock, the lock is released, the
+/// read (resolving the bookmark + a big EPUB) is done without the lock, the result is applied under the lock again. So
+/// the main thread (building the menu, opening from the Dock, Clear Menu) does not wait during the read.
 pub fn read_recent_entry(
     state: &FileState,
     load: impl FnOnce() -> RecentList,
@@ -323,24 +323,24 @@ pub fn read_recent_entry(
         .map(|(b, _)| b)
 }
 
-/// Son açılanları temizler (Dosya > Son Açılanlar > Menüyü Temizle).
+/// Clears the recent files (File > Open Recent > Clear Menu).
 pub fn clear_recent_files<R: Runtime>(app: &AppHandle<R>) {
     let state = app.state::<FileState>();
     state.with_recent(app, |l| l.entries.clear());
     save_recent_and_refresh_menu(app, &state);
 }
 
-/// Webview hazır olmadan gelen dış açılışları verir ve kuyruğu boşaltır.
+/// Gives the outside opens that arrived before the webview was ready and empties the queue.
 #[tauri::command]
 pub async fn pending_opens(state: State<'_, FileState>) -> Result<Vec<Opened>, String> {
     Ok(std::mem::take(
-        &mut *state.pending.lock().expect("bekleyen kilidi"),
+        &mut *state.pending.lock().expect("pending lock"),
     ))
 }
 
-/// Dock'a bırakılan / Finder'dan "Birlikte Aç" ile gelen dosyalar (`RunEvent::Opened`). Desteklenen her
-/// belge oturuma ve son açılanlara eklenir, kuyruğa konur, webview'e `dosya-acildi` olayı gider (webview
-/// henüz dinlemiyorsa açılışta `bekleyen_acilanlar` ile alır).
+/// Files dropped on the Dock / coming from Finder "Open With" (`RunEvent::Opened`). Every supported
+/// document is added to the session and the recent files and queued; the `file-opened` event goes to the webview
+/// (when the webview is not listening yet it takes them with `pending_opens` at start-up).
 pub fn opened_from_outside<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) {
     let state = app.state::<FileState>();
     let mut added = false;
@@ -348,25 +348,25 @@ pub fn opened_from_outside<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) 
         match detect_kind(&path) {
             Some("pdf" | "epub") => match save_document(app, &state, path) {
                 Ok(a) => {
-                    state.pending.lock().expect("bekleyen kilidi").push(a);
+                    state.pending.lock().expect("pending lock").push(a);
                     added = true;
                 }
-                Err(e) => eprintln!("dışarıdan açılamadı: {e}"),
+                Err(e) => eprintln!("could not be opened from outside: {e}"),
             },
-            _ => eprintln!("dışarıdan açılan unsupported file: {}", path.display()),
+            _ => eprintln!("unsupported file opened from outside: {}", path.display()),
         }
     }
     if added {
         if let Err(e) = app.emit("file-opened", ()) {
-            eprintln!("file-opened olayı iletilemedi: {e}");
+            eprintln!("the file-opened event could not be sent: {e}");
         }
     }
 }
 
-/// Sandbox'ta `HOME` uygulama kabıdır (`/Users/<k>/Library/Containers/<kimlik>/Data`); kullanıcının asıl ev
-/// klasörü onun önekidir. Kap dışındaysa olduğu gibi.
-pub fn actual_ev(ev: &Path) -> PathBuf {
-    let parts: Vec<_> = ev.components().collect();
+/// In the sandbox `HOME` is the app container (`/Users/<k>/Library/Containers/<id>/Data`); the user's real home
+/// folder is its prefix. As it is outside a container.
+pub fn actual_home(home_dir: &Path) -> PathBuf {
+    let parts: Vec<_> = home_dir.components().collect();
     let n = parts.len();
     if n >= 4
         && parts[n - 1].as_os_str() == "Data"
@@ -375,32 +375,32 @@ pub fn actual_ev(ev: &Path) -> PathBuf {
     {
         return parts[..n - 4].iter().collect();
     }
-    ev.to_path_buf()
+    home_dir.to_path_buf()
 }
 
-/// Kaydet penceresinin açılacağı klasör: son kaydedilen klasör (hâlâ klasörse), yoksa kullanıcının
-/// asıl Belgeler klasörü (`<ev>/Documents`), o da yoksa `None` (sistem öntanımlısı). Kaynak dosyanın
-/// klasörü (macOS'un son panel klasörü: repo, Apple Kitaplar kabı) önerilmez. L5: yalnız mutlak yollar
-/// (göreli yol sürecin çalışma klasörüne göre çözülürdü).
-pub fn select_save_folder(last: Option<&Path>, ev: Option<&Path>) -> Option<PathBuf> {
+/// The folder the Save dialog opens in: the last saved folder (when it is still a folder), otherwise the user's real
+/// Documents folder (`<home>/Documents`), otherwise `None` (the system default). The folder of the source file (the
+/// last panel folder of macOS: the repository, the Apple Books container) is not suggested. L5: only absolute paths
+/// (a relative path would be resolved against the working folder of the process).
+pub fn select_save_folder(last: Option<&Path>, home_dir: Option<&Path>) -> Option<PathBuf> {
     if let Some(s) = last.filter(|s| s.is_absolute() && s.is_dir()) {
         return Some(s.to_path_buf());
     }
-    let documents = ev.filter(|e| e.is_absolute())?.join("Documents");
+    let documents = home_dir.filter(|e| e.is_absolute())?.join("Documents");
     documents.is_dir().then_some(documents)
 }
 
-/// Kullanıcının asıl ev klasörü (`HOME`'dan, sandbox kabı soyulmuş). L5: `HOME` yoksa, boşsa ya da
-/// göreliyse `None` (göreli "Documents" önerilmez).
-pub fn ev_find(home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
-    let ev = Path::new(home?);
-    ev.is_absolute().then(|| actual_ev(ev))
+/// The user's real home folder (from `HOME`, with the sandbox container stripped). L5: `None` when `HOME` is missing,
+/// empty or relative (no relative "Documents" is suggested).
+pub fn find_home(home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    let home_dir = Path::new(home?);
+    home_dir.is_absolute().then(|| actual_home(home_dir))
 }
 
-/// Son kaydedilen klasörün tutulduğu dosya (`app_data_dir` içinde).
-pub const SAVE_FOLDER_FILE: &str = "son-kayit-klasoru.txt";
+/// The file that keeps the last saved folder (inside `app_data_dir`).
+pub const SAVE_FOLDER_FILE: &str = "last-save-folder.txt";
 
-/// Son kaydedilen klasörü okur (yoksa/boşsa `None`).
+/// Reads the last saved folder (`None` when missing/empty).
 pub fn read_last_save_folder(file: &Path) -> Option<PathBuf> {
     let text = fs::read_to_string(file).ok()?;
     let text = text.trim_end_matches('\n');
@@ -414,10 +414,10 @@ fn save_folder_file<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
         .map(|d| d.join(SAVE_FOLDER_FILE))
 }
 
-/// Dosya adının bayt sınırı (APFS/HFS+: 255 bayt UTF-8).
+/// The byte limit of a file name (APFS/HFS+: 255 bytes UTF-8).
 pub const NAME_MAX_BYTES: usize = 255;
 
-/// `s`'yi en çok `n` bayta, UTF-8 karakter sınırında kırpar.
+/// Cuts `s` to at most `n` bytes at a UTF-8 character boundary.
 pub fn truncate_bytes(s: &str, n: usize) -> &str {
     if s.len() <= n {
         return s;
@@ -429,9 +429,9 @@ pub fn truncate_bytes(s: &str, n: usize) -> &str {
     &s[..i]
 }
 
-/// JS'in `encodeURIComponent` ile kodladığı önerilen adı çözer ve dosya adı olarak güvenli kılar:
-/// yol ayraçları ve denetim karakterleri atılır, baştaki noktalar kalkar, uzantı `.pdf`/`.json` olur, ad
-/// uzantısıyla birlikte en çok 255 **bayt** (D5; UTF-8 karakter sınırında kırpılır). Boş kalırsa öntanımlı ad.
+/// Decodes the suggested name JS encoded with `encodeURIComponent` and makes it safe as a file name: path separators
+/// and control characters are dropped, leading dots removed, the extension becomes `.pdf`/`.json`, the name with its
+/// extension is at most 255 **bytes** (D5; cut at a UTF-8 character boundary). When nothing is left, the default name.
 pub fn safe_name(encoded: &str, extension: &str) -> String {
     let mut bytes = Vec::with_capacity(encoded.len());
     let b = encoded.as_bytes();
@@ -461,7 +461,7 @@ pub fn safe_name(encoded: &str, extension: &str) -> String {
         .collect();
     let clean = clean.trim().trim_start_matches('.').trim();
     let last = format!(".{extension}");
-    // Uzantı zaten varsa (büyük/küçük harf korunur) gövdeden ayrılır; kırpma yalnız gövdeye uygulanır.
+    // When the extension is already there (case kept) it is split from the body; cutting applies only to the body.
     let cutting = clean.len().saturating_sub(last.len());
     let (body, uz) = if clean.len() >= last.len()
         && clean.is_char_boundary(cutting)
@@ -478,8 +478,8 @@ pub fn safe_name(encoded: &str, extension: &str) -> String {
     format!("{body}{uz}")
 }
 
-/// Kaydet penceresi + yazma. Gövde ham bayt (`invoke('dosya_kaydet', bytes, { headers })`); başlıklar
-/// `x-ad` (encodeURIComponent ile önerilen ad) ve `x-tur` ("pdf" | "json"). Vazgeçilirse `None`.
+/// Save dialog + write. The body is raw bytes (`invoke('save_file', bytes, { headers })`); the headers are
+/// `x-name` (the suggested name encoded with encodeURIComponent) and `x-kind` ("pdf" | "json"). `None` when cancelled.
 #[tauri::command]
 pub async fn save_file<R: Runtime>(
     app: AppHandle<R>,
@@ -505,7 +505,7 @@ pub async fn save_file<R: Runtime>(
     };
     let name = safe_name(&title("x-name"), extension);
     let folder_file = save_folder_file(&app);
-    let ev = ev_find(std::env::var_os("HOME").as_deref());
+    let home_dir = find_home(std::env::var_os("HOME").as_deref());
     let last = folder_file.as_deref().and_then(read_last_save_folder);
     let mut setup_window = app
         .dialog()
@@ -514,7 +514,7 @@ pub async fn save_file<R: Runtime>(
         .set_title(text("dialog.save_title", &[]))
         .set_file_name(&name)
         .add_filter(&filter, &[extension]);
-    if let Some(k) = select_save_folder(last.as_deref(), ev.as_deref()) {
+    if let Some(k) = select_save_folder(last.as_deref(), home_dir.as_deref()) {
         setup_window = setup_window.set_directory(k);
     }
     let Some(choice) = setup_window.blocking_save_file() else {
@@ -526,7 +526,7 @@ pub async fn save_file<R: Runtime>(
         let mut line = k.as_os_str().to_owned();
         line.push("\n");
         if let Err(e) = recent::write_atomic(&d, line.as_encoded_bytes()) {
-            eprintln!("son kayıt klasörü yazılamadı: {e}");
+            eprintln!("the last save folder could not be written: {e}");
         }
     }
     Ok(Some(Saved {
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn table_rejects_unknown_and_arbitrary_path_id() {
         let d = FileState::default();
-        let actual = std::env::temp_dir().join(format!("kc-dosya-{}.pdf", uuid::Uuid::new_v4()));
+        let actual = std::env::temp_dir().join(format!("mc-file-{}.pdf", uuid::Uuid::new_v4()));
         fs::write(&actual, b"%PDF").unwrap();
         let id = d.add_to_table(actual.clone());
         let second = d.add_to_table(actual.clone());
@@ -555,14 +555,14 @@ mod tests {
             "file:///etc/hosts",
             "~/Library",
             &uuid::Uuid::new_v4().to_string(),
-            &id.to_uppercase().replace('-', ""), // biçim farkı: aynı uuid ama farklı yazım tabloda yok
+            &id.to_uppercase().replace('-', ""), // a format difference: the same uuid written differently is not in the table
         ] {
             assert_eq!(d.take_from_table(bad).unwrap_err(), unknown(), "{bad}");
         }
         fs::remove_file(&actual).unwrap();
     }
 
-    /// Komut imzaları: okuma komutları yalnız `kimlik: String` alır (yol, PathBuf, Path parametresi yok).
+    /// Command signatures: the read commands take only `id: String` (no path, PathBuf or Path parameter).
     #[test]
     fn read_commands_take_no_path_from_js() {
         let source = include_str!("files.rs");
@@ -571,7 +571,7 @@ mod tests {
                 .find(command)
                 .unwrap_or_else(|| panic!("{command} none"));
             let signature = &source[head..head + source[head..].find('{').unwrap()];
-            // tür parametrelerinin içindeki virgüller (State<'_, Durum>) bölmeyi bozmasın
+            // the commas inside type parameters (State<'_, FileState>) must not break the split
             let mut depth = 0;
             let flat: String = signature
                 .chars()
@@ -615,10 +615,10 @@ mod tests {
     #[test]
     fn detect_kind_extension_and_folder_package() {
         let d = std::env::temp_dir().join(format!("mc-kind-{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(d.join("Kitap.epub/META-INF")).unwrap();
-        fs::write(d.join("Kitap.epub/META-INF/container.xml"), "<c/>").unwrap();
-        fs::create_dir_all(d.join("Bos.epub")).unwrap();
-        fs::create_dir_all(d.join("klasor.pdf")).unwrap();
+        fs::create_dir_all(d.join("Book.epub/META-INF")).unwrap();
+        fs::write(d.join("Book.epub/META-INF/container.xml"), "<c/>").unwrap();
+        fs::create_dir_all(d.join("Empty.epub")).unwrap();
+        fs::create_dir_all(d.join("folder.pdf")).unwrap();
         for (name, expected) in [
             ("a.pdf", Some("pdf")),
             ("A.PDF", Some("pdf")),
@@ -630,18 +630,22 @@ mod tests {
             fs::write(d.join(name), b"x").unwrap();
             assert_eq!(detect_kind(&d.join(name)), expected, "{name}");
         }
-        assert_eq!(detect_kind(&d.join("Kitap.epub")), Some("epub"));
+        assert_eq!(detect_kind(&d.join("Book.epub")), Some("epub"));
         assert_eq!(
-            detect_kind(&d.join("Bos.epub")),
+            detect_kind(&d.join("Empty.epub")),
             None,
-            "container.xml'siz klasör"
+            "folder without container.xml"
         );
-        assert_eq!(detect_kind(&d.join("klasor.pdf")), None, "PDF adlı klasör");
-        // klasör paketi içeriği EPUB ZIP olarak okunur
-        let z = read_content(&d.join("Kitap.epub")).unwrap();
+        assert_eq!(
+            detect_kind(&d.join("folder.pdf")),
+            None,
+            "a folder named PDF"
+        );
+        // the content of a folder package is read as an EPUB ZIP
+        let z = read_content(&d.join("Book.epub")).unwrap();
         assert_eq!(&z[0..4], b"PK\x03\x04");
         assert_eq!(read_content(&d.join("a.pdf")).unwrap(), b"x");
-        assert!(read_content(&d.join("yok.pdf")).is_err());
+        assert!(read_content(&d.join("missing.pdf")).is_err());
         fs::remove_dir_all(&d).unwrap();
     }
 
@@ -659,19 +663,19 @@ mod tests {
                 .collect::<String>()
         };
         assert_eq!(
-            safe_name(&encode("Mavi Pusula-dizilmis.pdf"), "pdf"),
-            "Mavi Pusula-dizilmis.pdf"
+            safe_name(&encode("Blue Compass-imposed.pdf"), "pdf"),
+            "Blue Compass-imposed.pdf"
         );
         assert_eq!(
-            safe_name(&encode("Çğüşİ ılık-önler.pdf"), "pdf"),
-            "Çğüşİ ılık-önler.pdf"
+            safe_name(&encode("Çğüşİ ılık-önler.pdf"), "pdf"), // turkish-ok: Turkish test text (UTF-8 names)
+            "Çğüşİ ılık-önler.pdf" // turkish-ok: Turkish test text (UTF-8 names)
         );
         assert_eq!(
             safe_name(&encode("../../etc/passwd"), "pdf"),
             "-..-etc-passwd.pdf"
         );
         assert_eq!(safe_name(&encode("a/b\\c:d.pdf"), "pdf"), "a-b-c-d.pdf");
-        assert_eq!(safe_name(&encode(".gizli.pdf"), "pdf"), "gizli.pdf");
+        assert_eq!(safe_name(&encode(".hidden.pdf"), "pdf"), "hidden.pdf");
         assert_eq!(safe_name(&encode("backup"), "json"), "backup.json");
         assert_eq!(safe_name(&encode("report.PDF"), "pdf"), "report.PDF");
         assert_eq!(safe_name("", "pdf"), "mucellit.pdf");
@@ -681,62 +685,70 @@ mod tests {
         assert_eq!(
             safe_name("%ZZ%4", "pdf"),
             "%ZZ%4.pdf",
-            "bozuk % kodu olduğu gibi"
+            "a broken % code as it is"
         );
-        assert_eq!(safe_name("%C3", "pdf"), "\u{FFFD}.pdf", "yarım UTF-8");
+        assert_eq!(
+            safe_name("%C3", "pdf"),
+            "\u{FFFD}.pdf",
+            "half a UTF-8 character"
+        );
     }
 
-    /// D5: ad bayta göre kırpılır (APFS: en çok 255 bayt), UTF-8 karakter sınırında; uzantı korunur.
+    /// D5: the name is cut by bytes (APFS: at most 255 bytes), at a UTF-8 character boundary; the extension is kept.
     #[test]
     fn safe_name_byte_limit_on_utf8_boundary() {
         for (input, uz) in [
-            ("ç".repeat(400), "pdf"),
+            ("ç".repeat(400), "pdf"), // turkish-ok: Turkish test text (UTF-8 names)
             ("a".repeat(400), "pdf"),
             ("🙂".repeat(100), "json"),
-            (format!("{}.pdf", "ğ".repeat(200)), "pdf"),
-            (format!("x{}", "ş".repeat(127)), "pdf"),
+            (format!("{}.pdf", "ğ".repeat(200)), "pdf"), // turkish-ok: Turkish test text (UTF-8 names)
+            (format!("x{}", "ş".repeat(127)), "pdf"), // turkish-ok: Turkish test text (UTF-8 names)
         ] {
             let name = safe_name(&input, uz);
             assert!(name.len() <= 255, "{} bytes: {name}", name.len());
             assert!(name.ends_with(&format!(".{uz}")), "{name}");
-            assert!(!name.contains('\u{FFFD}'), "yarım karakter: {name}");
+            assert!(!name.contains('\u{FFFD}'), "half a character: {name}");
             let body = &name[..name.len() - uz.len() - 1];
             assert!(
                 input.starts_with(body),
-                "gövde girdinin öneki olmalı: {name}"
+                "the body must be a prefix of the input: {name}"
             );
         }
         assert_eq!(
             safe_name(&"a".repeat(400), "pdf").len(),
             255,
-            "sınır dolu kullanılır"
+            "the limit is used in full"
         );
-        let short = "Mavi Pusula-dizilmis.pdf";
-        assert_eq!(safe_name(short, "pdf"), short, "kısa ad değişmez");
+        let short = "Blue Compass-imposed.pdf";
+        assert_eq!(
+            safe_name(short, "pdf"),
+            short,
+            "a short name does not change"
+        );
     }
 
-    /// D6: oturum kimliği tek kullanımlık (okununca tablodan silinir; tablo büyümez).
+    /// D6: the session id is single use (removed from the table when read; the table does not grow).
     #[test]
     fn session_id_single_use() {
         let d = FileState::default();
-        let p = std::env::temp_dir().join("kc-tek.pdf");
+        let p = std::env::temp_dir().join("mc-single.pdf");
         let k = d.add_to_table(p.clone());
         assert_eq!(d.take_from_table(&k).unwrap(), p);
         assert_eq!(d.take_from_table(&k).unwrap_err(), unknown(), "second read");
-        assert!(d.session.lock().unwrap().is_empty(), "tablo boşaldı");
+        assert!(d.session.lock().unwrap().is_empty(), "the table is empty");
     }
 
-    /// O3: son açılan okunurken `son` kilidi TUTULMAZ (ana iş parçacığı menüyü kurarken beklemesin); okuma
-    /// bitince liste kilitle güncellenir.
+    /// O3: the recent files lock is NOT HELD while a recent file is read (the main thread must not wait while building the
+    /// menu); when the read ends the list is updated under the lock.
     #[test]
     fn no_lock_held_while_reading_recent_file() {
         let d = FileState::default();
-        let file = std::env::temp_dir().join(format!("kc-kilit-{}.pdf", uuid::Uuid::new_v4()));
+        let file = std::env::temp_dir().join(format!("mc-lock-{}.pdf", uuid::Uuid::new_v4()));
         fs::write(&file, b"%PDF-lock").unwrap();
         let mut list = RecentList::default();
         let entry = recent::Entry {
             id: uuid::Uuid::new_v4().to_string(),
-            name: "kilit.pdf".into(),
+            name: "lock.pdf".into(),
             kind: "pdf".into(),
             date: 1,
             path: file.to_string_lossy().into_owned(),
@@ -746,7 +758,7 @@ mod tests {
         list.add(entry);
         list.add(recent::Entry {
             id: uuid::Uuid::new_v4().to_string(),
-            path: "/baska.pdf".into(),
+            path: "/other.pdf".into(),
             ..list.entries[0].clone()
         });
         let lock_free = std::cell::Cell::new(None);
@@ -760,98 +772,102 @@ mod tests {
         assert_eq!(
             lock_free.get(),
             Some(true),
-            "okuma sırasında son kilidi boş olmalı"
+            "the recent files lock must be free during the read"
         );
         let l = d.last.lock().unwrap();
         let l = l.as_ref().unwrap();
-        assert_eq!(l.entries[0].id, id, "okunan başa alındı");
+        assert_eq!(l.entries[0].id, id, "the read entry moved to the front");
         assert_eq!(l.entries[0].date, 77);
     }
 
-    /// D12: Kaydet penceresi son kaydedilen klasörde açılır; yoksa (ya da silindiyse) kullanıcının asıl
-    /// Belgeler klasöründe; o da yoksa sistem öntanımlısı.
+    /// D12: the Save dialog opens in the last saved folder; when there is none (or it was deleted) in the user's real
+    /// Documents folder; otherwise the system default.
     #[test]
     fn save_folder_is_last_saved_else_documents() {
-        let ev = std::env::temp_dir().join(format!("mc-ev-{}", uuid::Uuid::new_v4()));
-        let documents = ev.join("Documents");
-        let last = ev.join("Kitaplar");
+        let home_dir = std::env::temp_dir().join(format!("mc-home_dir-{}", uuid::Uuid::new_v4()));
+        let documents = home_dir.join("Documents");
+        let last = home_dir.join("Books");
         fs::create_dir_all(&documents).unwrap();
         fs::create_dir_all(&last).unwrap();
-        let e = Some(ev.as_path());
+        let e = Some(home_dir.as_path());
         assert_eq!(select_save_folder(Some(&last), e), Some(last.clone()));
         assert_eq!(select_save_folder(None, e), Some(documents.clone()));
         assert_eq!(
-            select_save_folder(Some(&ev.join("deleted")), e),
+            select_save_folder(Some(&home_dir.join("deleted")), e),
             Some(documents.clone()),
-            "silinmiş son klasör"
+            "deleted last folder"
         );
-        let file = ev.join("dosya.pdf");
+        let file = home_dir.join("file.pdf");
         fs::write(&file, b"x").unwrap();
         assert_eq!(
             select_save_folder(Some(&file), e),
             Some(documents.clone()),
-            "klasör değil"
+            "not a folder"
         );
         fs::remove_dir_all(&documents).unwrap();
-        assert_eq!(select_save_folder(None, e), None, "Belgeler de yok");
-        // son klasör dosyası: gidiş-dönüş, boş/eksik → None
-        let kd = ev.join(SAVE_FOLDER_FILE);
-        assert_eq!(read_last_save_folder(&kd), None, "dosya yok");
-        recent::write_atomic(&kd, "/Users/x/Kitaplar ğ\n".as_bytes()).unwrap();
+        assert_eq!(select_save_folder(None, e), None, "no Documents either");
+        // the last folder file: round trip, empty/missing → None
+        let kd = home_dir.join(SAVE_FOLDER_FILE);
+        assert_eq!(read_last_save_folder(&kd), None, "no file");
+        recent::write_atomic(&kd, "/Users/x/Books ğ\n".as_bytes()).unwrap(); // turkish-ok: Turkish test text (UTF-8 names)
         assert_eq!(
             read_last_save_folder(&kd),
-            Some(PathBuf::from("/Users/x/Kitaplar ğ"))
+            Some(PathBuf::from("/Users/x/Books ğ")) // turkish-ok: Turkish test text (UTF-8 names)
         );
         fs::write(&kd, "").unwrap();
-        assert_eq!(read_last_save_folder(&kd), None, "boş");
-        fs::remove_dir_all(&ev).unwrap();
-        // sandbox kabı → asıl ev; kap dışı değişmez
+        assert_eq!(read_last_save_folder(&kd), None, "empty");
+        fs::remove_dir_all(&home_dir).unwrap();
+        // sandbox container → the real home; outside a container unchanged
         assert_eq!(
-            actual_ev(Path::new(
-                "/Users/kullanici/Library/Containers/com.onurmert.kitapcilt/Data"
+            actual_home(Path::new(
+                "/Users/user/Library/Containers/com.onurmert.mucellit/Data"
             )),
-            PathBuf::from("/Users/kullanici")
+            PathBuf::from("/Users/user")
         );
         assert_eq!(
-            actual_ev(Path::new("/Users/kullanici")),
-            PathBuf::from("/Users/kullanici")
+            actual_home(Path::new("/Users/user")),
+            PathBuf::from("/Users/user")
         );
         assert_eq!(
-            actual_ev(Path::new("/Users/kullanici/Library/Containers")),
-            PathBuf::from("/Users/kullanici/Library/Containers"),
-            "kap kimliği yok"
+            actual_home(Path::new("/Users/user/Library/Containers")),
+            PathBuf::from("/Users/user/Library/Containers"),
+            "no container id"
         );
     }
-    /// L5: `HOME` yoksa, boşsa ya da göreliyse ev klasörü yok sayılır (göreli "Documents" önerilmez); son
-    /// kaydedilen klasör de göreli olamaz (elle bozulmuş son-kayit-klasoru.txt).
+    /// L5: when `HOME` is missing, empty or relative the home folder is ignored (no relative "Documents" is suggested); the
+    /// last saved folder cannot be relative either (a hand-broken last-save-folder.txt).
     #[test]
     fn no_relative_folder_suggested_when_home_missing_or_relative() {
         use std::ffi::OsStr;
-        assert_eq!(ev_find(None), None, "HOME yok");
-        assert_eq!(ev_find(Some(OsStr::new(""))), None, "HOME boş");
-        assert_eq!(ev_find(Some(OsStr::new("goreli/ev"))), None, "HOME göreli");
+        assert_eq!(find_home(None), None, "HOME missing");
+        assert_eq!(find_home(Some(OsStr::new(""))), None, "HOME empty");
         assert_eq!(
-            ev_find(Some(OsStr::new(
-                "/Users/kullanici/Library/Containers/com.onurmert.kitapcilt/Data"
+            find_home(Some(OsStr::new("relative/home"))),
+            None,
+            "HOME relative"
+        );
+        assert_eq!(
+            find_home(Some(OsStr::new(
+                "/Users/user/Library/Containers/com.onurmert.mucellit/Data"
             ))),
-            Some(PathBuf::from("/Users/kullanici"))
+            Some(PathBuf::from("/Users/user"))
         );
         assert_eq!(
-            ev_find(Some(OsStr::new("/Users/kullanici"))),
-            Some(PathBuf::from("/Users/kullanici"))
+            find_home(Some(OsStr::new("/Users/user"))),
+            Some(PathBuf::from("/Users/user"))
         );
-        // cargo test src-tauri/ klasöründe koşar: göreli "src" bir klasördür
+        // cargo test runs in the src-tauri/ folder: the relative "src" is a folder
         assert!(Path::new("src").is_dir());
         assert_eq!(
             select_save_folder(Some(Path::new("src")), None),
             None,
-            "göreli son klasör önerilmez"
+            "a relative last folder is not suggested"
         );
         assert_eq!(
             select_save_folder(None, Some(Path::new(""))),
             None,
-            "boş ev → göreli Documents yok"
+            "empty home → no relative Documents"
         );
-        assert_eq!(read_last_save_folder(Path::new("/yok/dosya")), None);
+        assert_eq!(read_last_save_folder(Path::new("/missing/file")), None);
     }
 }

@@ -109,7 +109,7 @@
       });
     }
 
-    // File name suffixes and the PDF title are in the interface language (en: -imposed, -fronts, -backs; tr: -dizilmis, -onler, -arkalar).
+    // File name suffixes and the PDF title are in the interface language (en: -imposed, -fronts, -backs; tr: -dizilmis, -onler, -arkalar).  // turkish-ok: the Turkish file name suffixes of the tr interface
     var base = (options.fileName || t('output.name.book')).replace(/\.[^.]+$/, '');
     var files = [];
     if (settings.outputMode === 'pair') {

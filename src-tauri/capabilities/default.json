@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Ana pencere, en küçük izin seti: menü/dosya olaylarını dinleme (platform-tauri.js event.listen), yerel onay penceresi (dialog ask/confirm/message hepsi message komutunu kullanır) ve uygulamanın kendi dosya/yedek komutları (src-tauri/src/files.rs, backup.rs, i18n.rs, print.rs; JS yol vermez, yalnız kimlik). core:default yok; fs eklentisi yok.",
+  "description": "Main window, the smallest permission set: listening to menu/file events (platform-tauri.js event.listen), the native confirm dialog (dialog ask/confirm/message all use the message command) and the app's own file/backup commands (src-tauri/src/files.rs, backup.rs, i18n.rs, print.rs; JS gives no path, only an id). No core:default; no fs plug-in.",
   "windows": [
     "main"
   ],

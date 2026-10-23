@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Şifreleme ihracı: uygulama yalnız işletim sisteminin şifrelemesini kullanır. -->
+  <!-- Encryption export: the app only uses the encryption of the operating system. -->
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
-  <!-- Arayüz dili: geliştirme dili İngilizce; uygulama İngilizce ve Türkçe arayüz sunar (metinler app/i18n/,
-       lproj klasörü yok: CFBundleLocalizations "elle yönetilen" yerelleştirmeleri bildirir). macOS'un eklediği
-       sistem öğeleri (Tümünü Kapat, Aç/Kaydet pencere düğmeleri) bu listeden sistem diline uyan dili kullanır. -->
+  <!-- Interface language: the development language is English; the app offers an English and a Turkish interface (texts in
+       app/i18n/, no lproj folder: CFBundleLocalizations declares the "manually managed" localizations). The system items
+       macOS adds (Close All, the Open/Save dialog buttons) use the language from this list that matches the system language. -->
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleLocalizations</key>

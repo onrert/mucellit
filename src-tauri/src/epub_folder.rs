@@ -1,35 +1,35 @@
-//! Klasör paketi EPUB → bellekte EPUB (ZIP) baytı.
+//! Folder package EPUB → EPUB (ZIP) bytes in memory.
 //!
-//! Apple Books / iCloud Kitaplar EPUB'ları diskte **klasör paketi** olarak saklar (`stat`: Directory;
-//! içinde `mimetype`, `META-INF/`, `OEBPS/`; tür `com.apple.ibooks.epub`, `com.apple.package`'a uyar).
-//! Yerel Aç penceresi bunu tek dosya gibi seçtirir ama okunacak bir ZIP yoktur. Bu modül klasörü okuyup
-//! web tarafının bugünkü EPUB okuyucusunun (app/js/plugins/epub/zip.js) açtığı bir ZIP üretir; böylece
-//! JS tarafı klasör paketini sıradan bir `.epub` dosyası olarak alır ve değişmez.
+//! Apple Books / iCloud Books keep EPUBs on disk as a **folder package** (`stat`: Directory;
+//! with `mimetype`, `META-INF/`, `OEBPS/` inside; type `com.apple.ibooks.epub`, conforms to `com.apple.package`).
+//! The native Open dialog lets the user choose it like one file, but there is no ZIP to read. This module reads the
+//! folder and builds a ZIP that the current EPUB reader of the web side (app/js/plugins/epub/zip.js) opens; so the
+//! JS side takes the folder package as an ordinary `.epub` file and does not change.
 //!
-//! Biçim (EPUB OCF): `mimetype` ilk girdi ve sıkıştırmasız (STORED), ekstra alan yok. Diğer girdiler de
-//! STORED (bağımlılık yok; okuyucu yöntem 0'ı destekliyor). Adlar `/` ayraçlı, UTF-8 bayrağı (bit 11) açık,
-//! sıra belirlenimci (adına göre). ZIP64 yok: 65 535 girdi ve 4 GiB üstü reddedilir.
-//! Atlananlar: gizli dosyalar (`.DS_Store` vb.), `__MACOSX/`, sembolik bağlar (paket dışına işaret
-//! edebilir; sandbox zaten engeller).
+//! Format (EPUB OCF): `mimetype` is the first entry and uncompressed (STORED), no extra field. The other entries are
+//! STORED too (no dependency; the reader supports method 0). Names with `/` separators, the UTF-8 flag (bit 11) on,
+//! a deterministic order (by name). No ZIP64: more than 65 535 entries or 4 GiB are rejected.
+//! Skipped: hidden files (`.DS_Store` etc.), `__MACOSX/`, symbolic links (they may point outside the package; the
+//! sandbox blocks them anyway).
 
 use crate::i18n::text;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-/// Üretilecek ZIP'in üst sınırı (bellek). EPUB'lar pratikte birkaç yüz MB'ı geçmez.
+/// The upper limit of the ZIP to build (memory). EPUBs do not pass a few hundred MB in practice.
 pub const MAX_TOTAL: u64 = 1 << 30;
 const MAX_INPUT: usize = 65_535;
 const MIMETYPE: &str = "mimetype";
 
-/// Klasör bir EPUB paketi mi (EPUB'ın zorunlu kapsayıcı dosyası var mı)?
+/// Is the folder an EPUB package (does it have the required container file of an EPUB)?
 pub fn is_epub_folder(path: &Path) -> bool {
     path.is_dir() && path.join("META-INF").join("container.xml").is_file()
 }
 
-/// Kayıtlı bir klasör paketinin durumu: `Degil` yalnız klasörün içi okunabildiği halde EPUB
-/// kapsayıcısı yoksa. İçi okunamıyorsa (izinsiz `META-INF`, iCloud'dan henüz inmemiş/dataless ya da boş
-/// klasör) `Okunamadi`: kayıt silinmemeli, sonra yeniden denenebilir.
+/// The state of a saved folder package: `NotPackage` only when the content of the folder can be read but there is no
+/// EPUB container. When the content cannot be read (`META-INF` without permission, not downloaded from iCloud yet/dataless,
+/// or an empty folder) `Unreadable`: the entry must not be removed, it may be tried again later.
 #[derive(Debug)]
 pub enum PackageState {
     Package,
@@ -60,27 +60,27 @@ pub fn package_state(path: &Path) -> PackageState {
     }
 }
 
-/// Okuma sınırları (testte küçültülür).
+/// Read limits (made smaller in the test).
 #[derive(Debug, Clone, Copy)]
 pub struct Limit {
-    /// Üretilecek ZIP'in yaklaşık üst sınırı (bayt).
+    /// The approximate upper limit of the ZIP to build (bytes).
     pub total: u64,
-    /// En çok dosya (ZIP girdisi).
+    /// The most files (ZIP entries).
     pub input: usize,
 }
 
-/// Uygulamanın kullandığı sınırlar.
+/// The limits the app uses.
 pub const LIMIT: Limit = Limit {
     total: MAX_TOTAL,
     input: MAX_INPUT,
 };
 
-/// Klasör paketinden EPUB ZIP baytı üretir.
+/// Builds EPUB ZIP bytes from a folder package.
 pub fn build_zip(root: &Path) -> io::Result<Vec<u8>> {
     build_zip_limited(root, LIMIT)
 }
 
-/// `zip_uret`, verilen sınırlarla.
+/// `build_zip` with the given limits.
 pub fn build_zip_limited(root: &Path, limit: Limit) -> io::Result<Vec<u8>> {
     if !root.is_dir() {
         return Err(error(text(
@@ -91,8 +91,8 @@ pub fn build_zip_limited(root: &Path, limit: Limit) -> io::Result<Vec<u8>> {
     if !is_epub_folder(root) {
         return Err(error(text("rust.no_container", &[])));
     }
-    // O1: dosya sayısı ve toplam boyut TARAMA sırasında (`metadata` ile, okumadan) denetlenir; sınırı aşan
-    // paket hiçbir dosyası okunmadan reddedilir, bellek şişmez.
+    // O1: the file count and the total size are checked WHILE SCANNING (with `metadata`, without reading); a package over
+    // the limit is rejected before any of its files is read, the memory does not grow.
     let mut t = Collector {
         limit,
         files: Vec::new(),
@@ -100,12 +100,12 @@ pub fn build_zip_limited(root: &Path, limit: Limit) -> io::Result<Vec<u8>> {
     };
     t.collect(root, root)?;
     let mut files = t.files;
-    // mimetype önce (OCF şartı), sonra adına göre.
+    // mimetype first (OCF requirement), then by name.
     files.sort_by(|a, b| (a.0 != MIMETYPE, &a.0).cmp(&(b.0 != MIMETYPE, &b.0)));
     let mut writer = ZipWriter::default();
     let mut total: u64 = 0;
     for (name, path) in &files {
-        // Tarama ile okuma arasında büyüyen dosya da sınırı aşamaz: en çok kalan pay + 1 bayt okunur.
+        // A file that grows between the scan and the read cannot pass the limit either: at most the remaining allowance + 1 byte is read.
         let pay = limit.total.saturating_sub(total);
         let mut data = Vec::new();
         fs::File::open(path)?.take(pay + 1).read_to_end(&mut data)?;
@@ -118,7 +118,7 @@ pub fn build_zip_limited(root: &Path, limit: Limit) -> io::Result<Vec<u8>> {
     writer.finish()
 }
 
-/// Bir girdinin ZIP'te kapladığı yaklaşık yer (içerik + başlıklar + ad iki kez).
+/// The approximate space an entry takes in the ZIP (content + headers + the name twice).
 fn extra_size(name: &str, content: u64) -> u64 {
     content + 128 + name.len() as u64 * 2
 }
@@ -134,7 +134,7 @@ fn error(m: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, m)
 }
 
-/// Tarama durumu: toplanan dosyalar ve `metadata` ile toplanan boyut.
+/// The scan state: the collected files and the size summed with `metadata`.
 struct Collector {
     limit: Limit,
     files: Vec<(String, PathBuf)>,
@@ -142,8 +142,8 @@ struct Collector {
 }
 
 impl Collector {
-    /// `kok` altındaki düzenli dosyaları (ZIP adı, yol) olarak toplar; sınır aşılınca hemen durur. Klasör
-    /// girdileri adına göre sıralı gezilir (belirlenimci: sınır hep aynı noktada aşılır).
+    /// Collects the regular files under `root` as (ZIP name, path); stops at once when the limit is passed. The folder
+    /// entries are walked sorted by name (deterministic: the limit is always passed at the same point).
     fn collect(&mut self, root: &Path, folder: &Path) -> io::Result<()> {
         let mut inputs = fs::read_dir(folder)?.collect::<io::Result<Vec<_>>>()?;
         inputs.sort_by_key(|g| g.file_name());
@@ -153,7 +153,7 @@ impl Collector {
             if name.starts_with('.') || name == "__MACOSX" {
                 continue;
             }
-            let kind = input.file_type()?; // bağı izlemez
+            let kind = input.file_type()?; // does not follow the link
             let path = input.path();
             if kind.is_symlink() {
                 continue;
@@ -186,7 +186,7 @@ impl Collector {
     }
 }
 
-/// En küçük STORED ZIP yazıcısı.
+/// The smallest STORED ZIP writer.
 #[derive(Default)]
 struct ZipWriter {
     data: Vec<u8>,
@@ -206,27 +206,27 @@ impl ZipWriter {
         let crc = crc32(content);
         const FLAG: u16 = 0x0800; // UTF-8 ad
         const CLOCKWISE: u16 = 0; // 00:00:00
-        const DATE: u16 = (1 << 5) | 1; // 1980-01-01 (belirlenimci çıktı)
+        const DATE: u16 = (1 << 5) | 1; // 1980-01-01 (deterministic output)
 
         let v = &mut self.data;
         v.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
-        v.extend_from_slice(&20u16.to_le_bytes()); // gereken sürüm
+        v.extend_from_slice(&20u16.to_le_bytes()); // version needed
         v.extend_from_slice(&FLAG.to_le_bytes());
-        v.extend_from_slice(&0u16.to_le_bytes()); // yöntem: STORED
+        v.extend_from_slice(&0u16.to_le_bytes()); // method: STORED
         v.extend_from_slice(&CLOCKWISE.to_le_bytes());
         v.extend_from_slice(&DATE.to_le_bytes());
         v.extend_from_slice(&crc.to_le_bytes());
-        v.extend_from_slice(&size.to_le_bytes()); // sıkışık
-        v.extend_from_slice(&size.to_le_bytes()); // açık
+        v.extend_from_slice(&size.to_le_bytes()); // compressed
+        v.extend_from_slice(&size.to_le_bytes()); // uncompressed
         v.extend_from_slice(&ad_uz.to_le_bytes());
-        v.extend_from_slice(&0u16.to_le_bytes()); // ekstra alan yok (mimetype için şart)
+        v.extend_from_slice(&0u16.to_le_bytes()); // no extra field (required for mimetype)
         v.extend_from_slice(ad_b);
         v.extend_from_slice(content);
 
         let m = &mut self.center;
         m.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
-        m.extend_from_slice(&20u16.to_le_bytes()); // yapan sürüm
-        m.extend_from_slice(&20u16.to_le_bytes()); // gereken sürüm
+        m.extend_from_slice(&20u16.to_le_bytes()); // version made by
+        m.extend_from_slice(&20u16.to_le_bytes()); // version needed
         m.extend_from_slice(&FLAG.to_le_bytes());
         m.extend_from_slice(&0u16.to_le_bytes());
         m.extend_from_slice(&CLOCKWISE.to_le_bytes());
@@ -235,11 +235,11 @@ impl ZipWriter {
         m.extend_from_slice(&size.to_le_bytes());
         m.extend_from_slice(&size.to_le_bytes());
         m.extend_from_slice(&ad_uz.to_le_bytes());
-        m.extend_from_slice(&0u16.to_le_bytes()); // ekstra
-        m.extend_from_slice(&0u16.to_le_bytes()); // yorum
+        m.extend_from_slice(&0u16.to_le_bytes()); // extra
+        m.extend_from_slice(&0u16.to_le_bytes()); // comment
         m.extend_from_slice(&0u16.to_le_bytes()); // disk
-        m.extend_from_slice(&0u16.to_le_bytes()); // iç öznitelik
-        m.extend_from_slice(&0u32.to_le_bytes()); // dış öznitelik
+        m.extend_from_slice(&0u16.to_le_bytes()); // internal attributes
+        m.extend_from_slice(&0u32.to_le_bytes()); // external attributes
         m.extend_from_slice(&offset.to_le_bytes());
         m.extend_from_slice(ad_b);
         self.count += 1;
@@ -263,12 +263,12 @@ impl ZipWriter {
         v.extend_from_slice(&count.to_le_bytes());
         v.extend_from_slice(&cd_size.to_le_bytes());
         v.extend_from_slice(&cd_offset.to_le_bytes());
-        v.extend_from_slice(&0u16.to_le_bytes()); // yorum
+        v.extend_from_slice(&0u16.to_le_bytes()); // comment
         Ok(self.data)
     }
 }
 
-/// CRC-32 (IEEE, ZIP'in kullandığı), tablosuz.
+/// CRC-32 (IEEE, as ZIP uses it), without a table.
 pub fn crc32(data: &[u8]) -> u32 {
     let mut c: u32 = 0xffff_ffff;
     for &b in data {
@@ -289,8 +289,8 @@ mod tests {
     use super::*;
     use crate::i18n::prefix_of;
 
-    /// Testte üretilen ZIP'i okuyan küçük çözümleyici: (ad, yöntem, ekstra uzunluğu, içerik) yerel başlık
-    /// sırasıyla; merkezi dizinle tutarlılık ve CRC da denetlenir.
+    /// A small parser that reads the ZIP built in the test: (name, method, extra length, content) in local header order;
+    /// the consistency with the central directory and the CRC are checked too.
     fn parse(z: &[u8]) -> Vec<(String, u16, u16, Vec<u8>)> {
         let u16_ = |o: usize| u16::from_le_bytes([z[o], z[o + 1]]);
         let u32_ = |o: usize| u32::from_le_bytes([z[o], z[o + 1], z[o + 2], z[o + 3]]);
@@ -301,14 +301,14 @@ mod tests {
         let mut result = Vec::new();
         let mut p = cd;
         for _ in 0..count {
-            assert_eq!(u32_(p), 0x0201_4b50, "merkezi dizin imzası");
+            assert_eq!(u32_(p), 0x0201_4b50, "central directory signature");
             let crc = u32_(p + 16);
             let size = u32_(p + 24) as usize;
             let ad_uz = u16_(p + 28) as usize;
             let offset = u32_(p + 42) as usize;
             let name = String::from_utf8(z[p + 46..p + 46 + ad_uz].to_vec()).unwrap();
-            assert_eq!(u32_(offset), 0x0403_4b50, "yerel başlık imzası");
-            assert_eq!(u16_(offset + 6) & 0x0800, 0x0800, "UTF-8 bayrağı");
+            assert_eq!(u32_(offset), 0x0403_4b50, "local header signature");
+            assert_eq!(u16_(offset + 6) & 0x0800, 0x0800, "UTF-8 flag");
             let method = u16_(offset + 8);
             let extra = u16_(offset + 28);
             let head = offset + 30 + u16_(offset + 26) as usize + extra as usize;
@@ -336,18 +336,18 @@ mod tests {
         let root = fixture();
         assert!(
             is_epub_folder(&root),
-            "fixture EPUB paketi olmalı: {}",
+            "the fixture must be an EPUB package: {}",
             root.display()
         );
         let z = build_zip(&root).expect("zip");
-        // ilk 38 bayt: yerel başlık + "mimetype" adı + içerik başı (OCF'nin sihirli ofseti)
+        // the first 38 bytes: local header + the name "mimetype" + the start of the content (the magic offset of OCF)
         assert_eq!(&z[0..4], b"PK\x03\x04");
         assert_eq!(&z[30..38], b"mimetype");
         assert_eq!(&z[38..58], b"application/epub+zip");
         let inputs = parse(&z);
         assert_eq!(inputs[0].0, "mimetype");
         assert_eq!(inputs[0].1, 0, "mimetype STORED");
-        assert_eq!(inputs[0].2, 0, "mimetype ekstra alansız");
+        assert_eq!(inputs[0].2, 0, "mimetype without an extra field");
         let names: Vec<&str> = inputs.iter().map(|g| g.0.as_str()).collect();
         assert!(names.contains(&"META-INF/container.xml"), "{names:?}");
         assert!(names.contains(&"OEBPS/content.opf"), "{names:?}");
@@ -359,35 +359,31 @@ mod tests {
         );
         let mut ordered = names[1..].to_vec();
         ordered.sort_unstable();
-        assert_eq!(
-            names[1..],
-            ordered[..],
-            "mimetype'tan sonra adına göre sıralı"
-        );
-        // içerik birebir
+        assert_eq!(names[1..], ordered[..], "sorted by name after mimetype");
+        // content exactly
         for (name, _, _, content) in &inputs {
             assert_eq!(content, &fs::read(root.join(name)).unwrap(), "{name}");
         }
-        // belirlenimci
+        // deterministic
         assert_eq!(z, build_zip(&root).unwrap());
     }
 
     #[test]
     fn hidden_files_macosx_and_symlinks_skipped_subfolders_included() {
         let temp = std::env::temp_dir().join(format!("mc-epub-{}", uuid::Uuid::new_v4()));
-        let k = temp.join("Kitap ğüş.epub");
+        let k = temp.join("Book ğüş.epub"); // turkish-ok: Turkish test text (UTF-8 names, fixture title)
         fs::create_dir_all(k.join("META-INF")).unwrap();
-        fs::create_dir_all(k.join("OEBPS/derin/alt")).unwrap();
+        fs::create_dir_all(k.join("OEBPS/deep/sub")).unwrap();
         fs::create_dir_all(k.join("__MACOSX")).unwrap();
         fs::write(k.join("META-INF/container.xml"), "<container/>").unwrap();
-        fs::write(k.join("OEBPS/derin/alt/ç.xhtml"), "x").unwrap();
-        fs::write(k.join("aaa-once.txt"), "a").unwrap(); // mimetype'tan önce gelmemeli
+        fs::write(k.join("OEBPS/deep/sub/ç.xhtml"), "x").unwrap(); // turkish-ok: Turkish test text (UTF-8 names, fixture title)
+        fs::write(k.join("aaa-first.txt"), "a").unwrap(); // must not come before mimetype
         fs::write(k.join("mimetype"), "application/epub+zip").unwrap();
         fs::write(k.join(".DS_Store"), "hidden").unwrap();
         fs::write(k.join("__MACOSX/._x"), "hidden").unwrap();
-        fs::write(temp.join("disarida.txt"), "paket dışı").unwrap();
+        fs::write(temp.join("outside.txt"), "outside the package").unwrap();
         #[cfg(unix)]
-        std::os::unix::fs::symlink(temp.join("disarida.txt"), k.join("OEBPS/bag.txt")).unwrap();
+        std::os::unix::fs::symlink(temp.join("outside.txt"), k.join("OEBPS/link.txt")).unwrap();
         let names: Vec<String> = parse(&build_zip(&k).unwrap())
             .into_iter()
             .map(|g| g.0)
@@ -397,8 +393,8 @@ mod tests {
             [
                 "mimetype",
                 "META-INF/container.xml",
-                "OEBPS/derin/alt/ç.xhtml",
-                "aaa-once.txt"
+                "OEBPS/deep/sub/ç.xhtml", // turkish-ok: Turkish test text (UTF-8 names, fixture title)
+                "aaa-first.txt"
             ]
         );
         fs::remove_dir_all(&temp).unwrap();
@@ -407,22 +403,22 @@ mod tests {
     #[test]
     fn non_epub_folder_and_file_are_rejected() {
         let temp = std::env::temp_dir().join(format!("mc-epub-{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(temp.join("bos.epub")).unwrap();
-        fs::write(temp.join("duz.epub"), "PK").unwrap();
-        assert!(!is_epub_folder(&temp.join("bos.epub")));
+        fs::create_dir_all(temp.join("empty.epub")).unwrap();
+        fs::write(temp.join("plain.epub"), "PK").unwrap();
+        assert!(!is_epub_folder(&temp.join("empty.epub")));
         assert!(
-            build_zip(&temp.join("bos.epub")).is_err(),
-            "container.xml'siz klasör"
+            build_zip(&temp.join("empty.epub")).is_err(),
+            "folder without container.xml"
         );
-        assert!(build_zip(&temp.join("duz.epub")).is_err(), "file");
-        assert!(build_zip(&temp.join("yok.epub")).is_err(), "non path");
+        assert!(build_zip(&temp.join("plain.epub")).is_err(), "file");
+        assert!(build_zip(&temp.join("missing.epub")).is_err(), "non path");
         fs::remove_dir_all(&temp).unwrap();
     }
 
-    /// Geçici klasör paketi: `META-INF/container.xml`, `mimetype` ve verilen ek dosyalar.
+    /// A temporary folder package: `META-INF/container.xml`, `mimetype` and the given extra files.
     fn temp_package(suffixes: &[&str]) -> (PathBuf, PathBuf) {
         let temp = std::env::temp_dir().join(format!("mc-epub-{}", uuid::Uuid::new_v4()));
-        let k = temp.join("Sinir.epub");
+        let k = temp.join("Limit.epub");
         fs::create_dir_all(k.join("META-INF")).unwrap();
         fs::write(k.join("META-INF/container.xml"), "<container/>").unwrap();
         fs::write(k.join("mimetype"), "application/epub+zip").unwrap();
@@ -440,14 +436,14 @@ mod tests {
         fs::set_permissions(path, fs::Permissions::from_mode(kip)).unwrap();
     }
 
-    /// O1: sınırı aşan dosya OKUNMADAN reddedilir (boyut `metadata` ile toplanır). Dosya seyrek (diskte yer
-    /// tutmaz) ve okunamaz (000): okumaya kalkışan kod "çok büyük" yerine izin hatası verir.
+    /// O1: a file over the limit is rejected WITHOUT BEING READ (the size is summed with `metadata`). The file is sparse
+    /// (takes no space on disk) and unreadable (000): code that tries to read it gives a permission error instead of "too big".
     #[cfg(unix)]
     #[test]
     fn file_over_limit_rejected_before_reading() {
         let (temp, k) = temp_package(&[]);
         fs::create_dir_all(k.join("OEBPS")).unwrap();
-        let large = k.join("OEBPS/buyuk.bin");
+        let large = k.join("OEBPS/big.bin");
         fs::File::create(&large)
             .unwrap()
             .set_len(MAX_TOTAL + 1)
@@ -458,28 +454,30 @@ mod tests {
         let sure = head.elapsed();
         permission(&large, 0o644);
         fs::remove_dir_all(&temp).unwrap();
-        let error = result.expect_err("1 GiB üstü reddedilmeli").to_string();
+        let error = result
+            .expect_err("more than 1 GiB must be rejected")
+            .to_string();
         assert!(
             error.starts_with(&prefix_of("rust.package_large")),
-            "okunmadan boyut hatası: {error}"
+            "size error without reading: {error}"
         );
         assert!(sure.as_secs() < 5, "{sure:?}");
     }
 
-    /// O1: dosya sayısı sınırı TARAMA sırasında uygulanır (bütün ağaç toplanmadan). Sınırdan sonra gelen
-    /// okunamaz klasöre hiç girilmez; bütün ağacı toplayan kod izin hatası verir.
+    /// O1: the file count limit applies WHILE SCANNING (before the whole tree is collected). An unreadable folder that
+    /// comes after the limit is never entered; code that collects the whole tree gives a permission error.
     #[cfg(unix)]
     #[test]
     fn entry_limit_applied_while_scanning() {
         let (temp, k) = temp_package(&["OEBPS/a.xhtml", "OEBPS/b.xhtml", "OEBPS/c.xhtml"]);
-        // Adına göre hepsi sınırdan sonra gelen 20 okunamaz klasör: sırasız gezinme (dizin girdisi sırası
-        // ada göre değil) büyük olasılıkla birine sınırdan önce girer; sıralı gezinme hiçbirine girmez.
+        // 20 unreadable folders that all come after the limit by name: an unsorted walk (the directory entry order is not
+        // by name) very likely enters one before the limit; a sorted walk enters none.
         let locked: Vec<PathBuf> = (0..20)
             .map(|_| k.join(format!("z-{}", uuid::Uuid::new_v4())))
             .collect();
         for locked in &locked {
             fs::create_dir_all(locked).unwrap();
-            fs::write(locked.join("ic.txt"), "x").unwrap();
+            fs::write(locked.join("inner.txt"), "x").unwrap();
             permission(locked, 0o000);
         }
         let result = build_zip_limited(
@@ -493,14 +491,14 @@ mod tests {
             permission(locked, 0o755);
         }
         fs::remove_dir_all(&temp).unwrap();
-        let error = result.expect_err("3 dosya sınırı aşıldı").to_string();
+        let error = result.expect_err("the 3 file limit was passed").to_string();
         assert!(
             error.starts_with(&prefix_of("rust.many_file_limited")),
             "{error}"
         );
     }
 
-    /// O1: toplam sınır da okumadan önce: iki küçük dosya sınırı birlikte aşar, ikincisi okunamaz.
+    /// O1: the total limit too before reading: two small files pass the limit together, the second one is unreadable.
     #[cfg(unix)]
     #[test]
     fn total_limit_applied_before_reading() {
@@ -517,15 +515,15 @@ mod tests {
         );
         permission(&b, 0o644);
         fs::remove_dir_all(&temp).unwrap();
-        let error = result.expect_err("toplam sınır aşıldı").to_string();
+        let error = result.expect_err("the total limit was passed").to_string();
         assert!(
             error.starts_with(&prefix_of("rust.package_large")),
             "{error}"
         );
     }
 
-    /// Üretilen ZIP'i uygulamanın kendi JS okuyucusu (zip.js + epub-package.js) açabiliyor mu? `node` yoksa
-    /// atlanır (yalnız bilgi yazar); varsa okuyucunun hatası test hatasıdır.
+    /// Can the app's own JS reader (zip.js + epub-package.js) open the built ZIP? Skipped when there is no `node`
+    /// (only a note is written); when there is one, an error of the reader is a test error.
     #[test]
     fn js_epub_reader_opens_generated_zip() {
         let z = build_zip(&fixture()).unwrap();
@@ -539,7 +537,7 @@ mod tests {
         {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("node bulunamadı, JS reader sınaması atlandı: {e}");
+                eprintln!("node not found, the JS reader test was skipped: {e}");
                 return;
             }
         };
@@ -551,7 +549,7 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(
-            text.contains("\"title\":\"Klasör Paketi Deneme Kitabı\""),
+            text.contains("\"title\":\"Klasör Paketi Deneme Kitabı\""), // turkish-ok: Turkish test text (UTF-8 names, fixture title)
             "{text}"
         );
         assert!(text.contains("\"warnings\":[]"), "{text}");

@@ -5,12 +5,12 @@
 //! name already exists (then the current file wins and the legacy file is left untouched, so nothing is overwritten).
 //! The contents need no conversion here: the recent files list reads the legacy field names through serde aliases
 //! (`recent.rs`), the projects backup is converted by the web side (`app/js/migrate.js`) and the language file holds
-//! only a language code.
+//! only a language code (the last save folder file only a path).
 //!
 //! Crash leftovers of the atomic writer with the legacy temp suffix are removed like current ones
 //! (`recent::remove_leftover_temps`).
 //!
-//! Note: the bundle identifier changed with the rename (`com.onurmert.kitapcilt` → `com.onurmert.mucellit`), so a
+//! Note: the bundle identifier changed with the rename (`com.onurmert.kitapcilt` → `com.onurmert.mucellit`), so a  // turkish-ok: legacy file names (migration test)
 //! sandboxed build gets a new container; files in the old container are not reachable from here.
 
 use std::fs;
@@ -20,10 +20,11 @@ use tauri::{AppHandle, Manager, Runtime};
 
 // legacy-names: begin (file names and the temp suffix used by earlier versions)
 /// (legacy name, current name) of each app data file.
-pub const LEGACY_FILES: [(&str, &str); 3] = [
+pub const LEGACY_FILES: [(&str, &str); 4] = [
     ("surec.json", crate::backup::FILE_NAME),
     ("son-acilanlar.json", crate::recent::FILE_NAME),
     ("dil.txt", crate::i18n::CHOICE_FILE),
+    ("son-kayit-klasoru.txt", crate::files::SAVE_FOLDER_FILE),
 ];
 /// Suffix of the atomic writer's temp files in earlier versions (now `.temp`).
 pub const LEGACY_TEMP_SUFFIX: &str = ".gecici";
@@ -99,12 +100,15 @@ mod tests {
         let d = temp_dir();
         let projects = fixture("projects-v1.json");
         let recent = fixture("recent-files-v1.json");
-        fs::write(d.join("surec.json"), &projects).unwrap();
-        fs::write(d.join("son-acilanlar.json"), &recent).unwrap();
-        fs::write(d.join("dil.txt"), "tr\n").unwrap();
+        fs::write(d.join("surec.json"), &projects).unwrap(); // turkish-ok: legacy file names (migration test)
+        fs::write(d.join("son-acilanlar.json"), &recent).unwrap(); // turkish-ok: legacy file names (migration test)
+        fs::write(d.join("dil.txt"), "tr\n").unwrap(); // turkish-ok: legacy file names (migration test)
+        fs::write(d.join("son-kayit-klasoru.txt"), "/Users/x/Books\n").unwrap(); // turkish-ok: legacy file names (migration test)
         let mut moved = migrate_dir(&d).unwrap();
         moved.sort();
-        assert_eq!(moved, ["dil.txt", "son-acilanlar.json", "surec.json"]);
+        let mut expected: Vec<&str> = LEGACY_FILES.iter().map(|(old, _)| *old).collect();
+        expected.sort();
+        assert_eq!(moved, expected);
         for (old, _) in LEGACY_FILES {
             assert!(!d.join(old).exists(), "{old} left behind");
         }
@@ -118,6 +122,10 @@ mod tests {
             Some("tr")
         );
         assert!(crate::backup::read(&d.join(crate::backup::FILE_NAME)).is_some());
+        assert_eq!(
+            crate::files::read_last_save_folder(&d.join(crate::files::SAVE_FOLDER_FILE)),
+            Some(PathBuf::from("/Users/x/Books"))
+        );
         let list = crate::recent::RecentList::load(&d.join(crate::recent::FILE_NAME));
         assert_eq!(list.entries.len(), 2, "legacy field names are read");
         assert_eq!(list.entries[0].name, "Mavi Pusula.epub");
@@ -138,7 +146,7 @@ mod tests {
     #[test]
     fn current_file_wins_and_legacy_file_is_kept() {
         let d = temp_dir();
-        fs::write(d.join("surec.json"), "{\"old\":1}").unwrap();
+        fs::write(d.join("surec.json"), "{\"old\":1}").unwrap(); // turkish-ok: legacy file names (migration test)
         fs::write(d.join(crate::backup::FILE_NAME), "{\"new\":1}").unwrap();
         assert_eq!(migrate_dir(&d).unwrap(), Vec::<String>::new());
         assert_eq!(
@@ -146,7 +154,7 @@ mod tests {
             "{\"new\":1}"
         );
         assert_eq!(
-            fs::read_to_string(d.join("surec.json")).unwrap(),
+            fs::read_to_string(d.join("surec.json")).unwrap(), // turkish-ok: legacy file names (migration test)
             "{\"old\":1}"
         );
         fs::remove_dir_all(&d).unwrap();
@@ -166,7 +174,7 @@ mod tests {
             Vec::<String>::new(),
             "missing folder"
         );
-        fs::create_dir(d.join("surec.json")).unwrap();
+        fs::create_dir(d.join("surec.json")).unwrap(); // turkish-ok: legacy file names (migration test)
         assert_eq!(
             migrate_dir(&d).unwrap(),
             Vec::<String>::new(),
@@ -181,7 +189,7 @@ mod tests {
     fn legacy_temp_leftovers_are_removed() {
         let d = temp_dir();
         let u = || uuid::Uuid::new_v4().to_string();
-        let leftover = d.join(format!(".surec.json.{}{LEGACY_TEMP_SUFFIX}", u()));
+        let leftover = d.join(format!(".surec.json.{}{LEGACY_TEMP_SUFFIX}", u())); // turkish-ok: legacy file names (migration test)
         let current = d.join(format!(".projects.json.{}.temp", u()));
         let unrelated = d.join(format!("notes{LEGACY_TEMP_SUFFIX}"));
         for f in [&leftover, &current, &unrelated] {

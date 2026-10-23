@@ -1,2 +1,2 @@
-# Vendor dosyalari bayt bayt korunur (app/vendor/SOURCES.md sha256); core.autocrlf=true olan Windows agacinda da.
+# The vendor files are kept byte for byte (app/vendor/SOURCES.md sha256); in a Windows tree with core.autocrlf=true too.
 app/vendor/** -text

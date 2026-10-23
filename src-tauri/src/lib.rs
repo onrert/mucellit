@@ -1,11 +1,11 @@
-//! Mücellit Mac uygulaması (Tauri 2). Web arayüzü `dist/` (app/'ten `tools/prepare-dist.mjs` ile).
-//! pencere, dialog eklentisi (yerel onay pencereleri), yerel menü.
-//! yerel Aç/Kaydet (`dosya`), klasör paketi EPUB (`epub_klasor`), son açılanlar + yer imi
-//! (`son_acilanlar`), Süreç verisi otomatik yedeği (`veri`), Dock/Finder'dan açma (`RunEvent::Opened`).
-//! yazdırma (`yazdir`: PDFKit baskı işlemi %100 ölçek; Önizleme'de Aç).
+//! Mucellit Mac app (Tauri 2). The web interface is `dist/` (from app/ with `tools/prepare-dist.mjs`).
+//! window, dialog plug-in (native confirm dialogs), native menu.
+//! native Open/Save (`files`), folder package EPUB (`epub_folder`), recent files + bookmarks
+//! (`recent`), the automatic backup of the project data (`backup`), opening from the Dock/Finder (`RunEvent::Opened`).
+//! printing (`print`: a PDFKit print operation at 100% scale; Open in Preview).
 //!
-//! Güvenlik: ana pencere `tauri.conf.json`'daki ayarla (`create: false`) burada kurulur;
-//! uygulama dışı adrese gezinme ve yeni pencere (window.open, target=_blank) reddedilir. CSP conf'ta.
+//! Security: the main window is set up here with the settings of `tauri.conf.json` (`create: false`);
+//! navigation to an address outside the app and new windows (window.open, target=_blank) are rejected. The CSP is in the conf.
 
 pub mod backup;
 pub mod epub_folder;
@@ -19,19 +19,19 @@ pub mod recent;
 use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
 use tauri::{Runtime, Url};
 
-/// Ana pencerenin etiketi (`tauri.conf.json` ve `capabilities/default.json` ile aynı).
+/// The label of the main window (the same as in `tauri.conf.json` and `capabilities/default.json`).
 const MAIN_WINDOW: &str = "main";
 
-/// Web görünümü bu adrese gidebilir mi? Yalnız uygulamanın kendi içeriği: macOS'ta `tauri://localhost`,
-/// Windows/Android biçimi `http(s)://tauri.localhost`; bunların kökenli `blob:` adresleri (sayfanın kendi
-/// ürettiği indirme). Kullanıcı adı/parola/bağlantı noktası taşıyan ya da başka her adres reddedilir.
+/// May the web view go to this address? Only the app's own content: `tauri://localhost` on macOS,
+/// the Windows/Android form `http(s)://tauri.localhost`; `blob:` addresses with these origins (downloads the page makes
+/// itself). An address with a user name/password/port, and every other address, is rejected.
 pub fn navigation_allowed(url: &Url) -> bool {
     let without_credentials =
         url.username().is_empty() && url.password().is_none() && url.port().is_none();
     match url.scheme() {
         "tauri" => without_credentials && url.host_str() == Some("localhost"),
         "http" | "https" => without_credentials && url.host_str() == Some("tauri.localhost"),
-        // blob:<köken>/<kimlik> — köken de uygulamanın kendisi olmalı (iç içe blob: yok).
+        // blob:<origin>/<id> — the origin must be the app itself too (no nested blob:).
         "blob" => Url::parse(url.path())
             .map(|inner| inner.scheme() != "blob" && navigation_allowed(&inner))
             .unwrap_or(false),
@@ -39,9 +39,9 @@ pub fn navigation_allowed(url: &Url) -> bool {
     }
 }
 
-/// `on_navigation`'a verilen karar işlevinin kendisi (testler bunu doğrudan çağırır; kapanış içine
-/// gömülü mantık sınanamıyordu: sınaması, `true || gezinme_izinli(url)` mutantı yakalanmadı).
-/// Reddedilen adres stderr'e yazılır.
+/// The decision function given to `on_navigation` itself (the tests call it directly; logic embedded in a closure could
+/// not be tested: in the test, the `true || navigation_allowed(url)` mutant was not caught).
+/// A rejected address is written to stderr.
 pub fn navigation_decision(url: &Url) -> bool {
     let permission = navigation_allowed(url);
     if !permission {
@@ -50,13 +50,13 @@ pub fn navigation_decision(url: &Url) -> bool {
     permission
 }
 
-/// `on_new_window`'a verilen karar: her yeni pencere isteği (window.open, target=_blank) reddedilir.
+/// The decision given to `on_new_window`: every new window request (window.open, target=_blank) is rejected.
 pub fn new_window_decision<R: Runtime>(url: &Url) -> NewWindowResponse<R> {
     eprintln!("fresh window rejected: {url}");
     NewWindowResponse::Deny
 }
 
-/// Uygulamayı başlatır.
+/// Starts the app.
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -76,7 +76,7 @@ pub fn run() {
             print::print,
             print::open_in_preview,
         ])
-        // Menü dili: yedeklenmiş elle seçim ya da sistem dili (JS açılınca dil_ayarla ile eşitler).
+        // Menu language: the backed-up manual choice or the system language (JS syncs it with set_language when it opens).
         .menu(|app| {
             // files of earlier versions are renamed before anything reads them
             legacy::migrate_app_data(app);
@@ -94,21 +94,21 @@ pub fn run() {
                 .cloned()
                 .ok_or("tauri.conf.json: no main window")?;
             WebviewWindowBuilder::from_config(app.handle(), &settings)?
-                // ilk kare menüyle aynı sistem dilinde (app/js/i18n.js __KC_DIL__)
+                // the first frame in the same system language as the menu (app/js/i18n.js __MC_LANG__)
                 .initialization_script(i18n::init_script())
                 .on_navigation(navigation_decision)
                 .on_new_window(|url, _| new_window_decision(&url))
                 .build()?;
             backup::start_worker(app.handle());
-            // Önizleme önbelleği (eski çıktı, çökme artığı .gecici) açılışta temizlenir.
+            // The Preview cache (old outputs, crash leftover .temp) is cleaned at start-up.
             print::clean_on_startup(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("Mücellit başlatılamadı")
+        .expect("Mucellit could not start")
         .run(|app, on_event| match on_event {
-            // Dock simgesine bırakılan ya da Finder'da "Birlikte Aç" ile gelen dosyalar (macOS; sistem bu
-            // dosyalar için güvenlik kapsamlı erişimi kendisi başlatır).
+            // Files dropped on the Dock icon or coming from Finder "Open With" (macOS; the system starts the security-scoped access
+            // for these files itself).
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             tauri::RunEvent::Opened { urls } => {
                 let paths = urls
@@ -117,8 +117,8 @@ pub fn run() {
                     .collect();
                 files::opened_from_outside(app, paths);
             }
-            // ⌘Q / Dock'tan Çık / son pencere kapandı (tao: applicationWillTerminate → LoopDestroyed → Exit):
-            // bekleyen Süreç yedeği beklemeden yazılır.
+            // ⌘Q / Quit from the Dock / the last window closed (tao: applicationWillTerminate → LoopDestroyed → Exit):
+            // the pending project backup is written without waiting.
             tauri::RunEvent::Exit => backup::flush_on_exit(app),
             _ => {}
         });
@@ -143,12 +143,12 @@ mod tests {
             "https://tauri.localhost/index.html",
             "blob:tauri://localhost/7f0c3a7e-1d2b-4c5d-8e9f-0a1b2c3d4e5f",
         ] {
-            assert!(permission(a), "{a} izinli olmalı");
+            assert!(permission(a), "{a} must be allowed");
         }
     }
 
-    /// Kurulumda `on_navigation`'a verilen işlev (`gezinme_karari`) gerçekten reddediyor mu: denetim
-    /// devre dışı bırakılırsa (ör. `true || …`, `|_| true`) bu test kalır.
+    /// Does the function given to `on_navigation` at setup (`navigation_decision`) really reject: when the check is
+    /// turned off (e.g. `true || …`, `|_| true`) this test fails.
     #[test]
     fn navigation_decision_rejects_external_allows_app_content() {
         let decision = |a: &str| navigation_decision(&Url::parse(a).unwrap());
@@ -161,13 +161,13 @@ mod tests {
         ] {
             assert!(
                 !decision(a),
-                "{a} kurulumdaki decision işlevinde reddedilmeli"
+                "{a} must be rejected by the decision function of the setup"
             );
         }
         for a in ["tauri://localhost/index.html", "https://tauri.localhost/"] {
             assert!(
                 decision(a),
-                "{a} kurulumdaki decision işlevinde allowed olmalı"
+                "{a} must be allowed by the decision function of the setup"
             );
         }
     }
@@ -209,7 +209,7 @@ mod tests {
             "mailto:a@b.c",
             "ws://tauri.localhost/",
         ] {
-            assert!(!permission(a), "{a} reddedilmeli");
+            assert!(!permission(a), "{a} must be rejected");
         }
     }
 }

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<!-- Yerel sandbox denemesi: profil gerektirmeyen anahtarlar
-     (kimlik ve ekip tanımlayıcısı gibi profil isteyen anahtarlar bu dosyada yok). -->
+<!-- Local sandbox trial: keys that need no profile
+     (keys that need a profile, like the application and team identifiers, are not in this file). -->
 <dict>
   <key>com.apple.security.app-sandbox</key>
   <true/>
@@ -12,7 +12,7 @@
   <true/>
   <key>com.apple.security.print</key>
   <true/>
-  <!-- WKWebView içerik yüklemesi sandbox'ta bunu istiyor (gözlemi, kök neden araştırılıyor). -->
+  <!-- WKWebView content loading asks for this in the sandbox (observed, the root cause is being investigated). -->
   <key>com.apple.security.network.client</key>
   <true/>
 </dict>

@@ -1,7 +1,7 @@
 [package]
 name = "mucellit"
 version = "1.0.0"
-description = "Mücellit: kitap ciltleme aracı (Mac uygulaması)"
+description = "Mücellit: a bookbinding tool (Mac app)"
 edition = "2021"
 rust-version = "1.85"
 publish = false
@@ -20,36 +20,36 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
-# Güvenlik kapsamlı yer imi (Son Açılanlar). Sürüm sabit: tek geliştiricili, tek sürümlü crate.
-# Apple dışında da derlenir ve Error::Unsupported döner (recent.rs düz yola düşer); cfg gerekmez.
+# Security-scoped bookmarks (Open Recent). The version is pinned: a single-developer, single-version crate.
+# It builds outside Apple too and returns Error::Unsupported (recent.rs falls back to the plain path); no cfg needed.
 apple-scoped-bookmarks = "=0.1.0"
-# Arayüz dili: macOS tercih edilen diller (NSLocale.preferredLanguages); sürüm tao/wry ile aynı (Cargo.lock).
+# Interface language: the macOS preferred languages (NSLocale.preferredLanguages); the version is the same as tao/wry (Cargo.lock).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "NSArray", "NSData", "NSEnumerator", "NSError", "NSGeometry", "NSLocale", "NSObject", "NSString", "NSURL"] }
-# Yazdırma: PDFKit baskı işlemi (%100 ölçek) ve Önizleme'de Aç. Sürümler tao/wry'nin
-# kullandığı objc2 0.6 / 0.3 ailesiyle aynı (Cargo.lock); objc2-pdf-kit yeni crate (aynı yazar, aynı aile).
+# Printing: a PDFKit print operation (100% scale) and Open in Preview. The versions are the same as the objc2 0.6 / 0.3
+# family that tao/wry use (Cargo.lock); objc2-pdf-kit is a new crate (the same author, the same family).
 objc2 = "0.6.5"
 block2 = "0.6.2"
 objc2-pdf-kit = { version = "0.3.2", default-features = false, features = ["std", "PDFDocument", "PDFPage", "objc2-app-kit", "objc2-core-foundation"] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "block2", "objc2-core-foundation", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSRunningApplication", "NSView", "NSWindow", "NSWorkspace"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }
 
-#: IPC komutlarını gerçek komut sarmalayıcısıyla sınamak için sahte çalışma zamanı (tauri::test).
-# Yalnız testlerde etkin (resolver 2: geliştirme bağımlılığının özelliği sürüm derlemesine girmez); yeni crate yok.
+#: a mock runtime (tauri::test) to test the IPC commands with the real command wrapper.
+# Active only in the tests (resolver 2: a feature of a dev dependency does not reach the release build); no new crate.
 [dev-dependencies]
 tauri = { version = "2.12", features = ["test"] }
 
-#: panelsiz PDF'e baskı ölçümü (`tests/print_pdf.rs`) NSPrintInfo sözlüğüne kayıt adresini yazar.
-# Yalnız testte (resolver 2: sürüm derlemesine girmez); crate aynı (Cargo.lock), yalnız özellik.
+#: the panel-less print-to-PDF measurement (`tests/print_pdf.rs`) writes the save URL into the NSPrintInfo dictionary.
+# Only in the test (resolver 2: does not reach the release build); the same crate (Cargo.lock), only a feature.
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSDictionary"] }
 
-# Baskı işlemi ana iş parçacığı ister: test kendi main'inde koşar (libtest iş parçacığı yerine).
+# The print operation needs the main thread: the test runs in its own main (instead of a libtest thread).
 [[test]]
 name = "print_pdf"
 harness = false
 
-# tauri-plugin-updater bilerek YOK (uygulama kendini güncellemez); devtools özelliği release'te kapalı.
+# tauri-plugin-updater is left out on purpose (the app does not update itself); the devtools feature is off in release.
 
 [profile.release]
 codegen-units = 1
