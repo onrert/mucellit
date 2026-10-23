@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mücellit",
+  "version": "1.0.0",
+  "identifier": "com.onurmert.kitapcilt",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeDevCommand": "node araclar/dist-hazirla.mjs --sessiz",
+    "beforeBuildCommand": "node araclar/dist-hazirla.mjs --sessiz"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Mücellit",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 1000,
+        "minHeight": 700,
+        "dragDropEnabled": false,
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'; worker-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "category": "Productivity",
+    "copyright": "© 2026 Onur Mert Ertuğrul",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.png"],
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "hardenedRuntime": true
+    },
+    "fileAssociations": [
+      { "ext": ["pdf"], "contentTypes": ["com.adobe.pdf"], "name": "PDF", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["epub"], "contentTypes": ["org.idpf.epub-container", "com.apple.ibooks.epub"], "name": "EPUB", "role": "Viewer", "rank": "Alternate" }
+    ]
+  }
+}

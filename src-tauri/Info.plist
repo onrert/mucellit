@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Şifreleme ihracı: uygulama yalnız işletim sisteminin şifrelemesini kullanır. -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+  <!-- Arayüz dili: geliştirme dili İngilizce; uygulama İngilizce ve Türkçe arayüz sunar (metinler app/dil/,
+       lproj klasörü yok: CFBundleLocalizations "elle yönetilen" yerelleştirmeleri bildirir). macOS'un eklediği
+       sistem öğeleri (Tümünü Kapat, Aç/Kaydet pencere düğmeleri) bu listeden sistem diline uyan dili kullanır. -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>tr</string>
+  </array>
+</dict>
+</plist>

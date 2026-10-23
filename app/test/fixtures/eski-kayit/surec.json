@@ -1,0 +1,146 @@
+{
+  "surum": 1,
+  "kitaplar": [
+    {
+      "id": "k-mzeski-1",
+      "ad": "Çiğdemköy (deneme)",
+      "ciltTuru": "formali",
+      "kitapGen": 148,
+      "kitapYuk": 210,
+      "kagit": "80 g/m² kitap kağıdı",
+      "kagitKalinlik": 0.1,
+      "pdfAdi": "cigdemkoy.pdf",
+      "olusturma": "2026-10-12",
+      "adimlar": [
+        {
+          "id": "a-mzeski-0",
+          "ad": "Hazırlık / PDF",
+          "tamam": true,
+          "tarih": "2026-10-10",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-1",
+          "ad": "Test baskısı",
+          "tamam": true,
+          "tarih": "2026-10-11",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-2",
+          "ad": "Baskı",
+          "tamam": true,
+          "tarih": "2026-10-12",
+          "not": "kuşe kağıt",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-3",
+          "ad": "Katlama",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-4",
+          "ad": "Presleme",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-5",
+          "ad": "Delme",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-6",
+          "ad": "Dikiş",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-7",
+          "ad": "Sırt tutkallama",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-8",
+          "ad": "Sırt yuvarlatma",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": true
+        },
+        {
+          "id": "a-mzeski-9",
+          "ad": "Kapital + sırt bezi",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-10",
+          "ad": "Mukavva kesimi",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-11",
+          "ad": "Kapak kaplama",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-12",
+          "ad": "Forza yapıştırma",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-13",
+          "ad": "Preste kurutma",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        },
+        {
+          "id": "a-mzeski-14",
+          "ad": "Ayraç takma",
+          "tamam": false,
+          "tarih": "",
+          "not": "",
+          "istegeBagli": false
+        }
+      ],
+      "ayar": {
+        "ciltTuru": "formali",
+        "formaYaprak": 4,
+        "kagitGen": 297,
+        "kagitYuk": 210,
+        "kitapGen": 148,
+        "kitapYuk": 210
+      }
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+# Vendor dosyalari bayt bayt korunur (app/vendor/KAYNAK.md sha256); core.autocrlf=true olan Windows agacinda da.
+app/vendor/** -text

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "macOS": {
+      "entitlements": "Entitlements.yerel-yerimsiz.plist",
+      "signingIdentity": "Apple Development"
+    }
+  }
+}

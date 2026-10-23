@@ -1,0 +1,57 @@
+[package]
+name = "kitap-cilt"
+version = "1.0.0"
+description = "Mücellit: kitap ciltleme aracı (Mac uygulaması)"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[lib]
+name = "kitap_cilt_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+# Güvenlik kapsamlı yer imi (Son Açılanlar). Sürüm sabit: tek geliştiricili, tek sürümlü crate.
+# Apple dışında da derlenir ve Error::Unsupported döner (son_acilanlar.rs düz yola düşer); cfg gerekmez.
+apple-scoped-bookmarks = "=0.1.0"
+# Arayüz dili: macOS tercih edilen diller (NSLocale.preferredLanguages); sürüm tao/wry ile aynı (Cargo.lock).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "NSArray", "NSData", "NSEnumerator", "NSError", "NSGeometry", "NSLocale", "NSObject", "NSString", "NSURL"] }
+# Yazdırma: PDFKit baskı işlemi (%100 ölçek) ve Önizleme'de Aç. Sürümler tao/wry'nin
+# kullandığı objc2 0.6 / 0.3 ailesiyle aynı (Cargo.lock); objc2-pdf-kit yeni crate (aynı yazar, aynı aile).
+objc2 = "0.6.5"
+block2 = "0.6.2"
+objc2-pdf-kit = { version = "0.3.2", default-features = false, features = ["std", "PDFDocument", "PDFPage", "objc2-app-kit", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "block2", "objc2-core-foundation", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSRunningApplication", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }
+
+#: IPC komutlarını gerçek komut sarmalayıcısıyla sınamak için sahte çalışma zamanı (tauri::test).
+# Yalnız testlerde etkin (resolver 2: geliştirme bağımlılığının özelliği sürüm derlemesine girmez); yeni crate yok.
+[dev-dependencies]
+tauri = { version = "2.12", features = ["test"] }
+
+#: panelsiz PDF'e baskı ölçümü (`tests/baski_pdf.rs`) NSPrintInfo sözlüğüne kayıt adresini yazar.
+# Yalnız testte (resolver 2: sürüm derlemesine girmez); crate aynı (Cargo.lock), yalnız özellik.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSDictionary"] }
+
+# Baskı işlemi ana iş parçacığı ister: test kendi main'inde koşar (libtest iş parçacığı yerine).
+[[test]]
+name = "baski_pdf"
+harness = false
+
+# tauri-plugin-updater bilerek YOK (uygulama kendini güncellemez); devtools özelliği release'te kapalı.
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

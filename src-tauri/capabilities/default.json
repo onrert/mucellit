@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Ana pencere, en küçük izin seti: menü/dosya olaylarını dinleme (platform-tauri.js event.listen), yerel onay penceresi (dialog ask/confirm/message hepsi message komutunu kullanır) ve uygulamanın kendi dosya/yedek komutları (src-tauri/src/dosya.rs, veri.rs, dil.rs, yazdir.rs; JS yol vermez, yalnız kimlik). core:default yok; fs eklentisi yok.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "dialog:allow-message",
+    "allow-dosya-ac",
+    "allow-dosya-oku",
+    "allow-dosya-kaydet",
+    "allow-son-acilanlar",
+    "allow-son-acilani-oku",
+    "allow-bekleyen-acilanlar",
+    "allow-veri-yedekle",
+    "allow-veri-oku",
+    "allow-dil-oku",
+    "allow-dil-ayarla",
+    "allow-yazdir",
+    "allow-onizlemede-ac"
+  ]
+}

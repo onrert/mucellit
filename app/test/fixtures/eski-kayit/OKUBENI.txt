@@ -1,0 +1,1 @@
+Sentetik (öncesi) kayıtları: Türkçe adım adları, şablon anahtarı yok. Uygulama verisi değildir; dil.test.js ve cargo testleri kullanır.

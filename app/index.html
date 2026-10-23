@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mücellit</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/stil.css">
+<!-- Öğren rehberinin stilleri (kapsamı .ogren-kok; Colorfigures motor stilleri .cf-kok altında, MIT: js/ogren/LICENSE) -->
+<link rel="stylesheet" href="css/ogren.css">
+</head>
+<body>
+<header>
+  <h1>Mücellit</h1>
+  <nav role="tablist" aria-label="Sections" data-dil-oz="aria-label:nav.bolumler">
+    <button role="tab" id="sekme-dugme-duzenle" data-sekme="duzenle" aria-selected="true" aria-controls="sekme-duzenle" data-dil="sekme.duzenle">Imposition</button>
+    <button role="tab" id="sekme-dugme-surec" data-sekme="surec" aria-selected="false" aria-controls="sekme-surec" data-dil="sekme.surec">Projects</button>
+    <button role="tab" id="sekme-dugme-hesapla" data-sekme="hesapla" aria-selected="false" aria-controls="sekme-hesapla" data-dil="sekme.hesapla">Calculator</button>
+    <button role="tab" id="sekme-dugme-ogren" data-sekme="ogren" aria-selected="false" aria-controls="sekme-ogren" data-dil="sekme.ogren">Learn</button>
+  </nav>
+  <span class="kucuk" data-dil="ust.gizlilik">Your PDF stays on your computer: everything is processed right here.</span>
+  <select id="dil-sec" aria-label="Language" data-dil-oz="aria-label:dil.etiket"></select>
+</header>
+
+<main>
+<!-- ============ DÜZENLE ============ -->
+<section id="sekme-duzenle" role="tabpanel" aria-labelledby="sekme-dugme-duzenle">
+  <div class="duzen-izgara">
+    <aside class="panel" id="ayarlar">
+      <div id="eklenti-ayarlari"></div>
+      <h3 data-dil="duzenle.cilt">Binding</h3>
+      <label class="alan"><span data-dil="duzenle.cilt_turu">Binding style / imposition</span>
+        <select id="cilt-turu">
+          <option value="formali" data-dil="duzenle.tur.formali">Sewn signatures (folded sections)</option>
+          <option value="tek1" data-dil="duzenle.tur.tek1">Perfect binding: single leaves, 1-up</option>
+          <option value="tek2" data-dil="duzenle.tur.tek2">Perfect binding: 2-up (cut and stack)</option>
+        </select>
+      </label>
+      <div id="forma-alanlari">
+        <label class="alan"><span data-dil="duzenle.forma_yaprak">Sheets per signature (1–8; 4 sheets = 16 pages)</span>
+          <input type="text" inputmode="decimal" data-sayi id="forma-yaprak" min="1" max="8" step="1" value="4">
+        </label>
+        <label class="secim"><input type="checkbox" id="son-forma-kucult"> <span data-dil="duzenle.son_forma_kucult">Shrink the last signature (fewer blank pages)</span></label>
+        <label class="secim"><input type="checkbox" id="kayma"> <span data-dil="duzenle.kayma">Creep compensation</span></label>
+        <label class="alan"><span data-dil="duzenle.kagit_kalinlik">Paper thickness (mm, one sheet)</span>
+          <input type="text" inputmode="decimal" data-sayi id="kagit-kalinlik" min="0" step="0.01" value="0.1">
+        </label>
+      </div>
+
+      <h3 data-dil="duzenle.olculer">Sizes (mm)</h3>
+      <div class="alan"><span data-dil="duzenle.kagit">Printer paper</span>
+        <select id="kagit-hazir" aria-label="Preset paper size" data-dil-oz="aria-label:duzenle.kagit_hazir">
+          <option value="" data-dil="duzenle.hazir_sec">Choose a preset…</option>
+        </select>
+        <div class="ikili">
+          <input type="text" inputmode="decimal" data-sayi id="kagit-gen" min="1" step="0.1" value="297" aria-label="Paper width (mm)" data-dil-oz="aria-label:duzenle.kagit_gen">
+          <span>×</span>
+          <input type="text" inputmode="decimal" data-sayi id="kagit-yuk" min="1" step="0.1" value="210" aria-label="Paper height (mm)" data-dil-oz="aria-label:duzenle.kagit_yuk">
+          <button type="button" id="kagit-cevir" title="Swap portrait / landscape" data-dil-oz="title:duzenle.cevir">⇄</button>
+        </div>
+      </div>
+      <div class="alan"><span data-dil="duzenle.kitap">Book page (trimmed)</span>
+        <select id="kitap-hazir" aria-label="Preset book size" data-dil-oz="aria-label:duzenle.kitap_hazir">
+          <option value="" data-dil="duzenle.hazir_sec">Choose a preset…</option>
+        </select>
+        <div class="ikili">
+          <input type="text" inputmode="decimal" data-sayi id="kitap-gen" min="1" step="0.1" value="148" aria-label="Book width (mm)" data-dil-oz="aria-label:duzenle.kitap_gen">
+          <span>×</span>
+          <input type="text" inputmode="decimal" data-sayi id="kitap-yuk" min="1" step="0.1" value="210" aria-label="Book height (mm)" data-dil-oz="aria-label:duzenle.kitap_yuk">
+          <button type="button" id="kitap-cevir" title="Swap portrait / landscape" data-dil-oz="title:duzenle.cevir">⇄</button>
+        </div>
+      </div>
+      <label class="alan"><span data-dil="duzenle.olcek">Scaling</span>
+        <select id="olcek">
+          <option value="sigdir" data-dil="duzenle.olcek.sigdir">Fit (keep proportions, show everything)</option>
+          <option value="gercek" data-dil="duzenle.olcek.gercek">Actual size</option>
+          <option value="doldur" data-dil="duzenle.olcek.doldur">Fill (keep proportions, crop the overflow)</option>
+        </select>
+      </label>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="duzenle.dis_kenar">Outer margin (mm)</span><input type="text" inputmode="decimal" data-sayi id="dis-kenar" min="0" step="0.5" value="0"></label>
+        <label class="alan"><span data-dil="duzenle.cilt_payi">Gutter (mm)</span><input type="text" inputmode="decimal" data-sayi id="cilt-payi" min="0" step="0.5" value="0"></label>
+      </div>
+
+      <h3 data-dil="duzenle.isaretler">Marks</h3>
+      <label class="secim"><input type="checkbox" id="kirim" checked> <span data-dil="duzenle.kirim">Crop marks</span></label>
+      <label class="secim"><input type="checkbox" id="katlama" checked> <span data-dil="duzenle.katlama">Fold marks</span></label>
+      <label class="secim"><input type="checkbox" id="sirt-isareti" checked> <span data-dil="duzenle.sirt_isareti">Collation marks on the spine (stepped squares)</span></label>
+
+      <h3 data-dil="duzenle.baski">Printing</h3>
+      <label class="alan"><span id="cevirme-etiket" data-dil="duzenle.cevirme.tek">Printer duplex setting (choose the same in the print dialog)</span>
+        <select id="cevirme">
+          <option value="kisa" data-dil="duzenle.cevirme.kisa">Flip on short edge</option>
+          <option value="uzun" data-dil="duzenle.cevirme.uzun">Flip on long edge</option>
+        </select>
+        <span class="kucuk" id="cevirme-ipucu"></span>
+      </label>
+      <label class="alan"><span data-dil="duzenle.cikti">Output</span>
+        <select id="cikti-modu">
+          <option value="tek" data-dil="duzenle.cikti.tek">One PDF (duplex printer)</option>
+          <option value="ikili" data-dil="duzenle.cikti.ikili">Two PDFs: fronts + backs (manual duplex)</option>
+        </select>
+      </label>
+      <label class="secim" id="arka-ters-alan"><input type="checkbox" id="arka-ters"> <span data-dil="duzenle.arka_ters">Backs in reverse order</span></label>
+      <p><button type="button" class="ana" id="disa-aktar" disabled data-dil="duzenle.indir">Download imposed PDF</button></p>
+      <!-- Mac uygulamasında yazdırma (platform.yazdir yoksa, ör. tarayıcıda, gizli kalır; duzenle.js açar) -->
+      <div class="satir" id="yazdir-alani" hidden>
+        <button type="button" id="yazdir" disabled data-dil="duzenle.yazdir">Print…</button>
+        <button type="button" id="onizlemede-ac" disabled data-dil="duzenle.onizlemede_ac">Open in Preview</button>
+      </div>
+      <p class="kucuk" id="yazdir-not" hidden></p>
+
+      <h3 data-dil="duzenle.kitaba_kaydet">Save to project</h3>
+      <label class="alan"><span data-dil="duzenle.surecteki_kitap">Project</span><select id="ayar-kitap"><option value="" data-dil="duzenle.kitap_yok">(no projects)</option></select></label>
+      <div class="satir">
+        <button type="button" id="ayar-kaydet" data-dil="duzenle.ayar_kaydet">Save settings to project</button>
+        <button type="button" id="ayar-yukle" data-dil="duzenle.ayar_yukle">Load project settings</button>
+      </div>
+    </aside>
+
+    <div class="calisma">
+      <div class="panel">
+        <div class="arac-cubugu">
+          <label class="dosya-sec"><button type="button" class="ana" id="pdf-sec" data-dil="duzenle.pdf_sec">Choose PDF…</button>
+            <input type="file" id="pdf-dosya" accept=".pdf,application/pdf" hidden></label>
+          <span id="kaynak-bilgi" class="ozet" data-dil="duzenle.kaynak_yok">No PDF loaded yet.</span>
+        </div>
+        <div class="arac-cubugu" id="sayfa-araclari">
+          <input type="text" id="aralik" placeholder="e.g. 1-4, 9" aria-label="Page range" data-dil-oz="placeholder:duzenle.aralik_ornek;aria-label:duzenle.aralik">
+          <button type="button" id="aralik-sec" data-dil="duzenle.aralik_sec">Select range</button>
+          <button type="button" id="tumunu-sec" data-dil="duzenle.tumunu_sec">Select all</button>
+          <button type="button" id="secimi-kaldir" data-dil="duzenle.secimi_kaldir">Clear selection</button>
+          <button type="button" id="secili-dondur" data-dil="duzenle.secili_dondur">Rotate selected ⟳</button>
+          <button type="button" id="secili-sil" data-dil="duzenle.secili_sil">Delete selected</button>
+          <button type="button" id="secili-disini-sil" data-dil="duzenle.secili_disini_sil">Delete unselected</button>
+          <button type="button" id="bos-basa" data-dil="duzenle.bos_basa">Insert blank at start</button>
+          <button type="button" id="bos-once" data-dil="duzenle.bos_once">Insert blank before selected</button>
+          <button type="button" id="bos-sona" data-dil="duzenle.bos_sona">Insert blank at end</button>
+        </div>
+        <p class="kucuk" data-dil="duzenle.siralama_ipucu">Drag the pages or use ◀ ▶ to reorder them. The number is the page's position in the book (source p. = page in the source PDF).</p>
+        <div id="kucuk-resimler" class="izgara" aria-label="Pages" data-dil-oz="aria-label:duzenle.sayfalar"></div>
+      </div>
+
+      <h2 data-dil="duzenle.yaprak_onizleme">Sheet preview</h2>
+      <div id="dizilim-ozet" class="ozet"></div>
+      <div id="uyarilar"></div>
+      <div id="yaprak-onizleme"></div>
+
+      <h2 data-dil="duzenle.cikti_onizleme">Output preview</h2>
+      <p class="kucuk" data-dil="duzenle.cikti_ipucu">First sides of the exported file (actual output).</p>
+      <div id="cikti-onizleme"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SÜREÇ ============ -->
+<section id="sekme-surec" role="tabpanel" aria-labelledby="sekme-dugme-surec" hidden>
+  <div id="depo-uyari"></div>
+  <div class="surec-izgara">
+    <aside class="panel">
+      <h3 data-dil="surec.kitaplar">Projects</h3>
+      <ul id="kitap-listesi"></ul>
+      <p id="kitap-yok" class="kucuk" data-dil="surec.kitap_yok">No projects yet.</p>
+      <h3 data-dil="surec.yeni_kitap">New project</h3>
+      <form id="yeni-kitap-form">
+        <label class="alan"><span data-dil="surec.alan.ad">Name</span><input type="text" id="yk-ad" required></label>
+        <label class="alan"><span data-dil="alan.cilt_turu">Binding style</span>
+          <select id="yk-tur">
+            <option value="formali" data-dil="cilt.tur.formali">Sewn signatures + hardcover (case binding)</option>
+            <option value="tek" data-dil="cilt.tur.tek">Perfect binding (single leaves)</option>
+          </select>
+        </label>
+        <div class="ikili basit">
+          <label class="alan"><span data-dil="surec.alan.genislik">Width (mm)</span><input type="text" inputmode="decimal" data-sayi id="yk-gen" value="148" min="1" step="0.1"></label>
+          <label class="alan"><span data-dil="surec.alan.yukseklik">Height (mm)</span><input type="text" inputmode="decimal" data-sayi id="yk-yuk" value="210" min="1" step="0.1"></label>
+        </div>
+        <label class="alan"><span data-dil="surec.alan.kagit">Paper</span><input type="text" id="yk-kagit" placeholder="e.g. 80 gsm book paper" data-dil-oz="placeholder:surec.alan.kagit_ornek"></label>
+        <label class="alan"><span data-dil="alan.kagit_kalinlik">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-sayi id="yk-kalinlik" value="0.1" min="0" step="0.01"></label>
+        <label class="alan"><span data-dil="surec.alan.pdf_adi">PDF file name</span><input type="text" id="yk-pdf" placeholder="e.g. my-book.pdf" data-dil-oz="placeholder:surec.alan.pdf_ornek"></label>
+        <button type="submit" class="ana" id="yk-olustur" data-dil="surec.olustur">Create project</button>
+      </form>
+      <h3 data-dil="surec.yedek">Backup</h3>
+      <div class="satir">
+        <button type="button" id="json-disa" data-dil="surec.json_disa">Export JSON</button>
+        <label><button type="button" id="json-ice-dugme" data-dil="surec.json_ice">Import JSON</button>
+          <input type="file" id="json-ice" accept=".json,application/json" hidden></label>
+        <button type="button" id="veri-temizle" data-dil="surec.temizle">Delete all</button>
+      </div>
+      <p class="kucuk" id="saklama-ipucu" data-dil="surec.saklama_ipucu">Your data is stored in this browser and is lost if browser data is cleared, so export a JSON backup now and then.</p>
+    </aside>
+    <div class="panel" id="kitap-detay">
+      <p class="kucuk" data-dil="surec.detay_bos">Pick a project on the left or create a new one.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HESAPLA ============ -->
+<section id="sekme-hesapla" role="tabpanel" aria-labelledby="sekme-dugme-hesapla" hidden>
+  <div class="hesap-izgara">
+    <form class="panel" id="hesap-form">
+      <div class="satir"><button type="button" id="h-al" data-dil="hesapla.al">Use values from the Imposition tab</button></div>
+      <label class="alan"><span data-dil="alan.cilt_turu">Binding style</span>
+        <select id="h-ciltTuru">
+          <option value="formali" data-dil="hesapla.tur.formali">Sewn signatures</option>
+          <option value="tek1" data-dil="hesapla.tur.tek1">Perfect binding, 1-up</option>
+          <option value="tek2" data-dil="hesapla.tur.tek2">Perfect binding, 2-up</option>
+        </select>
+      </label>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="hesapla.sayfa_sayisi">Page count</span><input type="text" inputmode="decimal" data-sayi id="h-sayfaSayisi" value="200" min="1" step="1"></label>
+        <label class="alan"><span data-dil="hesapla.forma_yapragi">Sheets per signature</span><input type="text" inputmode="decimal" data-sayi id="h-formaYaprak" value="4" min="1" max="8" step="1"></label>
+      </div>
+      <label class="secim"><input type="checkbox" id="h-sonFormaKucult"> <span data-dil="hesapla.son_forma">Shrink the last signature</span></label>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="alan.kagit_kalinlik">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-kagitKalinlik" value="0.1" min="0" step="0.01"></label>
+        <label class="alan"><span data-dil="hesapla.forza_payi">Endpaper thickness allowance (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-forzaPayi" value="0" min="0" step="0.1"></label>
+      </div>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="hesapla.kitap_gen">Book width</span><input type="text" inputmode="decimal" data-sayi id="h-kitapGen" value="148" min="1" step="0.1"></label>
+        <label class="alan"><span data-dil="hesapla.kitap_yuk">Book height</span><input type="text" inputmode="decimal" data-sayi id="h-kitapYuk" value="210" min="1" step="0.1"></label>
+      </div>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="hesapla.mukavva">Board thickness t (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-mukavvaKalinlik" value="2" min="0.1" step="0.1"></label>
+        <label class="alan"><span data-dil="hesapla.tasma">Square k (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-tasma" value="3" min="0" step="0.5"></label>
+      </div>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="hesapla.sirt_tipi">Spine shape</span>
+          <select id="h-sirtTipi">
+            <option value="duz" data-dil="hesapla.sirt.duz">Flat</option>
+            <option value="yuvarlak" data-dil="hesapla.sirt.yuvarlak">Rounded</option>
+          </select>
+        </label>
+        <label class="alan"><span data-dil="hesapla.egri_boyu">Spine curve length (mm, rounded only)</span><input type="text" inputmode="decimal" data-sayi id="h-egriBoyu" value="" min="0.1" step="0.5" disabled></label>
+      </div>
+      <label class="alan"><span data-dil="hesapla.sirt_kurali">Spine stiffener rule (flat spine)</span>
+        <select id="h-sirtKurali">
+          <option value="ikiT" data-dil="hesapla.kural.ikiT">S + 2t (default)</option>
+          <option value="yalnizS" data-dil="hesapla.kural.yalnizS">S only (joint gap grows by t)</option>
+        </select>
+      </label>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="hesapla.mafsal">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-sayi id="h-mafsal" value="" placeholder="automatic" data-dil-oz="placeholder:hesapla.otomatik" min="0.5" step="0.5"></label>
+        <label class="alan"><span data-dil="hesapla.kivirma">Turn-in e (mm)</span><input type="text" inputmode="decimal" data-sayi id="h-kivirma" value="15" min="1" step="0.5"></label>
+      </div>
+      <div class="ikili basit">
+        <label class="alan"><span data-dil="hesapla.yedek_kagit">Spare printer sheets</span><input type="text" inputmode="decimal" data-sayi id="h-yedekKagit" value="0" min="0" step="1"></label>
+      </div>
+    </form>
+    <div class="panel">
+      <div id="h-hata"></div>
+      <table class="sonuc" id="h-sonuc"></table>
+      <div id="h-uyarilar"></div>
+      <p class="kucuk" data-dil="hesapla.aciklama">Spine thickness S = number of leaves (blank pages included) × paper thickness (+ endpaper thickness allowance). To get the real paper thickness, measure 10 sheets with calipers and divide by 10. W, H: text block width and height; t: board thickness; k: square (board overhang); f: joint gap; e: turn-in. The same cover formulas apply to perfect binding (flat spine).</p>
+      <p class="kucuk" id="h-kaynak" data-dil="hesapla.kaynak">Values follow typical workshop practice; measure and adjust on your first book.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ÖĞREN ============
+     Formalı dikiş + sert kapak rehberi (js/ogren/). Sekme ilk açıldığında kurulur; sekmeden çıkınca figür sökülür.
+     Çizimler Colorfigures motoru ve yöntemiyle (MIT; April Zhu, Tolga Cohce; tam metin js/ogren/LICENSE). -->
+<section id="sekme-ogren" role="tabpanel" aria-labelledby="sekme-dugme-ogren" hidden>
+<div class="ogren-kok" id="og-kok">
+  <div class="ust">
+    <div class="baslik">
+      <h2 data-dil="ogren.baslik">Learn bookbinding</h2>
+      <p data-dil="ogren.alt">Sewn signatures and a hardcover, from printed sheets to a finished book</p>
+    </div>
+    <div class="ayarlar">
+      <label class="kucuk"><span data-dil="ogren.hiz">Speed</span>
+        <select id="og-hiz">
+          <option value="1" data-dil="ogren.hiz1">1×</option>
+          <option value="2" data-dil="ogren.hiz2">2×</option>
+          <option value="4" data-dil="ogren.hiz4">4×</option>
+        </select></label>
+    </div>
+  </div>
+
+  <div class="duzen">
+    <nav class="yan" aria-label="Stages" data-dil-oz="aria-label:ogren.asamalar">
+      <h3 data-dil="ogren.asamalar">Stages</h3>
+      <div class="ilerleme" role="progressbar" aria-valuemin="0" aria-label="Progress" data-dil-oz="aria-label:ogren.ilerleme_ad"><div id="og-ilerleme-cubuk"></div></div>
+      <p id="og-ilerleme-metin" class="kucuk"></p>
+      <ol id="og-asamalar" class="asamalar"></ol>
+      <button type="button" id="og-bastan-sona" class="buyuk" aria-pressed="false" data-dil="ogren.bastan_sona">Play from start to finish</button>
+    </nav>
+
+    <div class="orta">
+      <div class="sekil" id="og-sahne"></div>
+    </div>
+
+    <aside class="sag">
+      <div class="og-kart" id="og-kart" aria-live="polite">
+        <p class="asama-ad" id="og-asama-ad"></p>
+        <p class="asama-ozet kucuk" id="og-asama-ozet"></p>
+        <ol class="adimlar" id="og-adimlar"></ol>
+        <p class="adim-no kucuk" id="og-adim-no"></p>
+        <h3 id="og-adim-baslik"></h3>
+        <p id="og-adim-aciklama"></p>
+        <div class="kutu arac" id="og-arac-kutu"><strong data-dil="ogren.arac">Tools and materials</strong> <span id="og-arac"></span></div>
+        <div class="kutu dikkat" id="og-dikkat-kutu"><strong data-dil="ogren.dikkat">Watch out</strong> <span id="og-dikkat"></span></div>
+        <div class="oynatici">
+          <button type="button" id="og-onceki" data-dil="ogren.onceki">Previous</button>
+          <button type="button" id="og-oynat" class="birincil" data-dil="ogren.oynat">Play step</button>
+          <button type="button" id="og-sonraki" data-dil="ogren.sonraki">Next</button>
+          <button type="button" id="og-yeniden" data-dil="ogren.yeniden">Replay last step</button>
+        </div>
+      </div>
+      <div class="sayilar">
+      <details open>
+        <summary data-dil="ogren.sayilar">Your book's numbers</summary>
+        <p class="hesapla-al"><button type="button" id="og-hesapladan-al" data-dil="ogren.hesapladan_al">Use values from the Calculator tab</button></p>
+        <form id="og-sayi-form" novalidate>
+          <label><span data-dil="ogren.g.formaSayisi">Signatures</span><input id="og-g-formaSayisi" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-dil="ogren.g.formaYaprak">Sheets per signature</span><input id="og-g-formaYaprak" inputmode="numeric" autocomplete="off"></label>
+          <label><span data-dil="ogren.g.kitapGen">Book width (mm)</span><input id="og-g-kitapGen" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-dil="ogren.g.kitapYuk">Book height (mm)</span><input id="og-g-kitapYuk" inputmode="decimal" autocomplete="off"></label>
+          <label><span data-dil="ogren.g.kagitKalinlik">Paper thickness (mm)</span><input id="og-g-kagitKalinlik" inputmode="decimal" autocomplete="off"></label>
+          <button type="submit" data-dil="ogren.uygula">Apply</button>
+        </form>
+        <p id="og-sayi-hata" class="hata" role="alert" hidden></p>
+        <p id="og-sayi-not" class="hata" role="status" hidden></p>
+        <p class="kucuk" data-dil="ogren.sayilar_not">Board thickness, square, turn-in and joint gap come from the Calculator tab. Changes here stay in this guide; the drawings follow these numbers.</p>
+        <p class="kucuk" id="og-uyum" data-dil="ogren.hesapla_uyum" hidden>The Calculator tab uses another binding style or a rounded spine; the guide always draws sewn signatures with a flat spine.</p>
+        <table class="sonuc"><tbody id="og-sonuclar"></tbody></table>
+      </details>
+      </div>
+    </aside>
+  </div>
+
+  <p class="alt" data-dil="ogren.lisans">Drawings made with the Colorfigures method (MIT; April Zhu, Tolga Cohce). Full license text below.</p>
+  <!-- MIT koşulu uygulama içinde görünür (Mac'te kullanıcı js/ogren/LICENSE dosyasına erişemez). Metin
+       js/ogren/LICENSE ile birebir (app/test/ogren-duzeltme.test.js D7); hukuk metni çevrilmez (lang="en"). -->
+  <details class="og-lisans" id="og-lisans">
+    <summary data-dil="ogren.lisans_metni">Colorfigures license (MIT)</summary>
+    <pre id="og-lisans-metin" lang="en" translate="no">MIT License
+
+Copyright (c) 2026 April Zhu (Colorfigures: colour, hand-drawn style, 3D props, template, examples)
+Copyright (c) 2026 April Zhu (iso-glow, on which Colorfigures is based)
+Copyright (c) 2026 Tolga Cohce (iso-figure, on which iso-glow is based)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+  </details>
+</div>
+</section>
+</main>
+
+<div id="bildirim" role="status" aria-live="polite"></div>
+
+<!-- Arayüz dili: sözlükler önce, dil.js onları okur. Yeni dil: app/dil/<kod>.js + buraya bir satır.
+     dil betikleri ~1,9 MB vendor'dan ÖNCE (ilk kare seçili dilde); Object.prototype'a dokunmazlar
+     (app/test/tauri-guvenlik.test.js dondurulmuş bağlamda sınar). -->
+<script src="dil/en.js"></script>
+<script src="dil/tr.js"></script>
+<script src="js/dil.js"></script>
+<!-- Kütüphaneler yerel kopya (app/vendor/, kaynak ve özetler KAYNAK.md'de): internet gerekmez. -->
+<script src="vendor/pdf-lib/pdf-lib.min.js"></script>
+<script src="vendor/pdfjs/pdf.min.js"></script>
+<script src="vendor/pdfjs/pdf.worker.min.js"></script>
+<!-- Object.prototype vendor kütüphanelerinden sonra dondurulur (bkz. js/dondur.js) -->
+<script src="js/dondur.js"></script>
+<!-- Uygulama: klasik script (file:// ile çift tıklayınca da çalışır) -->
+<!-- Platform katmanı: tarayıcı uygulaması; Tauri penceresinde platform-tauri.js farklı olanları ezer -->
+<script src="js/platform.js"></script>
+<script src="js/platform-tauri.js"></script>
+<script src="js/eklentiler/eklentiler.js"></script>
+<script src="js/dizilim.js"></script>
+<script src="js/hesap.js"></script>
+<script src="js/yerlesim.js"></script>
+<script src="js/surec-model.js"></script>
+<script src="js/depo.js"></script>
+<script src="js/cikti.js"></script>
+<script src="js/ortak.js"></script>
+<!-- EPUB → PDF eklentisi (fontkit ve Literata yazı tipi ilk EPUB'da tembel yüklenir) -->
+<script src="js/eklentiler/epub/zip.js"></script>
+<script src="js/eklentiler/epub/hece.js"></script>
+<script src="js/eklentiler/epub/dizgi.js"></script>
+<script src="js/eklentiler/epub/epub-paket.js"></script>
+<script src="js/eklentiler/epub/xhtml-blok.js"></script>
+<script src="js/eklentiler/epub/pdf-yaz.js"></script>
+<script src="js/eklentiler/epub.js"></script>
+<script src="js/yazdirma.js"></script>
+<script src="js/duzenle.js"></script>
+<script src="js/surec.js"></script>
+<script src="js/hesapla.js"></script>
+<!-- Öğren rehberi (js/ogren/; Colorfigures parçaları MIT, js/ogren/LICENSE). Sıra: ölçü (hesap.js'i çağırır) →
+     motor → sayfa → figürler (ortak önce) → dersler → denetleyici; hepsi dondur.js'ten sonra, uygulama.js'ten önce
+     (app/test/tauri-guvenlik.test.js denetler). Tek ad alanı: KitapCilt.ogren. -->
+<script src="js/ogren/ogren-olcu.js"></script>
+<script src="js/ogren/cf-motor.js"></script>
+<script src="js/ogren/cf-sayfa.js"></script>
+<script src="js/ogren/sekil/ortak.js"></script>
+<script src="js/ogren/sekil/katlama.js"></script>
+<script src="js/ogren/sekil/dikis.js"></script>
+<script src="js/ogren/sekil/forza.js"></script>
+<script src="js/ogren/sekil/sirt.js"></script>
+<script src="js/ogren/sekil/kapak.js"></script>
+<script src="js/ogren/sekil/kaplama.js"></script>
+<script src="js/ogren/sekil/takma.js"></script>
+<script src="js/ogren/sekil/kitap.js"></script>
+<script src="js/ogren/ogren-dersler.js"></script>
+<script src="js/ogren/ogren.js"></script>
+<script src="js/uygulama.js"></script>
+</body>
+</html>
