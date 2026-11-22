@@ -32,14 +32,14 @@
 .learn-root .progress{height:8px;border:1.5px solid var(--ink);border-radius:999px;overflow:hidden;background:var(--card)}
 .learn-root #guide-progress-bar{height:100%;width:0;background:var(--accent);transition:width .3s}
 .learn-root .stages{list-style:none;margin:8px 0 12px;padding:0;display:grid;gap:5px}
-.learn-root .stage{all:unset;box-sizing:border-box;display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;width:100%;padding:5px 8px;border:1.5px solid var(--rule);border-radius:10px;cursor:pointer;background:var(--card)}
-.learn-root .stage:hover{border-color:var(--ink)}
-.learn-root .stage:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-.learn-root .stage .no{width:22px;height:22px;border:1.5px solid var(--ink);border-radius:999px;text-align:center;line-height:19px;font-size:11.5px;background:var(--paper)}
-.learn-root .stage .sy{font-size:11px;color:var(--muted)}
-.learn-root .stage.finished .no{background:var(--accent)}
-.learn-root .stage.current{border-color:var(--ink);box-shadow:2px 2px 0 var(--ink)}
-.learn-root .stage[disabled]{cursor:default;opacity:.75}
+.learn-root .stage-button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;width:100%;padding:5px 8px;border:1.5px solid var(--rule);border-radius:10px;cursor:pointer;background:var(--card)}
+.learn-root .stage-button:hover{border-color:var(--ink)}
+.learn-root .stage-button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.learn-root .stage-button .no{width:22px;height:22px;border:1.5px solid var(--ink);border-radius:999px;text-align:center;line-height:19px;font-size:11.5px;background:var(--paper)}
+.learn-root .stage-button .sy{font-size:11px;color:var(--muted)}
+.learn-root .stage-button.finished .no{background:var(--accent)}
+.learn-root .stage-button.current{border-color:var(--ink);box-shadow:2px 2px 0 var(--ink)}
+.learn-root .stage-button[disabled]{cursor:default;opacity:.75}
 .learn-root button.large,.learn-root .player button,.learn-root .numbers button{background:var(--paper);border:1.5px solid var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer}
 .learn-root button.large{width:100%;font-weight:700}
 .learn-root button.large[aria-pressed=true]{background:var(--ink);color:var(--paper)}

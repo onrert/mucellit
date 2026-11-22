@@ -169,7 +169,7 @@
     const ol = $('stages'); ol.textContent = '';
     LESSONS.forEach((x, a) => {
       const li = doc.createElement('li'), b = doc.createElement('button'); b.type = 'button';
-      b.className = 'stage' + (a === state.a ? ' current' : '') + (state.done[a] >= x.steps.length ? ' finished' : '');
+      b.className = 'stage-button' + (a === state.a ? ' current' : '') + (state.done[a] >= x.steps.length ? ' finished' : '');
       const no = doc.createElement('span'); no.className = 'no'; no.textContent = String(a + 1);
       const name = doc.createElement('span'); name.className = 'name'; name.textContent = t(`learn.${keyPart(x.id)}.name`);
       const sy = doc.createElement('span'); sy.className = 'sy'; sy.textContent = t('learn.step_count', { i: state.done[a], n: x.steps.length });
