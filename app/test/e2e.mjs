@@ -52,6 +52,8 @@
  *   use only the DOM (the product code as it is) and check that the product code has no probe. With Learn open,
  *   pressing the tab/menu again does not set the guide up again ("start to end" skips no step); the progress (done) is
  *   kept on a language change; the licence panel.
+ * The "learn layout" run (desktop 1280×800 and phone 375×812, product DOM): the figure is not squeezed and the
+ *   figure-area controls do not overlap (regression of the "stage" class clash, fixed in be2d993).
  * Flags / environment:
  *   --engine=chromium|webkit  (default chromium; webkit = the Playwright engine closest to WKWebView)
  *   MC_PLAYWRIGHT             Playwright module folder (e.g. /path/playwright/node_modules/playwright)
@@ -2231,6 +2233,76 @@ async function m7ReduceLearn(browser, address, label, local) {
 }
 
 /**
+ * Learn figure layout (regression: a page class equal to an engine class, e.g. the stage list button class "stage"
+ * matching the figure container ".cf-root .stage", squeezed the figure to 24×18 px and stacked the step buttons; the
+ * other checks passed). The product DOM as it is (no probe), on a desktop and a phone viewport, on the first stage and
+ * after picking stage 3:
+ *   - the figure svg#fig is at least minWidth wide, at least 90% of the #guide-stage width and at least 150 px high;
+ *   - the figure-area controls (#guide-stage buttons, the zoom chip, the stats) do not overlap each other (pairs where
+ *     one contains the other are skipped), and there are enough of them (≥ 2 step buttons, the zoom chip, ≥ 8 in all)
+ *     so that an empty or half-built figure does not pass;
+ *   - no console error.
+ */
+const LEARN_LAYOUT_VIEWS = [
+  { name: 'desktop', width: 1280, height: 800, minWidth: 300 },
+  { name: 'phone', width: 375, height: 812, minWidth: 200 },
+];
+async function learnLayoutFlow(browser, address, label, local) {
+  const measure = (page) => page.evaluate(() => {
+    const box = (e) => e.getBoundingClientRect();
+    const fig = document.querySelector('#guide-stage svg#fig'), host = document.getElementById('guide-stage');
+    const shown = (e) => { const b = box(e); return b.width > 0 && b.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
+    const controls = Array.from(document.querySelectorAll('#guide-stage button, #guide-stage .zchip, #guide-stage #stats .stat')).filter(shown);
+    const name = (e) => (e.id ? '#' + e.id : '.' + String(e.className).trim().split(/\s+/)[0]) + (e.textContent.trim() ? ' "' + e.textContent.trim().slice(0, 16) + '"' : '');
+    const overlaps = [];
+    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+      const A = controls[i], B = controls[j];
+      if (A.contains(B) || B.contains(A)) continue;
+      const a = box(A), b = box(B);
+      const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left), oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (ox > 0.5 && oy > 0.5) overlaps.push(`${name(A)} × ${name(B)} (${Math.round(ox)}×${Math.round(oy)} px)`);
+    }
+    const f = fig ? box(fig) : null;
+    return { fig: f ? { w: Math.round(f.width), h: Math.round(f.height) } : null, host: Math.round(box(host).width),
+      controls: controls.length, stepButtons: controls.filter((e) => e.closest('#btns')).length, zoomChip: controls.some((e) => e.classList.contains('zchip')), overlaps,
+      current: Array.from(document.querySelectorAll('#guide-stages button')).findIndex((b) => b.classList.contains('current')) };
+  });
+  const settled = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  for (const v of LEARN_LAYOUT_VIEWS) {
+    const tag = `${label} ${v.name} ${v.width}×${v.height}`;
+    const ctx = await browser.newContext({ locale: local, viewport: { width: v.width, height: v.height } });
+    const page = await ctx.newPage();
+    const trace = watch(page, tag);
+    try {
+      await page.goto(address);
+      await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+      await page.click('#tab-button-learn');
+      await page.waitForFunction(() => document.getElementById('guide-stage').childElementCount > 0 && document.getElementById('guide-root').dataset.state === 'ready', null, { timeout: 10000 });
+      await settled(page);
+      const first = await measure(page);
+      await page.locator('#guide-stages button').nth(2).click();
+      await page.waitForFunction(() => document.querySelectorAll('#guide-stages button')[2].classList.contains('current') && document.getElementById('guide-root').dataset.state === 'ready', null, { timeout: 10000 });
+      await settled(page);
+      const third = await measure(page);
+      const sizeOk = (m) => !!m.fig && m.fig.w >= v.minWidth && m.fig.w >= 0.9 * m.host && m.fig.h >= 150;
+      const controlsOk = (m) => m.stepButtons >= 2 && m.zoomChip && m.controls >= 8 && m.overlaps.length === 0;
+      const brief = (m) => ({ fig: m.fig, host: m.host, current: m.current });
+      check('learn', sizeOk(first) && sizeOk(third) && third.current === 2,
+        `${tag}: the Learn figure is not squeezed (svg#fig ≥ ${v.minWidth} px and ≥ 90% of #guide-stage wide, ≥ 150 px high; stage 1 and stage 3)`,
+        JSON.stringify({ stage1: brief(first), stage3: brief(third) }));
+      check('learn', controlsOk(first) && controlsOk(third),
+        `${tag}: the figure-area controls do not overlap (step buttons, zoom chip, stats; stage 1 and stage 3)`,
+        JSON.stringify({ stage1: { controls: first.controls, stepButtons: first.stepButtons, zoomChip: first.zoomChip, overlaps: first.overlaps.slice(0, 4) },
+          stage3: { controls: third.controls, stepButtons: third.stepButtons, zoomChip: third.zoomChip, overlaps: third.overlaps.slice(0, 4) } }));
+    } catch (e) {
+      check('learn', false, `${tag}: the layout run stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
+    }
+    check('learn', trace.errors.length === 0, `${tag}: no console error in the layout run`, trace.errors.slice(0, 3).join(' | ') || '0 errors');
+    await ctx.close();
+  }
+}
+
+/**
  * A short Learn check for file:// and the Tauri simulation, with the DOM only (the product code as it is; no test
  * injection): the tab (or the menu event) opens the guide, a step plays; no probe interface in the product code; not
  * set up again when pressed again.
@@ -2332,6 +2404,7 @@ async function main() {
     }, 'en-US');
     await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced', 'tr-TR');
     await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced en', 'en-US');
+    await learnLayoutFlow(browser, localRoot + 'index.html', 'learn layout', 'tr-TR');
     // ---- Run 1c: English interface, en-US browser ----
     await run('en', 'i18n', localRoot + 'index.html', localRoot, async (p, address, trace) => {
       await m6EnglishFlow(p, address, trace, 'en', true);
