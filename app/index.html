@@ -200,11 +200,11 @@
         </details>
 
         <details class="more advanced" id="project-settings">
-          <summary><span class="more-text"><span class="more-title" data-i18n="impose.save_to_project">Save to project</span><small data-i18n="impose.save_to_project_note">Keep these settings with a book in My books</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
-          <label class="field"><span data-i18n="impose.in_projects_book">Project</span><select id="settings-book"><option value="" data-i18n="impose.no_book">(no projects)</option></select></label>
+          <summary><span class="more-text"><span class="more-title" data-i18n="impose.save_to_project">Save to a book</span><small data-i18n="impose.save_to_project_note">Keep these settings with a book in My books</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+          <label class="field"><span data-i18n="impose.in_projects_book">Book in My books</span><select id="settings-book"><option value="" data-i18n="impose.no_book">(no books)</option></select></label>
           <div class="line">
-            <button type="button" id="settings-save" data-i18n="impose.save_settings">Save settings to project</button>
-            <button type="button" id="settings-load" data-i18n="impose.load_settings">Load project settings</button>
+            <button type="button" id="settings-save" data-i18n="impose.save_settings">Save settings to the book</button>
+            <button type="button" id="settings-load" data-i18n="impose.load_settings">Load the book's settings</button>
           </div>
         </details>
       </div>
@@ -223,16 +223,18 @@
   </div>
 </section>
 
-<!-- ============ PROJECTS ============ -->
+<!-- ============ PROJECTS (My books) ============
+     The shelf on the left (the books, a new book, the backup group), the open book on the right: its details, the saved
+     imposition settings and the binding steps as a checklist. The rarely needed backup buttons are in a closed group. -->
 <section id="tab-projects" role="tabpanel" aria-labelledby="tab-button-projects" hidden>
   <div id="storage-warning"></div>
   <div class="projects-grid">
-    <aside class="panel">
-      <h3 data-i18n="projects.projects">Projects</h3>
+    <aside class="panel shelf" aria-labelledby="shelf-title">
+      <h2 class="panel-title" id="shelf-title"><span data-i18n="projects.projects">Books</span><span class="icon icon-books" aria-hidden="true"></span></h2>
       <ul id="book-list"></ul>
-      <p id="book-none" class="small" data-i18n="projects.no_book">No projects yet.</p>
-      <h3 data-i18n="projects.new_book">New project</h3>
-      <form id="fresh-book-form">
+      <p id="book-none" class="small" data-i18n="projects.no_book">No books yet.</p>
+      <form id="fresh-book-form" class="new-book" aria-labelledby="new-book-title">
+        <h3 id="new-book-title"><span class="icon icon-plus" aria-hidden="true"></span><span data-i18n="projects.new_book">New book</span></h3>
         <label class="field"><span data-i18n="projects.field.name">Name</span><input type="text" id="yk-name" required></label>
         <label class="field"><span data-i18n="field.binding_type">Binding style</span>
           <select id="yk-kind">
@@ -245,30 +247,37 @@
           <label class="field"><span data-i18n="projects.field.height">Height (mm)</span><input type="text" inputmode="decimal" data-number id="yk-height" value="210" min="1" step="0.1"></label>
         </div>
         <label class="field"><span data-i18n="projects.field.paper">Paper</span><input type="text" id="yk-paper" placeholder="e.g. 80 gsm book paper" data-i18n-attr="placeholder:projects.field.paper_example"></label>
-        <label class="field"><span data-i18n="field.paper_thickness">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-number id="yk-thickness" value="0.1" min="0" step="0.01"></label>
-        <label class="field"><span data-i18n="projects.field.pdf_name">PDF file name</span><input type="text" id="yk-pdf" placeholder="e.g. my-book.pdf" data-i18n-attr="placeholder:projects.field.pdf_example"></label>
-        <button type="submit" class="main" id="yk-create" data-i18n="projects.create">Create project</button>
+        <div class="pair simple">
+          <label class="field"><span data-i18n="field.paper_thickness">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-number id="yk-thickness" value="0.1" min="0" step="0.01"></label>
+          <label class="field"><span data-i18n="projects.field.pdf_name">PDF file name</span><input type="text" id="yk-pdf" placeholder="e.g. my-book.pdf" data-i18n-attr="placeholder:projects.field.pdf_example"></label>
+        </div>
+        <button type="submit" class="main" id="yk-create" data-i18n="projects.create">Create book</button>
       </form>
-      <h3 data-i18n="projects.backup">Backup</h3>
-      <div class="line">
-        <button type="button" id="json-export" data-i18n="projects.json_export">Export JSON</button>
-        <label><button type="button" id="json-import-button" data-i18n="projects.json_import">Import JSON</button>
-          <input type="file" id="json-import" accept=".json,application/json" hidden></label>
-        <button type="button" id="data-clear" data-i18n="projects.clear">Delete all</button>
-      </div>
+      <details class="more advanced" id="backup">
+        <summary><span class="more-text"><span class="more-title" data-i18n="projects.backup">Backup</span><small data-i18n="projects.backup_note">Export or import JSON, delete all</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+        <div class="backup-buttons">
+          <button type="button" id="json-export" data-i18n="projects.json_export">Export JSON</button>
+          <label class="file-select"><button type="button" id="json-import-button" data-i18n="projects.json_import">Import JSON</button>
+            <input type="file" id="json-import" accept=".json,application/json" hidden></label>
+          <button type="button" class="danger" id="data-clear" data-i18n="projects.clear">Delete all</button>
+        </div>
+      </details>
       <p class="small" id="storage-hint" data-i18n="projects.storage_hint">Your data is stored in this browser and is lost if browser data is cleared, so export a JSON backup now and then.</p>
     </aside>
     <div class="panel" id="book-detail">
-      <p class="small" data-i18n="projects.detail_blank">Pick a project on the left or create a new one.</p>
+      <p class="small" data-i18n="projects.detail_blank">Pick a book on the left or create a new one.</p>
     </div>
   </div>
 </section>
 
-<!-- ============ CALCULATOR ============ -->
+<!-- ============ CALCULATOR ============
+     The book's numbers on the left (the basic ones in sight, the rarely changed ones in a closed group); the cutting
+     sizes on the cutting mat on the right (on a phone right after the basic numbers). -->
 <section id="tab-calculator" role="tabpanel" aria-labelledby="tab-button-calculator" hidden>
   <div class="calc-grid">
-    <form class="panel" id="calc-form">
-      <div class="line"><button type="button" id="h-al" data-i18n="calculator.al">Use values from the Imposition tab</button></div>
+    <form class="panel" id="calc-form" aria-labelledby="calc-title">
+      <h2 class="panel-title" id="calc-title"><span data-i18n="calculator.title">Your book</span><span class="icon icon-sliders" aria-hidden="true"></span></h2>
+      <button type="button" class="take" id="h-al" data-i18n="calculator.al">Use values from the Imposition tab</button>
       <label class="field"><span data-i18n="field.binding_type">Binding style</span>
         <select id="h-bindingType">
           <option value="sewn" data-i18n="calculator.kind.sewn">Sewn signatures</option>
@@ -282,41 +291,46 @@
       </div>
       <label class="choice"><input type="checkbox" id="h-shrinkLastSignature"> <span data-i18n="calculator.last_signature">Shrink the last signature</span></label>
       <div class="pair simple">
-        <label class="field"><span data-i18n="field.paper_thickness">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-number id="h-paperThickness" value="0.1" min="0" step="0.01"></label>
-        <label class="field"><span data-i18n="calculator.endpaper_allowance">Endpaper thickness allowance (mm)</span><input type="text" inputmode="decimal" data-number id="h-endpaperAllowance" value="0" min="0" step="0.1"></label>
-      </div>
-      <div class="pair simple">
         <label class="field"><span data-i18n="calculator.book_width">Book width</span><input type="text" inputmode="decimal" data-number id="h-bookWidth" value="148" min="1" step="0.1"></label>
         <label class="field"><span data-i18n="calculator.book_height">Book height</span><input type="text" inputmode="decimal" data-number id="h-bookHeight" value="210" min="1" step="0.1"></label>
       </div>
       <div class="pair simple">
+        <label class="field"><span data-i18n="field.paper_thickness">Paper thickness (mm)</span><input type="text" inputmode="decimal" data-number id="h-paperThickness" value="0.1" min="0" step="0.01"></label>
         <label class="field"><span data-i18n="calculator.board">Board thickness t (mm)</span><input type="text" inputmode="decimal" data-number id="h-boardThickness" value="2" min="0.1" step="0.1"></label>
+      </div>
+      <div class="pair simple">
         <label class="field"><span data-i18n="calculator.square">Square k (mm)</span><input type="text" inputmode="decimal" data-number id="h-square" value="3" min="0" step="0.5"></label>
-      </div>
-      <div class="pair simple">
-        <label class="field"><span data-i18n="calculator.spine_shape">Spine shape</span>
-          <select id="h-spineShape">
-            <option value="flat" data-i18n="calculator.spine.flat">Flat</option>
-            <option value="rounded" data-i18n="calculator.spine.rounded">Rounded</option>
-          </select>
-        </label>
-        <label class="field"><span data-i18n="calculator.curve_length">Spine curve length (mm, rounded only)</span><input type="text" inputmode="decimal" data-number id="h-curveLength" value="" min="0.1" step="0.5" disabled></label>
-      </div>
-      <label class="field"><span data-i18n="calculator.spine_rule">Spine stiffener rule (flat spine)</span>
-        <select id="h-spineRule">
-          <option value="twoT" data-i18n="calculator.rule.two_t">S + 2t (default)</option>
-          <option value="onlyS" data-i18n="calculator.rule.only_s">S only (joint gap grows by t)</option>
-        </select>
-      </label>
-      <div class="pair simple">
-        <label class="field"><span data-i18n="calculator.joint_gap">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-number id="h-jointGap" value="" placeholder="automatic" data-i18n-attr="placeholder:calculator.auto" min="0.5" step="0.5"></label>
         <label class="field"><span data-i18n="calculator.turn_in">Turn-in e (mm)</span><input type="text" inputmode="decimal" data-number id="h-turnIn" value="15" min="1" step="0.5"></label>
       </div>
-      <div class="pair simple">
-        <label class="field"><span data-i18n="calculator.spare_sheets">Spare printer sheets</span><input type="text" inputmode="decimal" data-number id="h-spareSheets" value="0" min="0" step="1"></label>
-      </div>
+      <details class="more advanced" id="calc-advanced">
+        <summary><span class="more-text"><span class="more-title" data-i18n="calculator.advanced">Advanced</span><small data-i18n="calculator.advanced_note">Spine shape, spine stiffener, joint gap, endpapers, spare sheets</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+        <div class="pair simple">
+          <label class="field"><span data-i18n="calculator.spine_shape">Spine shape</span>
+            <select id="h-spineShape">
+              <option value="flat" data-i18n="calculator.spine.flat">Flat</option>
+              <option value="rounded" data-i18n="calculator.spine.rounded">Rounded</option>
+            </select>
+          </label>
+          <label class="field"><span data-i18n="calculator.curve_length">Spine curve length (mm, rounded only)</span><input type="text" inputmode="decimal" data-number id="h-curveLength" value="" min="0.1" step="0.5" disabled></label>
+        </div>
+        <label class="field"><span data-i18n="calculator.spine_rule">Spine stiffener rule (flat spine)</span>
+          <select id="h-spineRule">
+            <option value="twoT" data-i18n="calculator.rule.two_t">S + 2t (default)</option>
+            <option value="onlyS" data-i18n="calculator.rule.only_s">S only (joint gap grows by t)</option>
+          </select>
+        </label>
+        <div class="pair simple">
+          <label class="field"><span data-i18n="calculator.joint_gap">Joint gap f (mm, blank = automatic)</span><input type="text" inputmode="decimal" data-number id="h-jointGap" value="" placeholder="automatic" data-i18n-attr="placeholder:calculator.auto" min="0.5" step="0.5"></label>
+          <label class="field"><span data-i18n="calculator.endpaper_allowance">Endpaper thickness allowance (mm)</span><input type="text" inputmode="decimal" data-number id="h-endpaperAllowance" value="0" min="0" step="0.1"></label>
+        </div>
+        <div class="pair simple">
+          <label class="field"><span data-i18n="calculator.spare_sheets">Spare printer sheets</span><input type="text" inputmode="decimal" data-number id="h-spareSheets" value="0" min="0" step="1"></label>
+        </div>
+      </details>
     </form>
-    <div class="panel">
+    <div class="mat calc-mat" id="calc-result" role="region" aria-labelledby="calc-result-title">
+      <div class="ruler" aria-hidden="true"></div>
+      <h2 class="mat-title" id="calc-result-title" data-i18n="calculator.result_title">Cutting sizes</h2>
       <div id="h-error"></div>
       <table class="result" id="h-result"></table>
       <div id="h-warnings"></div>

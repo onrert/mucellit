@@ -70,6 +70,7 @@
     var container = $('book-detail');
     container.textContent = '';
     var k = selected();
+    container.classList.toggle('empty', !k); // no book chosen: the panel is an empty cutting mat (style.css)
     if (!k) {
       container.appendChild(el('p', { class: 'small', text: t('projects.detail_blank') }));
       return;
@@ -91,6 +92,7 @@
     var il = M.progress(k);
     container.appendChild(el('h2', { text: k.name }));
     container.appendChild(el('p', { class: 'summary', id: 'book-progress', text: t('projects.progress', { kind: M.kindName(k.bindingType), done: il.done, n: il.total, date: k.created }) }));
+    container.appendChild(el('span', { class: 'progress book-tape', 'aria-hidden': 'true' }, [el('i', { style: 'width:' + Math.round(il.ratio * 100) + '%' })]));
     container.appendChild(el('div', { class: 'fields-grid' }, [
       field(t('projects.field.name'), infoInput('name', 'text')),
       field(t('projects.field.width'), infoInput('bookWidth', 'number', { step: '0.1', min: '1' })),
@@ -109,7 +111,7 @@
         MC.impose.applySettings(k.settings); MC.app.openTab('impose');
         O.notify(k.pdfName ? t('projects.settings_loaded_pdf', { pdf: k.pdfName }) : t('projects.settings_loaded'));
       } }),
-      el('button', { type: 'button', id: 'book-remove', text: t('projects.delete_project'), onclick: function () {
+      el('button', { type: 'button', id: 'book-remove', class: 'danger', text: t('projects.delete_project'), onclick: function () {
         ask(t('projects.confirmation.delete_book', { name: k.name }), function () {
           data.projects = data.projects.filter(function (x) { return x.id !== k.id; });
           save(); select(data.projects[0] ? data.projects[0].id : null);
@@ -131,9 +133,10 @@
       var note = el('textarea', { class: 'step-note', rows: 1, placeholder: t('projects.step.note'), 'aria-label': t('projects.step.note_label', { name: name }) });
       note.value = a.note || '';
       note.addEventListener('input', function () { a.note = note.value; save(); });
+      // the checkbox sits in a 44 × 44 label (the touch target); the grid areas are in style.css (.step)
       ul.appendChild(el('li', { class: 'step' + (a.done ? ' done' : ''), 'data-step': a.id }, [
-        box,
-        el('div', {}, [el('div', { class: 'step-name', text: (i + 1) + '. ' + name }), a.optional ? el('div', { class: 'small', text: t('projects.step.optional') }) : null]),
+        el('label', { class: 'step-check' }, [box]),
+        el('div', { class: 'step-title' }, [el('div', { class: 'step-name', text: (i + 1) + '. ' + name }), a.optional ? el('div', { class: 'small', text: t('projects.step.optional') }) : null]),
         date,
         el('div', { class: 'step-buttons' }, [
           el('button', { type: 'button', title: t('projects.step.up'), text: '▲', disabled: i === 0, onclick: function () { M.moveStep(k, a.id, -1); save(); drawDetail(); } }),

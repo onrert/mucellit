@@ -326,27 +326,112 @@ details.more[open] { padding-bottom: 8px; }
 #notice.show { display: block; }
 #notice.error { background: var(--error-bg); color: var(--error-text); border: 1px solid var(--error-text); }
 
-/* ================= Projects (My books) ================= */
-.projects-grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
-#book-list { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
-#book-list button { width: 100%; text-align: left; display: grid; gap: 2px; }
-#book-list button[aria-current="true"] { border-color: var(--brass-edge); box-shadow: inset 4px 0 0 var(--brass); }
-.progress { height: 6px; background: var(--tray-2); border-radius: 3px; overflow: hidden; }
-.progress > i { display: block; height: 100%; background: var(--ok); }
-#steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-.step { display: grid; grid-template-columns: auto minmax(0, 1fr) 150px auto; gap: 8px; align-items: start; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bench); }
-.step.done .step-name { text-decoration: line-through; color: var(--muted); }
-.step .step-name { font-weight: 600; }
-.step .step-note { grid-column: 2 / -1; }
-.step .step-buttons { display: flex; gap: 2px; }
-.step .step-buttons button { padding: 1px 6px; }
-.step input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; }
+/* ================= My books and Calculator: the same parts as the Imposition settings tray ================= */
+.icon-books { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='square'%3E%3Cpath d='M3.5 4h4.5v16H3.5zM8 6.5h4V20H8z'/%3E%3Cpath d='m14.6 7.4 3.4-.9 3.2 12.3-3.4.9z'/%3E%3Cpath d='M2 20.2h20'/%3E%3C/svg%3E"); }
+.panel-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 18px; font-weight: 800; margin: 0 0 14px; color: var(--ink); }
+.panel-title .icon { width: 22px; height: 22px; color: var(--muted); }
+:is(#tab-projects, #tab-calculator) .panel { padding: 16px 18px; }
+:is(#tab-projects, #tab-calculator) .field { gap: 6px; margin-bottom: 14px; }
+:is(#tab-projects, #tab-calculator) .field > span:first-child { font-size: 14px; font-weight: 700; color: var(--ink); line-height: 1.35; }
+:is(#tab-projects, #tab-calculator) :is(select, input[type="text"], input[type="date"]) { height: var(--control); padding: 0 12px; font-size: 15px; background-color: var(--field); }
+:is(#tab-projects, #tab-calculator) :is(select, input, textarea):hover:not(:disabled) { border-color: var(--ink); }
+:is(#tab-projects, #tab-calculator) select { appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: right 17px center, right 12px center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+:is(#tab-projects, #tab-calculator) input:disabled { background: var(--tray-2); color: var(--muted); border-style: dashed; cursor: not-allowed; }
+:is(#tab-projects, #tab-calculator) select:disabled { background-color: var(--tray-2); color: var(--muted); border-style: dashed; cursor: not-allowed; }
+:is(#tab-projects, #tab-calculator) button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: var(--control); padding: 0 16px; font-size: 15px; font-weight: 600; }
+:is(#tab-projects, #tab-calculator) button.main { font-weight: 800; }
+:is(#tab-projects, #tab-calculator) .pair.simple { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 12px; align-items: end; }
+:is(#tab-projects, #tab-calculator) .choice { gap: 12px; min-height: 44px; margin: 0 0 6px; font-size: 15px; cursor: pointer; }
+:is(#tab-projects, #tab-calculator) .choice input[type="checkbox"], #steps .step-done { appearance: none; -webkit-appearance: none; flex: none; width: 22px; height: 22px; margin: 0;
+  border: 1.75px solid var(--ink); border-radius: 3px; background: var(--field); display: grid; place-items: center; cursor: pointer; }
+:is(#tab-projects, #tab-calculator) .choice input[type="checkbox"]:checked, #steps .step-done:checked { background: var(--brass); border-color: var(--on-brass); }
+:is(#tab-projects, #tab-calculator) .choice input[type="checkbox"]:checked::after, #steps .step-done:checked::after { content: ""; width: 10px; height: 5px; border: solid var(--on-brass);
+  border-width: 0 0 2.4px 2.4px; transform: translate(0, -1px) rotate(-45deg); }
+:is(#tab-projects, #tab-calculator) details.more { margin-top: 4px; }
+:is(#tab-projects, #tab-calculator) .small { font-size: 13px; }
+button.danger { color: var(--error-text); border-color: var(--error-text); }
+button.danger:hover { background: var(--error-bg); border-color: var(--error-text); }
 
-/* ================= Calculator ================= */
-.calc-grid { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+/* ================= My books ================= */
+.projects-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 24px; align-items: start; }
+#storage-warning:empty { display: none; }
+#storage-warning .warning { margin: 0 0 14px; }
+/* the shelf: every book a spine with its progress as a tape measure */
+#book-list { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 8px; }
+#tab-projects #book-list button { width: 100%; min-height: 64px; padding: 10px 14px 10px 18px; display: grid; justify-items: start; gap: 3px; text-align: left; font-weight: 400;
+  background: var(--field); border: 1.5px solid var(--line-strong); box-shadow: inset 6px 0 0 var(--line-strong); }
+#tab-projects #book-list button:hover { border-color: var(--ink); background: var(--field); }
+#tab-projects #book-list button[aria-current="true"] { border-color: var(--brass-edge); box-shadow: inset 6px 0 0 var(--brass); background: var(--brass-tint); }
+#book-list strong { font-size: 16px; font-weight: 750; overflow-wrap: anywhere; }
+#book-list .small { color: var(--muted); }
+.progress { display: block; justify-self: stretch; height: 8px; margin-top: 4px; border: 1px solid var(--line-strong); border-radius: 2px; overflow: hidden;
+  background: repeating-linear-gradient(90deg, var(--line-strong) 0 1px, transparent 1px 10px) 0 0 / 100% 4px no-repeat, var(--tray); }
+.progress > i { display: block; height: 100%; background: var(--brass); box-shadow: inset -1px 0 0 var(--brass-edge); }
+#book-none { margin: 0 0 14px; }
+.new-book { border-top: 1px solid var(--line); padding-top: 12px; }
+.new-book h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 15px; font-weight: 800; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.new-book h3 .icon { width: 18px; height: 18px; color: var(--brass-ink); }
+#tab-projects #yk-create { width: 100%; min-height: 48px; margin: 2px 0 10px; }
+#backup { border-top: 1px solid var(--line); }
+.backup-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.backup-buttons .file-select { display: inline-flex; }
+#storage-hint { margin: 8px 0 0; line-height: 1.45; }
+/* the open book */
+#book-detail h2 { font-size: 24px; font-weight: 800; margin: 2px 0 2px; overflow-wrap: anywhere; }
+#book-detail #book-progress { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+#book-detail .book-tape { height: 12px; max-width: 520px; margin: 0 0 18px; }
+#book-detail .fields-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0 14px; }
+#book-detail p.small { margin: 2px 0 10px; padding: 10px 12px; color: var(--ink); background: var(--brass-tint); border-left: 4px solid var(--brass-edge); border-radius: 0 6px 6px 0; font-size: 14px; }
+#book-detail .line { gap: 8px; margin: 10px 0 4px; }
+#book-detail h3 { margin: 22px 0 10px; font-size: 13px; }
+/* the binding steps: a checklist on the bench */
+#steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.step { display: grid; grid-template-columns: 44px minmax(0, 1fr) 176px auto; grid-template-areas: "check title date buttons" ". note note note"; gap: 6px 10px; align-items: center;
+  padding: 6px 10px 10px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); }
+.step .step-check { grid-area: check; display: grid; place-items: center; width: 44px; height: 44px; cursor: pointer; }
+.step .step-title { grid-area: title; min-width: 0; }
+.step .step-name { font-weight: 650; overflow-wrap: anywhere; }
+.step .step-date { grid-area: date; }
+.step .step-buttons { grid-area: buttons; display: flex; gap: 6px; }
+#tab-projects .step .step-buttons button { width: var(--control); padding: 0; font-size: 15px; }
+#tab-projects .step .step-buttons .step-remove:hover { color: var(--error-text); border-color: var(--error-text); background: var(--error-bg); }
+.step .step-note { grid-area: note; min-height: var(--control); padding: 9px 12px; font-size: 15px; line-height: 1.4; }
+.step.done { background: var(--tray); border-color: var(--line); }
+.step.done .step-name { text-decoration: line-through; text-decoration-color: var(--brass-edge); text-decoration-thickness: 2px; color: var(--muted); }
+#book-detail .line:last-child { margin-top: 12px; }
+#tab-projects #step-fresh-name { height: var(--control); padding: 0 12px; font-size: 15px; }
+/* no book chosen: an empty cutting mat */
+#book-detail.empty { min-height: 320px; display: grid; place-items: center; align-content: center; gap: 14px; text-align: center; background-color: var(--mat); color: var(--mat-text); border-color: var(--mat-deep);
+  background-image: linear-gradient(var(--mat-grid-2) 1px, transparent 1px), linear-gradient(90deg, var(--mat-grid-2) 1px, transparent 1px),
+    linear-gradient(var(--mat-grid) 1px, transparent 1px), linear-gradient(90deg, var(--mat-grid) 1px, transparent 1px);
+  background-size: 60px 60px, 60px 60px, 12px 12px, 12px 12px; }
+#book-detail.empty::before { content: ""; width: 56px; height: 56px; background-color: var(--brass); -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat;
+  --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='square'%3E%3Cpath d='M3.5 4h4.5v16H3.5zM8 6.5h4V20H8z'/%3E%3Cpath d='m14.6 7.4 3.4-.9 3.2 12.3-3.4.9z'/%3E%3Cpath d='M2 20.2h20'/%3E%3C/svg%3E"); }
+#book-detail.empty p.small { max-width: 34ch; margin: 0; padding: 0; background: none; border: 0; color: var(--mat-text); font-size: 16px; font-weight: 600; }
+
+/* ================= Calculator: the numbers on the tray, the cutting sizes on the mat ================= */
+.calc-grid { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 24px; align-items: start; }
+#tab-calculator #h-al { width: 100%; margin: 0 0 16px; }
+#tab-calculator #h-al::before { content: ""; width: 20px; height: 20px; flex: none; background-color: currentColor; -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat;
+  --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='square'%3E%3Cpath d='M2.5 6h19v12h-19z'/%3E%3Cpath d='M12 6v12' stroke-dasharray='2 2'/%3E%3Cpath d='m7 12h-3m1.5-1.5L4 12l1.5 1.5'/%3E%3C/svg%3E"); }
+.calc-mat { padding: 44px 22px 22px; border-radius: 10px; }
+.mat-title { margin: 0 0 14px; font-size: 18px; font-weight: 800; color: var(--mat-text); }
+#h-error:empty, #h-warnings:empty { display: none; }
+#h-error .warning, #h-warnings .warning { margin: 0 0 10px; }
 table.result { border-collapse: collapse; width: 100%; font-size: 15px; }
 table.result th, table.result td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.result td.value { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+/* every result a paper label on the mat: the name, the size in mono on paper, the formula */
+#h-result { border-collapse: separate; border-spacing: 0 8px; margin: -8px 0 6px; }
+#h-result th, #h-result td { border: 0; padding: 9px 12px; vertical-align: middle; }
+#h-result th { color: var(--mat-text); font-weight: 650; font-size: 15px; width: 34%; }
+#h-result td.value { font: 700 16px/1.3 var(--mono); color: var(--paper-ink); background: var(--paper); border-radius: 2px; box-shadow: 0 1px 0 rgba(0, 0, 0, .35), 0 4px 10px rgba(0, 0, 0, .22); }
+#h-result td.formula { color: var(--mat-muted); font-size: 13px; line-height: 1.4; }
+/* the pieces to cut (boards, spine stiffener, covering, endpapers, mull, headbands) on yellow tape */
+#h-result tr:nth-child(n+6):nth-child(-n+11) td.value { background: var(--tape-1); }
+.calc-mat .small { color: var(--mat-muted); font-size: 13px; line-height: 1.5; margin: 12px 0 0; }
 /* print buttons (Mac app); the display:flex of .line must not override hidden */
 #print-field[hidden] { display: none; }
 
@@ -420,4 +505,21 @@ table.result td.value { font-variant-numeric: tabular-nums; font-weight: 600; wh
   .more-tools-body #range { height: 44px; width: 100%; }
   #notice { bottom: calc(var(--tabbar) + 100px); }
   #tab-learn .learn-root, #tab-projects, #tab-calculator { margin-bottom: 8px; }
+  /* My books: the steps in three rows (check + name, date + buttons, note) */
+  .projects-grid, .calc-grid { gap: 14px; }
+  :is(#tab-projects, #tab-calculator) .panel { padding: 14px; }
+  .step { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "check title title" "date date buttons" "note note note"; padding: 4px 8px 10px 8px; }
+  .step .step-check { margin-left: -6px; }
+  .step .step-date { padding: 0 8px; }
+  #book-detail h2 { font-size: 21px; }
+  #book-detail .fields-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #book-detail.empty { min-height: 220px; }
+  /* Calculator: each result row is the name + the size, with the formula under it */
+  .calc-mat { padding: 40px 12px 16px; background-position: 12px 40px; }
+  #h-result, #h-result tbody { display: block; margin: 0; }
+  #h-result tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(180, 211, 194, .25); }
+  #h-result th { width: auto; padding: 0; }
+  #h-result td.value { padding: 6px 10px; font-size: 15px; }
+  #h-result td.formula { grid-column: 1 / -1; padding: 4px 0 0; }
+  #h-result td.formula:empty { display: none; }
 }

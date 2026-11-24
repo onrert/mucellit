@@ -44,7 +44,8 @@
 .learn-root button.large{width:100%;font-weight:700}
 .learn-root button.large[aria-pressed=true]{background:var(--ink);color:var(--paper)}
 .learn-root .player button.primary{background:var(--ink);color:var(--paper);font-weight:700}
-.learn-root .player button[disabled],.learn-root button.large[disabled]{opacity:.45;cursor:default}
+/* disabled: a dashed outline and the muted ink (readable, contrast >= 4.5) instead of a faded button */
+.learn-root .player button[disabled],.learn-root button.large[disabled]{opacity:1;cursor:default;color:var(--muted);border-style:dashed;border-color:var(--muted);background:var(--paper)}
 .learn-root .middle{min-width:0;display:flex;flex-direction:column;gap:14px}
 .learn-root .guide-card{background:var(--card);border:1.5px solid var(--ink);border-radius:14px;box-shadow:3px 3px 0 var(--ink);padding:14px 16px}
 .learn-root .guide-card h3{font-size:16px;margin:2px 0 6px}
@@ -85,9 +86,15 @@
   .learn-root .layout{grid-template-columns:minmax(0,1fr);padding:10px 16px;gap:12px}
   .learn-root .side{position:static}
   .learn-root .right{display:contents}
-  .learn-root .guide-card{order:2}.learn-root .middle{order:3}.learn-root .numbers{order:4}
+  /* the DOM order (stages, figure, step card, numbers): on a phone the figure is in the first screen and the reading order
+     is the visual order (no CSS order) */
   .learn-root .stages{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
   .learn-root .bottom{padding:8px 16px 20px}
+  /* phone: a compact head and stage list, so the figure starts in the first screen */
+  .learn-root .top{padding:10px 16px 8px}
+  .learn-root .settings label{flex-direction:row;align-items:center;gap:8px}
+  .learn-root .stages{gap:4px;margin:6px 0 8px}
+  .learn-root .stage-button{gap:6px;padding:4px 6px;font-size:12.5px;line-height:1.3}
 }
 
 /* ---------- engine (Colorfigures CORE_CSS, root .cf-root) ---------- */

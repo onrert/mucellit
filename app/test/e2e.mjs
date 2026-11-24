@@ -58,7 +58,10 @@
  *   page grid is in the "Pages" view. Flows that use those controls call the one helper revealAdvanced (reveal-advanced.mjs)
  *   right after opening the page. The "m10 layout" run (desktop 1440×900, phone 375×812, 1000×700; no helper) tests the
  *   defaults: groups closed and opening, sheet preview first, the download button in the first screen, the bottom tab
- *   bar on the phone, the EPUB warning opening its groups, Move earlier / later.
+ *   bar on the phone, the EPUB warning opening its groups, Move earlier / later. The "m10 fixes" run tests the review
+ *   fixes of package 2 (one context per check); the "m10 tabs" run the My books and Calculator layout (closed Backup and
+ *   Advanced groups, 44 px controls and the Calculator result within two screens on the phone) and the Learn figure in
+ *   the first phone screen. My books' "Backup" and the Calculator's "Advanced" are closed groups too (the same helper).
  * Flags / environment:
  *   --engine=chromium|webkit  (default chromium; webkit = the Playwright engine closest to WKWebView)
  *   MC_PLAYWRIGHT             Playwright module folder (e.g. /path/playwright/node_modules/playwright)
@@ -266,6 +269,7 @@ async function projectsFlow(page) {
   check(O, note === 'first trial: one signature', 'the note stays after the reload', note);
 
   const once = await readStorage(page);
+  await revealAdvanced(page); // M10 package 2: the backup buttons are in the closed "Backup" group
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#json-export')]);
   const jsonPath = await download.path();
   const exportData = JSON.parse(await readFile(jsonPath, 'utf8'));
@@ -997,6 +1001,7 @@ async function confirmFlow(page, address, trace, label) {
   }
   const first = await readStorage(page);
   check(O, first && first.projects.length === 2, `${label}: confirm set-up: 2 projects`, first && first.projects.length);
+  await revealAdvanced(page); // M10 package 2: the backup buttons are in the closed "Backup" group
   const backupPath = join(await fsp.mkdtemp(join(os.tmpdir(), 'mc-confirmation-')), 'backup.json');
   await fsp.writeFile(backupPath, JSON.stringify(Object.assign({}, first, { projects: [first.projects[0]] })));
 
@@ -1169,6 +1174,7 @@ async function m1FixFlow(page, address, trace, label, cspTest) {
     window.__choiceCounter = 0;
     P.pickFile = function () { window.__choiceCounter += 1; return Promise.resolve(new File([json], 'backup.json', { type: 'application/json' })); };
   }, JSON.stringify(backup));
+  await revealAdvanced(page); // M10 package 2: the backup buttons are in the closed "Backup" group
   await page.click('#json-import-button');
   await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 1, null, { timeout: 10000 }).catch(() => {});
   const importData = await readStorage(page);
@@ -1430,6 +1436,7 @@ async function m2TauriSimulation(page, address, label) {
   check('file', /^Dosya açılamadı: UNKNOWN/.test(loss.text) && loss.error, `${label}: D11 an unreadable outside open goes to an error notice`, loss.text);  // turkish-ok: expected Turkish UI text
   // JSON backup: cancel and write
   await page.click('#tab-button-projects');
+  await revealAdvanced(page); // M10 package 2: the backup buttons are in the closed "Backup" group
   await page.evaluate(() => { window.__fake.saveResponse = null; const b = document.getElementById('notice'); b.textContent = ''; });
   await page.click('#json-export');
   await page.waitForFunction(() => /kaydedilmedi|dışa aktarıldı/.test(document.getElementById('notice').textContent));  // turkish-ok: expected Turkish UI text
@@ -2615,6 +2622,98 @@ async function m10FixesFlow(browser, address, label, local) {
 }
 
 /**
+ * M10 package 2: My books and Calculator in the cutting-mat look, and the Learn figure on a phone; WITHOUT the
+ * revealAdvanced helper, every check in its own context:
+ *   - My books: the "Backup" group is closed at start (the backup buttons hidden), opens on a click, "Delete all" looks
+ *     destructive; with no book the detail is the empty mat; the new-book form is in sight;
+ *   - Calculator: the basic numbers are in sight, the rarely changed ones in the closed "Advanced" group; the result on the mat;
+ *   - phone 375×812: the Calculator result starts within two screens (P4); every control of My books (a book with
+ *     its steps, Backup open) and of the Calculator (Advanced open) is at least 44 × 44 px; the Learn figure (svg#fig) starts in the first screen (P4).
+ */
+async function m10TabsFlow(browser, address, label, local) {
+  async function isolated(name, view, body) {
+    const ctx = await browser.newContext({ locale: local, viewport: { width: view.width, height: view.height }, hasTouch: !!view.mobile, isMobile: !!view.mobile });
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(30000);
+    const trace = watch(page, `${label} ${name}`);
+    try {
+      await page.goto(address);
+      await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+      await body(page);
+    } catch (e) {
+      check('M10', false, `${label} ${name}: the check stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
+    }
+    if (trace.errors.length) check('M10', false, `${label} ${name}: console error`, trace.errors.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+  const DESKTOP = { width: 1440, height: 900 }, PHONE = { width: 375, height: 812, mobile: true };
+  // visible controls of a tab under 44 px (a checkbox counts with its label, like the measurement script)
+  const small = (page, tab) => page.evaluate((tab) => {
+    const shown = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden' && !e.closest('details:not([open]) > :not(summary)'); };
+    const box = (e) => (e.matches('input[type=checkbox]') && e.closest('label') ? e.closest('label') : e).getBoundingClientRect();
+    const l = Array.from(document.querySelectorAll(`#${tab} :is(button, input:not([type=file]), select, textarea, summary)`)).filter(shown);
+    return { n: l.length, small: l.filter((e) => { const r = box(e); return r.width < 44 || r.height < 44; }).map((e) => (e.id || e.className || e.tagName) + ' ' + Math.round(box(e).width) + '×' + Math.round(box(e).height)).slice(0, 6) };
+  }, tab);
+
+  await isolated('my books', DESKTOP, async (page) => {
+    await page.click('#tab-button-projects');
+    const start = { backupOpen: await page.$eval('#backup', (d) => d.open), exportShown: await page.isVisible('#json-export'), clearShown: await page.isVisible('#data-clear'),
+      form: await page.isVisible('#yk-name') && await page.isVisible('#yk-create'), empty: await page.$eval('#book-detail', (d) => d.classList.contains('empty')) };
+    await page.click('#backup > summary');
+    const open = { exportShown: await page.isVisible('#json-export'), importShown: await page.isVisible('#json-import-button'), clearShown: await page.isVisible('#data-clear'),
+      danger: await page.evaluate(() => { const b = document.getElementById('data-clear'); return b.classList.contains('danger') && getComputedStyle(b).color === getComputedStyle(b).borderTopColor && getComputedStyle(b).color !== getComputedStyle(document.body).color; }) };
+    check('M10', !start.backupOpen && !start.exportShown && !start.clearShown && start.form && start.empty && open.exportShown && open.importShown && open.clearShown && open.danger,
+      `${label}: My books: "Backup" is closed at start and opens on a click; "Delete all" looks destructive; the new-book form is in sight; no book → the empty mat`, JSON.stringify({ start, open }));
+  });
+
+  await isolated('calculator', DESKTOP, async (page) => {
+    await page.click('#tab-button-calculator');
+    const basic = ['h-al', 'h-bindingType', 'h-pageCount', 'h-sheetsPerSignature', 'h-shrinkLastSignature', 'h-bookWidth', 'h-bookHeight', 'h-paperThickness', 'h-boardThickness', 'h-square', 'h-turnIn'];
+    const advanced = ['h-spineShape', 'h-curveLength', 'h-spineRule', 'h-jointGap', 'h-endpaperAllowance', 'h-spareSheets'];
+    const shownBasic = []; for (const id of basic) if (await page.isVisible('#' + id)) shownBasic.push(id);
+    const shownAdvanced = []; for (const id of advanced) if (await page.isVisible('#' + id)) shownAdvanced.push(id);
+    const result = await page.evaluate(() => ({ rows: document.querySelectorAll('#h-result tr').length, mat: getComputedStyle(document.getElementById('calc-result')).backgroundColor === getComputedStyle(document.querySelector('#tab-impose .mat')).backgroundColor }));
+    await page.click('#calc-advanced > summary');
+    const opened = []; for (const id of ['h-spineShape', 'h-spineRule', 'h-jointGap', 'h-endpaperAllowance', 'h-spareSheets']) if (await page.isVisible('#' + id)) opened.push(id);
+    check('M10', shownBasic.length === basic.length && shownAdvanced.length === 0 && result.rows === 12 && result.mat && opened.length === 5,
+      `${label}: Calculator: the basic numbers in sight, spine shape / stiffener / joint gap / endpapers / spare sheets in the closed "Advanced" group; 12 result rows on the cutting mat`,
+      JSON.stringify({ shownBasic: shownBasic.length, shownAdvanced, result, opened }));
+  });
+
+  await isolated('calculator phone', PHONE, async (page) => {
+    await page.click('#tab-button-calculator');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const top = await page.evaluate(() => Math.round(document.getElementById('h-result').getBoundingClientRect().top + window.scrollY));
+    const closed = await small(page, 'tab-calculator');
+    await page.click('#calc-advanced > summary');
+    const open = await small(page, 'tab-calculator');
+    check('M10', top <= 2 * 812 && closed.small.length === 0 && open.small.length === 0 && open.n > closed.n,
+      `${label}: phone: the Calculator result starts within two screens (≤ 1624 px) and every control is ≥ 44 × 44 px (Advanced closed and open)`, JSON.stringify({ top, closed, open }));
+  });
+
+  await isolated('my books phone', PHONE, async (page) => {
+    await page.click('#tab-button-projects');
+    await page.fill('#yk-name', 'Phone Book');
+    await page.click('#yk-create');
+    await page.waitForFunction(() => document.querySelectorAll('#steps .step').length === 14);
+    await page.locator('#steps .step-done').nth(0).check();
+    await page.click('#backup > summary');
+    const r = await small(page, 'tab-projects');
+    const steps = await page.evaluate(() => { const s = document.querySelector('#steps .step'), d = document.querySelector('#book-detail'); return { stepRight: Math.round(s.getBoundingClientRect().right), detailRight: Math.round(d.getBoundingClientRect().right) }; });
+    check('M10', r.n >= 14 * 5 && r.small.length === 0 && steps.stepRight <= steps.detailRight,
+      `${label}: phone: every control of My books (a book with 14 steps, Backup open) is ≥ 44 × 44 px; the step rows fit the panel`, JSON.stringify({ r, steps }));
+  });
+
+  await isolated('learn phone', PHONE, async (page) => {
+    await page.click('#tab-button-learn');
+    await page.waitForFunction(() => document.getElementById('guide-root').dataset.state === 'ready' && document.querySelector('#guide-stage svg#fig'), null, { timeout: 15000 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const fig = await page.evaluate(() => { const r = document.querySelector('#guide-stage svg#fig').getBoundingClientRect(); return { top: Math.round(r.top), width: Math.round(r.width) }; });
+    check('M10', fig.top <= 812 && fig.width >= 200, `${label}: phone: the Learn figure (svg#fig) starts in the first screen (top ≤ 812 px)`, JSON.stringify(fig));
+  });
+}
+
+/**
  * A short Learn check for file:// and the Tauri simulation, with the DOM only (the product code as it is; no test
  * injection): the tab (or the menu event) opens the guide, a step plays; no probe interface in the product code; not
  * set up again when pressed again.
@@ -2719,6 +2818,7 @@ async function main() {
     await learnLayoutFlow(browser, localRoot + 'index.html', 'learn layout', 'tr-TR');
     await m10LayoutFlow(browser, localRoot + 'index.html', 'm10 layout', 'tr-TR');
     await m10FixesFlow(browser, localRoot + 'index.html', 'm10 fixes', 'tr-TR');
+    await m10TabsFlow(browser, localRoot + 'index.html', 'm10 tabs', 'tr-TR');
     // ---- Run 1c: English interface, en-US browser ----
     await run('en', 'i18n', localRoot + 'index.html', localRoot, async (p, address, trace) => {
       await m6EnglishFlow(p, address, trace, 'en', true);
