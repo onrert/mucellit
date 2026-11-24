@@ -46,7 +46,9 @@
    * The redraw replaces the focused shelf button (and WebKit does not focus a clicked button at all), so the focus is
    * placed: on a narrow screen (one column, style.css ≤ 820 px) the open book is below the shelf and the form, so a
    * chosen book is brought into view and its title gets the focus; on a wide screen the page does not move and the focus
-   * goes to the book on the shelf. A redraw that took the focus away (e.g. Delete book) does the same.
+   * goes to the book on the shelf. Delete book passes chosen too (WebKit leaves the focus on <body> after a click or a
+   * tap, so "the focus was lost" cannot be seen there): the next book is handled the same way; with no book left the
+   * focus goes to the new-book form. A redraw that took the focus away does the same.
    */
   var narrowQuery = root.matchMedia ? root.matchMedia('(max-width: 820px)') : null;
   function select(id, chosen) {
@@ -58,18 +60,43 @@
     drawDetail();
     var lost = hadFocus && (!document.activeElement || document.activeElement === document.body);
     if (!chosen && !lost) return;
+    var target = null;
+    var items = $('book-list').querySelectorAll('button[data-book]');
+    for (var i = 0; i < items.length; i++) if (items[i].getAttribute('data-book') === selectedId) target = items[i];
     var heading = $('book-detail').querySelector('h2');
-    if (heading && narrowQuery && narrowQuery.matches) {
+    if (!target) {
+      $('yk-name').focus(); // no book (left): the new-book form, brought into view
+    } else if (heading && narrowQuery && narrowQuery.matches) {
       heading.setAttribute('tabindex', '-1');
       heading.scrollIntoView({ block: 'start' }); // scroll-margin-top (style.css) keeps it below the sticky header
       heading.focus({ preventScroll: true });
     } else {
-      var target = $('shelf-title');
-      var items = $('book-list').querySelectorAll('button[data-book]');
-      for (var i = 0; i < items.length; i++) if (items[i].getAttribute('data-book') === selectedId) target = items[i];
-      if (target === $('shelf-title')) target.setAttribute('tabindex', '-1');
       target.focus({ preventScroll: true });
     }
+  }
+
+  /**
+   * drawDetail replaces every control of the open book, so a step control used with the keyboard (or a tap) would leave
+   * the focus on <body>. place says where it goes after the redraw: { step, control, index } → the same control of the
+   * same step (data-control: done | up | down | remove); an arrow disabled now (the step reached an end) hands over to the
+   * other arrow; a removed step hands over to the step that took its place (or the one before it), the last one to the
+   * "New step" field. { id } → that element. Without place the focused element keeps the focus when it has an id.
+   */
+  function placeFocus(place) {
+    var target = null;
+    if (place.id) target = $(place.id);
+    else {
+      var rows = $('steps') ? $('steps').children : [], row = null;
+      for (var i = 0; i < rows.length; i++) if (rows[i].getAttribute('data-step') === place.step) row = rows[i];
+      if (!row) row = rows[place.index] || rows[place.index - 1] || null;
+      if (!row) target = $('step-fresh-name');
+      else {
+        target = row.querySelector('[data-control="' + place.control + '"]');
+        if (target && target.disabled) target = row.querySelector('[data-control="' + (place.control === 'up' ? 'down' : 'up') + '"]');
+        if (!target || target.disabled) target = row.querySelector('[data-control="done"]');
+      }
+    }
+    if (target) target.focus();
   }
 
   function drawList() {
@@ -90,9 +117,16 @@
 
   function field(label, input) { return el('label', { class: 'field' }, [el('span', { text: label }), input]); }
 
-  function drawDetail() {
+  function drawDetail(place) {
     var container = $('book-detail');
+    var active = document.activeElement;
+    if (!place && active && active.id && container.contains(active)) place = { id: active.id };
     container.textContent = '';
+    drawDetailContent(container);
+    if (place) placeFocus(place);
+  }
+
+  function drawDetailContent(container) {
     var k = selected();
     container.classList.toggle('empty', !k); // no book chosen: the panel is an empty cutting mat (style.css)
     if (!k) {
@@ -138,7 +172,7 @@
       el('button', { type: 'button', id: 'book-remove', class: 'danger', text: t('projects.delete_project'), onclick: function () {
         ask(t('projects.confirmation.delete_book', { name: k.name }), function () {
           data.projects = data.projects.filter(function (x) { return x.id !== k.id; });
-          save(); select(data.projects[0] ? data.projects[0].id : null);
+          save(); select(data.projects[0] ? data.projects[0].id : null, true);
         });
       } })
     ]));
@@ -147,10 +181,11 @@
     var ul = el('ul', { id: 'steps' });
     k.steps.forEach(function (a, i) {
       var name = M.stepName(a);
-      var box = el('input', { type: 'checkbox', class: 'step-done', checked: a.done, 'aria-label': t('projects.step.completed', { name: name }) });
+      var here = function (control) { return { step: a.id, control: control, index: i }; };
+      var box = el('input', { type: 'checkbox', class: 'step-done', 'data-control': 'done', checked: a.done, 'aria-label': t('projects.step.completed', { name: name }) });
       box.addEventListener('change', function () {
         M.markStep(k, a.id, box.checked, O.today());
-        save(); drawList(); drawDetail();
+        save(); drawList(); drawDetail(here('done'));
       });
       var date = el('input', { type: 'date', class: 'step-date', value: a.date || '', 'aria-label': t('projects.step.date', { name: name }) });
       date.addEventListener('change', function () { a.date = date.value; save(); });
@@ -163,11 +198,11 @@
         el('div', { class: 'step-title' }, [el('div', { class: 'step-name', text: (i + 1) + '. ' + name }), a.optional ? el('div', { class: 'small', text: t('projects.step.optional') }) : null]),
         date,
         el('div', { class: 'step-buttons' }, [
-          el('button', { type: 'button', title: t('projects.step.up'), text: '▲', disabled: i === 0, onclick: function () { M.moveStep(k, a.id, -1); save(); drawDetail(); } }),
-          el('button', { type: 'button', title: t('projects.step.down'), text: '▼', disabled: i === k.steps.length - 1, onclick: function () { M.moveStep(k, a.id, 1); save(); drawDetail(); } }),
-          el('button', { type: 'button', title: t('projects.step.remove'), class: 'step-remove', text: '✕', onclick: function () {
+          el('button', { type: 'button', 'data-control': 'up', title: t('projects.step.up'), text: '▲', disabled: i === 0, onclick: function () { M.moveStep(k, a.id, -1); save(); drawDetail(here('up')); } }),
+          el('button', { type: 'button', 'data-control': 'down', title: t('projects.step.down'), text: '▼', disabled: i === k.steps.length - 1, onclick: function () { M.moveStep(k, a.id, 1); save(); drawDetail(here('down')); } }),
+          el('button', { type: 'button', 'data-control': 'remove', title: t('projects.step.remove'), class: 'step-remove', text: '✕', onclick: function () {
             ask(t('projects.confirmation.remove_step', { name: name }), function () {
-              M.removeStep(k, a.id); save(); drawList(); drawDetail();
+              M.removeStep(k, a.id); save(); drawList(); drawDetail(here('remove'));
             });
           } })
         ]),
