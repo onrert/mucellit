@@ -11,146 +11,214 @@
 <link rel="stylesheet" href="css/learn.css">
 </head>
 <body>
-<header>
-  <h1>Mücellit</h1>
-  <nav role="tablist" aria-label="Sections" data-i18n-attr="aria-label:nav.sections">
-    <button role="tab" id="tab-button-impose" data-tab="impose" aria-selected="true" aria-controls="tab-impose" data-i18n="tab.impose">Imposition</button>
-    <button role="tab" id="tab-button-projects" data-tab="projects" aria-selected="false" aria-controls="tab-projects" data-i18n="tab.projects">Projects</button>
-    <button role="tab" id="tab-button-calculator" data-tab="calculator" aria-selected="false" aria-controls="tab-calculator" data-i18n="tab.calculator">Calculator</button>
-    <button role="tab" id="tab-button-learn" data-tab="learn" aria-selected="false" aria-controls="tab-learn" data-i18n="tab.learn">Learn</button>
-  </nav>
-  <span class="small" data-i18n="header.privacy">Your PDF stays on your computer: everything is processed right here.</span>
-  <select id="i18n-select" aria-label="Language" data-i18n-attr="aria-label:language.label"></select>
+<!-- App shell: one header with the brand, the section tabs and the language picker. Below 641 px the same nav becomes the
+     fixed bottom tab bar (CSS only; one nav, so the tab ids, aria and the Tauri menu events stay the same). The tab icons
+     are CSS masks with data: URIs (style.css), so the buttons keep plain text that i18n rewrites. -->
+<header class="app-header">
+  <div class="bar">
+    <h1 class="brand"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3z"/><path d="M3 7.5h3M3 12h5M3 16.5h3M7.5 3v3M12 3v5M16.5 3v3" stroke-width="1.5"/><rect class="acc" x="13" y="13" width="5" height="5"/></svg>Mücellit</h1>
+    <nav role="tablist" aria-label="Sections" data-i18n-attr="aria-label:nav.sections">
+      <button role="tab" id="tab-button-impose" data-tab="impose" aria-selected="true" aria-controls="tab-impose" data-i18n="tab.impose">Imposition</button>
+      <button role="tab" id="tab-button-projects" data-tab="projects" aria-selected="false" aria-controls="tab-projects" data-i18n="tab.projects">My books</button>
+      <button role="tab" id="tab-button-calculator" data-tab="calculator" aria-selected="false" aria-controls="tab-calculator" data-i18n="tab.calculator">Calculator</button>
+      <button role="tab" id="tab-button-learn" data-tab="learn" aria-selected="false" aria-controls="tab-learn" data-i18n="tab.learn">Learn</button>
+    </nav>
+    <span class="language"><select id="i18n-select" aria-label="Language" data-i18n-attr="aria-label:language.label"></select></span>
+  </div>
 </header>
 
 <main>
-<!-- ============ IMPOSITION ============ -->
-<section id="tab-impose" role="tabpanel" aria-labelledby="tab-button-impose">
+<!-- ============ IMPOSITION ============
+     Layout: file first, the result in the middle, the settings at the side. data-stage (impose.js): load (no pages) → check
+     (pages loaded) → print (an output was made). Without a document the drop zone holds #pdf-select; with one, the file bar
+     does (impose.js moves the same element, the id stays unique). Rarely needed settings are in closed <details class="advanced">
+     groups; the page grid and its tools are in the "Pages" view (#pages-view), the default view is the sheet preview. -->
+<section id="tab-impose" role="tabpanel" aria-labelledby="tab-button-impose" data-stage="load">
   <div class="layout-grid">
-    <aside class="panel" id="settings">
-      <div id="plugin-settings"></div>
-      <h3 data-i18n="impose.binding">Binding</h3>
-      <label class="field"><span data-i18n="impose.binding_type">Binding style / imposition</span>
-        <select id="binding-type">
-          <option value="sewn" data-i18n="impose.kind.sewn">Sewn signatures (folded sections)</option>
-          <option value="single1" data-i18n="impose.kind.single1">Perfect binding: single leaves, 1-up</option>
-          <option value="single2" data-i18n="impose.kind.single2">Perfect binding: 2-up (cut and stack)</option>
-        </select>
-      </label>
-      <div id="signature-fields">
-        <label class="field"><span data-i18n="impose.sheets_per_signature">Sheets per signature (1–8; 4 sheets = 16 pages)</span>
-          <input type="text" inputmode="decimal" data-number id="signature-sheet" min="1" max="8" step="1" value="4">
-        </label>
-        <label class="choice"><input type="checkbox" id="last-signature-shrink"> <span data-i18n="impose.shrink_last_signature">Shrink the last signature (fewer blank pages)</span></label>
-        <label class="choice"><input type="checkbox" id="creep"> <span data-i18n="impose.creep">Creep compensation</span></label>
-        <label class="field"><span data-i18n="impose.paper_thickness">Paper thickness (mm, one sheet)</span>
-          <input type="text" inputmode="decimal" data-number id="paper-thickness" min="0" step="0.01" value="0.1">
-        </label>
-      </div>
+    <div class="work" id="work">
+      <ol class="tape" aria-label="Steps" data-i18n-attr="aria-label:impose.steps">
+        <li data-step="load"><span class="tape-no">01</span><span data-i18n="impose.step.load">Load the PDF</span></li>
+        <li data-step="check"><span class="tape-no">02</span><span data-i18n="impose.step.check">Check the preview</span></li>
+        <li data-step="print"><span class="tape-no">03</span><span data-i18n="impose.step.print">Download and print</span></li>
+      </ol>
 
-      <h3 data-i18n="impose.sizes">Sizes (mm)</h3>
-      <div class="field"><span data-i18n="impose.paper">Printer paper</span>
-        <select id="paper-ready" aria-label="Preset paper size" data-i18n-attr="aria-label:impose.paper_preset">
-          <option value="" data-i18n="impose.select_preset">Choose a preset…</option>
-        </select>
-        <div class="pair">
-          <input type="text" inputmode="decimal" data-number id="paper-width" min="1" step="0.1" value="297" aria-label="Paper width (mm)" data-i18n-attr="aria-label:impose.paper_width">
-          <span>×</span>
-          <input type="text" inputmode="decimal" data-number id="paper-height" min="1" step="0.1" value="210" aria-label="Paper height (mm)" data-i18n-attr="aria-label:impose.paper_height">
-          <button type="button" id="paper-swap" title="Swap portrait / landscape" data-i18n-attr="title:impose.swap">⇄</button>
+      <div class="file-bar" id="file-bar" hidden>
+        <span class="icon icon-doc" aria-hidden="true"></span>
+        <span id="source-info" class="summary" data-i18n="impose.unsourced">No PDF loaded yet.</span>
+        <span class="file-slot" id="file-slot"></span>
+      </div>
+      <div id="warnings"></div>
+
+      <div class="mat" id="mat">
+        <div class="ruler" aria-hidden="true"></div>
+        <div class="drop-zone" id="drop-zone">
+          <i class="crop tl"></i><i class="crop tr"></i><i class="crop bl"></i><i class="crop br"></i>
+          <span class="drop-size" id="drop-size"></span>
+          <svg class="hero" viewBox="0 0 120 96" aria-hidden="true"><path class="hero-paper" d="M20 18h80v60H20z"/><path class="hero-shadow" d="M20 78h80"/><path class="hero-fold" d="M60 22v52"/><path class="hero-lines" d="M28 32h24M28 38h24M28 44h18M68 32h24M68 38h24M68 44h16"/><rect class="hero-mark" x="59" y="24" width="2.6" height="6"/><circle class="hero-badge" cx="96" cy="72" r="17"/><path class="hero-arrow" d="M96 80.5V64M89.5 70l6.5-6.5 6.5 6.5"/></svg>
+          <p class="drop-big" data-i18n="impose.drop">Drop your PDF or EPUB here</p>
+          <span class="drop-or" data-i18n="impose.or">or</span>
+          <span class="drop-slot" id="drop-slot"><label class="file-select"><button type="button" class="main" id="pdf-select" data-i18n="impose.pdf_choose">Choose PDF…</button>
+            <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden></label></span>
+          <span class="privacy"><span class="icon icon-lock" aria-hidden="true"></span><span data-i18n="header.privacy">Your PDF stays on your computer: everything is processed right here.</span></span>
+        </div>
+
+        <div class="result" id="result" hidden>
+          <div class="views" role="tablist" aria-label="View" data-i18n-attr="aria-label:impose.view">
+            <button type="button" role="tab" id="view-sheets" aria-selected="true" aria-controls="sheet-view"><span data-i18n="impose.sheet_preview">Sheet preview</span></button>
+            <button type="button" role="tab" id="view-pages" aria-selected="false" aria-controls="pages-view"><span data-i18n="impose.pages">Pages</span><span class="count" id="page-count"></span></button>
+          </div>
+          <div id="imposition-summary" class="summary"></div>
+          <div id="sheet-view" role="tabpanel" aria-labelledby="view-sheets">
+            <div id="sheet-preview"></div>
+          </div>
+          <div id="pages-view" role="tabpanel" aria-labelledby="view-pages" hidden>
+            <div class="selection-bar" id="page-tools">
+              <span class="selection-count" id="selection-count" aria-live="polite"></span>
+              <button type="button" id="selected-rotate" data-i18n="impose.rotate_selected">Rotate selected ⟳</button>
+              <button type="button" id="selected-remove" data-i18n="impose.delete_selected">Delete selected</button>
+              <button type="button" id="blank-once" data-i18n="impose.blank_before">Insert blank before selected</button>
+              <button type="button" id="selected-earlier" data-i18n="impose.card.move_to_front">Move earlier</button>
+              <button type="button" id="selected-later" data-i18n="impose.card.take_later">Move later</button>
+              <details class="advanced more-tools" id="more-tools">
+                <summary data-i18n="impose.more_tools">More…</summary>
+                <div class="more-tools-body">
+                  <input type="text" id="range" placeholder="e.g. 1-4, 9" aria-label="Page range" data-i18n-attr="placeholder:impose.range_example;aria-label:impose.range">
+                  <button type="button" id="range-select" data-i18n="impose.select_range">Select range</button>
+                  <button type="button" id="all-select" data-i18n="impose.select_all">Select all</button>
+                  <button type="button" id="selection-remove" data-i18n="impose.remove_selection">Clear selection</button>
+                  <button type="button" id="selected-unselected-remove" data-i18n="impose.delete_selected_unselected">Delete unselected</button>
+                  <button type="button" id="blank-toStart" data-i18n="impose.blank_to_start">Insert blank at start</button>
+                  <button type="button" id="blank-toEnd" data-i18n="impose.blank_to_end">Insert blank at end</button>
+                </div>
+              </details>
+            </div>
+            <p class="hint" data-i18n="impose.ordering_hint">Drag the pages, or select them and use Move earlier / Move later. The number is the page's position in the book (source p. = page in the source PDF).</p>
+            <div id="small-thumbs" class="grid" aria-label="Pages" data-i18n-attr="aria-label:impose.pages"></div>
+          </div>
         </div>
       </div>
-      <div class="field"><span data-i18n="impose.book">Book page (trimmed)</span>
-        <select id="book-ready" aria-label="Preset book size" data-i18n-attr="aria-label:impose.book_preset">
-          <option value="" data-i18n="impose.select_preset">Choose a preset…</option>
-        </select>
-        <div class="pair">
-          <input type="text" inputmode="decimal" data-number id="book-width" min="1" step="0.1" value="148" aria-label="Book width (mm)" data-i18n-attr="aria-label:impose.book_width">
-          <span>×</span>
-          <input type="text" inputmode="decimal" data-number id="book-height" min="1" step="0.1" value="210" aria-label="Book height (mm)" data-i18n-attr="aria-label:impose.book_height">
-          <button type="button" id="book-swap" title="Swap portrait / landscape" data-i18n-attr="title:impose.swap">⇄</button>
+
+      <div class="how" id="how">
+        <div class="how-card"><b><span class="tape-no">01</span><span data-i18n="impose.how.load_title">Load</span></b><span data-i18n="impose.how.load_text">Your book as a PDF or EPUB. The page order stays as it is.</span></div>
+        <div class="how-card"><b><span class="tape-no">02</span><span data-i18n="impose.how.check_title">Check</span></b><span data-i18n="impose.how.check_text">The sheet preview shows which pages land on the front and back of every sheet.</span></div>
+        <div class="how-card"><b><span class="tape-no">03</span><span data-i18n="impose.how.print_title">Download and print</span></b><span data-i18n="impose.how.print_text">Then fold, sew and bind.</span>
+          <button type="button" class="link" data-open-tab="learn" data-i18n="impose.how.learn">Step by step: Learn</button></div>
+      </div>
+
+      <section class="output-section" id="output-section" hidden>
+        <h2 data-i18n="impose.output_preview">Output preview</h2>
+        <p class="small" data-i18n="impose.output_hint">First sides of the exported file (actual output).</p>
+        <div id="output-preview"></div>
+      </section>
+    </div>
+
+    <aside class="panel" id="settings" aria-labelledby="settings-title">
+      <!-- on a narrow screen the settings fold into this summary button; on a wide screen it is hidden -->
+      <button type="button" class="settings-toggle" id="settings-toggle" aria-expanded="false" aria-controls="settings-body"><span class="settings-toggle-text"><b data-i18n="impose.settings">Settings</b><small id="settings-summary"></small></span><span class="icon icon-chevron" aria-hidden="true"></span></button>
+      <div class="scroll" id="settings-body">
+        <h2 class="settings-title" id="settings-title"><span data-i18n="impose.settings">Settings</span><span class="icon icon-sliders" aria-hidden="true"></span></h2>
+        <label class="field"><span data-i18n="impose.binding_type">Binding style / imposition</span>
+          <select id="binding-type">
+            <option value="sewn" data-i18n="impose.kind.sewn">Sewn signatures (folded sections)</option>
+            <option value="single1" data-i18n="impose.kind.single1">Perfect binding: single leaves, 1-up</option>
+            <option value="single2" data-i18n="impose.kind.single2">Perfect binding: 2-up (cut and stack)</option>
+          </select>
+        </label>
+        <div class="field" id="signature-fields"><span id="signature-label" data-i18n="impose.sheets_per_signature">Sheets per signature</span>
+          <div class="stepper">
+            <button type="button" class="step-button" id="signature-less" aria-label="Fewer sheets per signature" data-i18n-attr="aria-label:impose.fewer_sheets"><span class="icon icon-minus" aria-hidden="true"></span></button>
+            <input type="text" inputmode="decimal" data-number id="signature-sheet" min="1" max="8" step="1" value="4" aria-labelledby="signature-label">
+            <button type="button" class="step-button" id="signature-more" aria-label="More sheets per signature" data-i18n-attr="aria-label:impose.more_sheets"><span class="icon icon-plus" aria-hidden="true"></span></button>
+            <span class="hint" id="signature-hint"></span>
+          </div>
         </div>
-      </div>
-      <label class="field"><span data-i18n="impose.scaling">Scaling</span>
-        <select id="scaling">
-          <option value="fit" data-i18n="impose.scaling.fit">Fit (keep proportions, show everything)</option>
-          <option value="actual" data-i18n="impose.scaling.actual">Actual size</option>
-          <option value="fill" data-i18n="impose.scaling.fill">Fill (keep proportions, crop the overflow)</option>
-        </select>
-      </label>
-      <div class="pair simple">
-        <label class="field"><span data-i18n="impose.outer_margin">Outer margin (mm)</span><input type="text" inputmode="decimal" data-number id="outer-margin" min="0" step="0.5" value="0"></label>
-        <label class="field"><span data-i18n="impose.gutter">Gutter (mm)</span><input type="text" inputmode="decimal" data-number id="binding-allowance" min="0" step="0.5" value="0"></label>
+        <label class="field"><span data-i18n="impose.paper">Printer paper</span>
+          <select id="paper-ready" aria-label="Preset paper size" data-i18n-attr="aria-label:impose.paper_preset"></select>
+        </label>
+        <label class="field"><span data-i18n="impose.book">Book page (trimmed)</span>
+          <select id="book-ready" aria-label="Preset book size" data-i18n-attr="aria-label:impose.book_preset"></select>
+        </label>
+        <details class="more advanced" id="size-fields">
+          <summary><span class="more-text"><span class="more-title" data-i18n="impose.sizes">Custom sizes (mm)</span><small id="size-summary"></small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+          <div class="field"><span data-i18n="impose.paper">Printer paper</span>
+            <div class="pair">
+              <input type="text" inputmode="decimal" data-number id="paper-width" min="1" step="0.1" value="297" aria-label="Paper width (mm)" data-i18n-attr="aria-label:impose.paper_width">
+              <span aria-hidden="true">×</span>
+              <input type="text" inputmode="decimal" data-number id="paper-height" min="1" step="0.1" value="210" aria-label="Paper height (mm)" data-i18n-attr="aria-label:impose.paper_height">
+              <button type="button" id="paper-swap" title="Swap portrait / landscape" aria-label="Swap portrait / landscape" data-i18n-attr="title:impose.swap;aria-label:impose.swap">⇄</button>
+            </div>
+          </div>
+          <div class="field"><span data-i18n="impose.book">Book page (trimmed)</span>
+            <div class="pair">
+              <input type="text" inputmode="decimal" data-number id="book-width" min="1" step="0.1" value="148" aria-label="Book width (mm)" data-i18n-attr="aria-label:impose.book_width">
+              <span aria-hidden="true">×</span>
+              <input type="text" inputmode="decimal" data-number id="book-height" min="1" step="0.1" value="210" aria-label="Book height (mm)" data-i18n-attr="aria-label:impose.book_height">
+              <button type="button" id="book-swap" title="Swap portrait / landscape" aria-label="Swap portrait / landscape" data-i18n-attr="title:impose.swap;aria-label:impose.swap">⇄</button>
+            </div>
+          </div>
+        </details>
+        <label class="field"><span data-i18n="impose.output">Output</span>
+          <select id="output-mode">
+            <option value="single" data-i18n="impose.output.single">One PDF (duplex printer)</option>
+            <option value="pair" data-i18n="impose.output.pair">Two PDFs: fronts + backs (manual duplex)</option>
+          </select>
+        </label>
+        <label class="field"><span id="duplex-label" data-i18n="impose.duplex.single">Printer duplex setting (choose the same in the print dialog)</span>
+          <select id="duplex">
+            <option value="short" data-i18n="impose.duplex.short">Flip on short edge</option>
+            <option value="long" data-i18n="impose.duplex.long">Flip on long edge</option>
+          </select>
+          <span class="hint" id="duplex-hint"></span>
+        </label>
+
+        <details class="more advanced" id="advanced-settings">
+          <summary><span class="more-text"><span class="more-title" data-i18n="impose.advanced">Advanced settings</span><small data-i18n="impose.advanced_note">Creep, margins, scaling, marks, EPUB</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+          <div id="signature-advanced" data-sewn-only>
+            <label class="choice"><input type="checkbox" id="last-signature-shrink"> <span data-i18n="impose.shrink_last_signature">Shrink the last signature (fewer blank pages)</span></label>
+            <label class="choice"><input type="checkbox" id="creep"> <span data-i18n="impose.creep">Creep compensation</span></label>
+            <label class="field"><span data-i18n="impose.paper_thickness">Paper thickness (mm, one sheet)</span>
+              <input type="text" inputmode="decimal" data-number id="paper-thickness" min="0" step="0.01" value="0.1">
+            </label>
+          </div>
+          <label class="field"><span data-i18n="impose.scaling">Scaling</span>
+            <select id="scaling">
+              <option value="fit" data-i18n="impose.scaling.fit">Fit (keep proportions, show everything)</option>
+              <option value="actual" data-i18n="impose.scaling.actual">Actual size</option>
+              <option value="fill" data-i18n="impose.scaling.fill">Fill (keep proportions, crop the overflow)</option>
+            </select>
+          </label>
+          <div class="pair simple">
+            <label class="field"><span data-i18n="impose.outer_margin">Outer margin (mm)</span><input type="text" inputmode="decimal" data-number id="outer-margin" min="0" step="0.5" value="0"></label>
+            <label class="field"><span data-i18n="impose.gutter">Gutter (mm)</span><input type="text" inputmode="decimal" data-number id="binding-allowance" min="0" step="0.5" value="0"></label>
+          </div>
+          <label class="choice"><input type="checkbox" id="cropMarks" checked> <span data-i18n="impose.crop_marks">Crop marks</span></label>
+          <label class="choice"><input type="checkbox" id="folding" checked> <span data-i18n="impose.folding">Fold marks</span></label>
+          <label class="choice"><input type="checkbox" id="spine-mark" checked> <span data-i18n="impose.spine_marks">Collation marks on the spine (stepped squares)</span></label>
+          <label class="choice" id="back-reversed-field"><input type="checkbox" id="back-reversed"> <span data-i18n="impose.back_reversed">Backs in reverse order</span></label>
+          <div id="plugin-settings"></div>
+        </details>
+
+        <details class="more advanced" id="project-settings">
+          <summary><span class="more-text"><span class="more-title" data-i18n="impose.save_to_project">Save to project</span><small data-i18n="impose.save_to_project_note">Keep these settings with a book in My books</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+          <label class="field"><span data-i18n="impose.in_projects_book">Project</span><select id="settings-book"><option value="" data-i18n="impose.no_book">(no projects)</option></select></label>
+          <div class="line">
+            <button type="button" id="settings-save" data-i18n="impose.save_settings">Save settings to project</button>
+            <button type="button" id="settings-load" data-i18n="impose.load_settings">Load project settings</button>
+          </div>
+        </details>
       </div>
 
-      <h3 data-i18n="impose.marks">Marks</h3>
-      <label class="choice"><input type="checkbox" id="cropMarks" checked> <span data-i18n="impose.crop_marks">Crop marks</span></label>
-      <label class="choice"><input type="checkbox" id="folding" checked> <span data-i18n="impose.folding">Fold marks</span></label>
-      <label class="choice"><input type="checkbox" id="spine-mark" checked> <span data-i18n="impose.spine_marks">Collation marks on the spine (stepped squares)</span></label>
-
-      <h3 data-i18n="impose.printing">Printing</h3>
-      <label class="field"><span id="duplex-label" data-i18n="impose.duplex.single">Printer duplex setting (choose the same in the print dialog)</span>
-        <select id="duplex">
-          <option value="short" data-i18n="impose.duplex.short">Flip on short edge</option>
-          <option value="long" data-i18n="impose.duplex.long">Flip on long edge</option>
-        </select>
-        <span class="small" id="duplex-hint"></span>
-      </label>
-      <label class="field"><span data-i18n="impose.output">Output</span>
-        <select id="output-mode">
-          <option value="single" data-i18n="impose.output.single">One PDF (duplex printer)</option>
-          <option value="pair" data-i18n="impose.output.pair">Two PDFs: fronts + backs (manual duplex)</option>
-        </select>
-      </label>
-      <label class="choice" id="back-reversed-field"><input type="checkbox" id="back-reversed"> <span data-i18n="impose.back_reversed">Backs in reverse order</span></label>
-      <p><button type="button" class="main" id="export-transfer" disabled data-i18n="impose.download">Download imposed PDF</button></p>
-      <!-- Printing in the Mac app (without platform.print, e.g. in the browser, it stays hidden; impose.js shows it) -->
-      <div class="line" id="print-field" hidden>
-        <button type="button" id="print" disabled data-i18n="impose.print">Print…</button>
-        <button type="button" id="inPreview-open" disabled data-i18n="impose.open_in_preview">Open in Preview</button>
-      </div>
-      <p class="small" id="print-note" hidden></p>
-
-      <h3 data-i18n="impose.save_to_project">Save to project</h3>
-      <label class="field"><span data-i18n="impose.in_projects_book">Project</span><select id="settings-book"><option value="" data-i18n="impose.no_book">(no projects)</option></select></label>
-      <div class="line">
-        <button type="button" id="settings-save" data-i18n="impose.save_settings">Save settings to project</button>
-        <button type="button" id="settings-load" data-i18n="impose.load_settings">Load project settings</button>
+      <div class="go" id="output-bar">
+        <button type="button" class="main" id="export-transfer" disabled data-i18n="impose.download">Download imposed PDF</button>
+        <!-- Printing in the Mac app (without platform.print, e.g. in the browser, it stays hidden; impose.js shows it) -->
+        <div class="line" id="print-field" hidden>
+          <button type="button" id="print" disabled data-i18n="impose.print">Print…</button>
+          <button type="button" id="inPreview-open" disabled data-i18n="impose.open_in_preview">Open in Preview</button>
+        </div>
+        <p class="note" id="download-note"></p>
+        <p class="small" id="print-note" hidden></p>
       </div>
     </aside>
-
-    <div class="work">
-      <div class="panel">
-        <div class="tool-bar">
-          <label class="file-select"><button type="button" class="main" id="pdf-select" data-i18n="impose.pdf_choose">Choose PDF…</button>
-            <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden></label>
-          <span id="source-info" class="summary" data-i18n="impose.unsourced">No PDF loaded yet.</span>
-        </div>
-        <div class="tool-bar" id="page-tools">
-          <input type="text" id="range" placeholder="e.g. 1-4, 9" aria-label="Page range" data-i18n-attr="placeholder:impose.range_example;aria-label:impose.range">
-          <button type="button" id="range-select" data-i18n="impose.select_range">Select range</button>
-          <button type="button" id="all-select" data-i18n="impose.select_all">Select all</button>
-          <button type="button" id="selection-remove" data-i18n="impose.remove_selection">Clear selection</button>
-          <button type="button" id="selected-rotate" data-i18n="impose.rotate_selected">Rotate selected ⟳</button>
-          <button type="button" id="selected-remove" data-i18n="impose.delete_selected">Delete selected</button>
-          <button type="button" id="selected-unselected-remove" data-i18n="impose.delete_selected_unselected">Delete unselected</button>
-          <button type="button" id="blank-toStart" data-i18n="impose.blank_to_start">Insert blank at start</button>
-          <button type="button" id="blank-once" data-i18n="impose.blank_before">Insert blank before selected</button>
-          <button type="button" id="blank-toEnd" data-i18n="impose.blank_to_end">Insert blank at end</button>
-        </div>
-        <p class="small" data-i18n="impose.ordering_hint">Drag the pages or use ◀ ▶ to reorder them. The number is the page's position in the book (source p. = page in the source PDF).</p>
-        <div id="small-thumbs" class="grid" aria-label="Pages" data-i18n-attr="aria-label:impose.pages"></div>
-      </div>
-
-      <h2 data-i18n="impose.sheet_preview">Sheet preview</h2>
-      <div id="imposition-summary" class="summary"></div>
-      <div id="warnings"></div>
-      <div id="sheet-preview"></div>
-
-      <h2 data-i18n="impose.output_preview">Output preview</h2>
-      <p class="small" data-i18n="impose.output_hint">First sides of the exported file (actual output).</p>
-      <div id="output-preview"></div>
-    </div>
   </div>
 </section>
 

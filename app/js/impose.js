@@ -70,6 +70,9 @@
   function updateVisibility() {
     var kind = $('binding-type').value;
     $('signature-fields').hidden = kind !== 'sewn';
+    // the signature settings that sit in "Advanced settings" follow the same rule
+    var sewnOnly = document.querySelectorAll('#settings [data-sewn-only]');
+    for (var i = 0; i < sewnOnly.length; i++) sewnOnly[i].hidden = kind !== 'sewn';
     var pair = $('output-mode').value === 'pair';
     $('back-reversed-field').hidden = !pair;
     var label = pair ? 'impose.duplex.pair' : 'impose.duplex.single';
@@ -80,6 +83,155 @@
     $('duplex-hint').textContent = t(rotates ? 'impose.duplex.hint_rotated' : 'impose.duplex.hint_flat',
       { direction: t(width > height ? 'impose.direction.landscape' : 'impose.direction.portrait') });
     if (MC.platform && typeof MC.platform.print === 'function') $('print-note').textContent = printNote();
+    refreshSettingsText();
+  }
+
+  // ---------------- interface state (layout only; the document state is D) ----------------
+  var KIND_SHORT = { sewn: 'impose.kind_short.sewn', single1: 'impose.kind_short.single1', single2: 'impose.kind_short.single2' };
+  var exported = false; // an output was made for the current document (the step indicator shows step 3)
+
+  /** "297 × 210" with the language's decimal separator. */
+  function sizeText(width, height) { return I18N.numberField(width) + ' × ' + I18N.numberField(height); }
+
+  /** The preset that matches width × height (mm), or null. landscape: the presets are also tried turned. */
+  function matchPreset(width, height, landscape) {
+    var found = null;
+    O.PRESET_SIZES.forEach(function (o) {
+      if (found) return;
+      if (Math.abs(o.width - width) < 0.01 && Math.abs(o.height - height) < 0.01) found = { name: o.name, landscape: false };
+      else if (landscape && Math.abs(o.height - width) < 0.01 && Math.abs(o.width - height) < 0.01) found = { name: o.name, landscape: true };
+    });
+    return found;
+  }
+
+  /** Short name of a size for the summaries: "A4 landscape" or "200 × 297 mm". */
+  function sizeName(width, height, landscape) {
+    var p = matchPreset(width, height, landscape);
+    if (!p) return sizeText(width, height) + ' mm';
+    return t(p.landscape ? 'impose.size_short.landscape' : 'impose.size_short.portrait', { name: p.name });
+  }
+
+  /** The preset pickers show the current size; a size without a preset shows "Custom size…". */
+  function syncPresets() {
+    [['paper-ready', 'paper-width', 'paper-height'], ['book-ready', 'book-width', 'book-height']].forEach(function (f) {
+      var select = $(f[0]);
+      var width = O.number(f[1], NaN), height = O.number(f[2], NaN);
+      var value = 'custom';
+      for (var i = 0; i < select.options.length; i++) {
+        var p = select.options[i].value.split('x');
+        if (p.length === 2 && Math.abs(Number(p[0]) - width) < 0.01 && Math.abs(Number(p[1]) - height) < 0.01) { value = select.options[i].value; break; }
+      }
+      select.value = value;
+    });
+  }
+
+  /** The texts that summarise the settings: signature hint, size summary, the narrow-screen summary, the drop zone size, the download note. */
+  function refreshSettingsText() {
+    syncPresets();
+    var kind = $('binding-type').value;
+    var sheets = O.number('signature-sheet', NaN);
+    var validSheets = sheets >= 1 && sheets <= 8 && Math.floor(sheets) === sheets;
+    $('signature-hint').textContent = validSheets ? t('impose.signature_pages', { n: sheets, pages: sheets * 4 }) : '';
+    var pw = O.number('paper-width', NaN), ph = O.number('paper-height', NaN), bw = O.number('book-width', NaN), bh = O.number('book-height', NaN);
+    var sizesValid = pw > 0 && ph > 0 && bw > 0 && bh > 0;
+    $('size-summary').textContent = sizesValid ? t('impose.size_summary', { paper: sizeText(pw, ph), book: sizeText(bw, bh) }) : '';
+    var parts = [t(KIND_SHORT[kind] || KIND_SHORT.sewn)];
+    if (sizesValid) parts.push(sizeName(pw, ph, true), sizeName(bw, bh, false));
+    if (kind === 'sewn' && validSheets) parts.push(t('impose.sheets_short', { n: sheets }));
+    $('settings-summary').textContent = parts.join(' · ');
+    var paper = $('paper-ready');
+    $('drop-size').textContent = paper.value !== 'custom' && paper.selectedOptions && paper.selectedOptions[0] ? paper.selectedOptions[0].textContent : (sizesValid ? sizeText(pw, ph) + ' mm' : '');
+    refreshDownloadNote();
+  }
+
+  function refreshDownloadNote() {
+    var note = $('download-note');
+    if (!D.pages.length) { note.textContent = t('impose.pdf_first'); return; }
+    if ($('output-mode').value === 'pair') { note.textContent = t('impose.download_note_pair'); return; }
+    var duplex = $('duplex');
+    note.textContent = t('impose.download_note', { duplex: duplex.selectedOptions && duplex.selectedOptions[0] ? duplex.selectedOptions[0].textContent : '' });
+  }
+
+  /**
+   * Shows the parts of the Imposition tab that fit the document state: without pages the drop zone (and the "how it
+   * works" cards) with the big choose button; with pages the file bar, the view switch, the sheet preview or the page grid.
+   * The choose button (#pdf-select) is one element: it moves between the drop zone and the file bar.
+   */
+  function refreshLayout() {
+    var hasPages = D.pages.length > 0;
+    var tab = $('tab-impose');
+    var stage = !hasPages ? 'load' : (exported ? 'print' : 'check');
+    tab.setAttribute('data-stage', stage);
+    var order = ['load', 'check', 'print'];
+    var steps = tab.querySelectorAll('.tape li');
+    for (var i = 0; i < steps.length; i++) {
+      var k = order.indexOf(steps[i].getAttribute('data-step')), now = order.indexOf(stage);
+      steps[i].className = k < now ? 'done' : (k === now ? 'now' : '');
+      if (k === now) steps[i].setAttribute('aria-current', 'step'); else steps[i].removeAttribute('aria-current');
+    }
+    $('file-bar').hidden = !D.sourceName;
+    $('drop-zone').hidden = hasPages;
+    $('how').hidden = hasPages;
+    $('result').hidden = !hasPages;
+    var chooser = $('pdf-select').parentNode; // label.file-select (button + hidden input)
+    var slot = hasPages ? $('file-slot') : $('drop-slot');
+    if (chooser.parentNode !== slot) slot.appendChild(chooser);
+    var button = $('pdf-select');
+    var key = hasPages ? 'impose.choose_other' : (MC.plugins.list().length > 0 ? 'impose.pdf_epub_choose' : 'impose.pdf_choose');
+    if (button.getAttribute('data-i18n') !== key) { button.setAttribute('data-i18n', key); button.textContent = t(key); }
+    button.classList.toggle('main', !hasPages);
+    $('page-count').textContent = hasPages ? '(' + D.pages.length + ')' : '';
+    refreshSelectionCount();
+    refreshDownloadNote();
+  }
+
+  function refreshSelectionCount() {
+    var n = D.pages.filter(function (s) { return D.selected[s.id]; }).length;
+    $('selection-count').textContent = n ? t('impose.selection_count', { n: n }) : t('impose.selection_none');
+  }
+
+  /** A new document (or a failed choice): the output preview and step 3 belong to the previous one. */
+  function newDocumentView() {
+    exported = false;
+    var section = $('output-section');
+    if (section) section.hidden = true;
+  }
+
+  /** Sheet preview ↔ Pages view. */
+  function showView(pages) {
+    $('view-sheets').setAttribute('aria-selected', pages ? 'false' : 'true');
+    $('view-pages').setAttribute('aria-selected', pages ? 'true' : 'false');
+    $('sheet-view').hidden = pages;
+    $('pages-view').hidden = !pages;
+  }
+
+  /** Makes an element inside the settings visible: opens the closed groups around it and the folded settings panel. */
+  function reveal(element) {
+    for (var n = element; n; n = n.parentElement) {
+      if (n.tagName === 'DETAILS') n.open = true;
+      if (n.id === 'settings') { n.classList.add('open'); $('settings-toggle').setAttribute('aria-expanded', 'true'); }
+    }
+  }
+
+  /** Ruler numbers along the top of the cutting mat (decorative): 0, 5, 10 … every 120 px, only the ones that fit. */
+  function drawRuler() {
+    var rulers = document.querySelectorAll('#tab-impose .ruler');
+    for (var i = 0; i < rulers.length; i++) {
+      var r = rulers[i], width = r.clientWidth;
+      if (!width) continue;
+      var offset = root.matchMedia && root.matchMedia('(max-width: 640px)').matches ? 12 : 22; // = --ruler-offset in style.css
+      var count = 0;
+      while (offset + count * 120 + 30 < width) count++;
+      if (r.childElementCount === count && r.getAttribute('data-offset') === String(offset)) continue;
+      r.textContent = '';
+      r.setAttribute('data-offset', String(offset));
+      for (var k = 0; k < count; k++) {
+        var s = document.createElement('span');
+        s.textContent = String(k * 5);
+        s.style.left = (offset + k * 120 + 2) + 'px';
+        r.appendChild(s);
+      }
+    }
   }
 
   // ---------------- PDF loading ----------------
@@ -114,6 +266,7 @@
     D.pdf = null; D.sourceBytes = null; D.sourceName = name;
     D.encrypted = false; D.uncheckable = false; D.passwordProtected = true; D.pluginSizes = null;
     D.thumbs = {}; D.selected = {}; D.pages = [];
+    newDocumentView();
     $('source-info').removeAttribute('data-i18n');
     $('source-info').textContent = t('impose.source.password_protected', { name: name });
     drawCards();
@@ -131,6 +284,7 @@
     D.pdf = null; D.sourceBytes = null; D.sourceName = name;
     D.encrypted = false; D.uncheckable = false; D.passwordProtected = false; D.pluginSizes = null;
     D.thumbs = {}; D.selected = {}; D.pages = [];
+    newDocumentView();
     MC.plugins.resetAll();
     $('source-info').removeAttribute('data-i18n');
     $('source-info').textContent = t('impose.source.open_failed', { name: name });
@@ -206,6 +360,7 @@
     D.thumbs = {};
     D.selected = {};
     D.pages = [];
+    newDocumentView();
     for (var i = 0; i < pdf.numPages; i++) D.pages.push({ id: newId(), kind: 'pdf', source: i, rotate: 0 });
     var first = await pdf.getPage(1);
     var vp = first.getViewport({ scale: 1 });
@@ -280,29 +435,26 @@
         img.style.transform = 'rotate(' + d + 'deg)' + (d % 180 ? ' scale(0.7)' : '');
         image = el('div', { class: 'image' }, [img]);
       }
+      // The whole card is the selection target: the label (checkbox + position) is stretched over the card in CSS, so a
+      // click or tap anywhere on the card toggles the checkbox. Moving, rotating and deleting are in the selection bar.
       var card = el('div', {
         class: 'card' + (D.selected[s.id] ? ' selected' : ''), draggable: 'true', 'data-id': s.id,
         'data-order': String(i + 1), 'data-kind': s.kind, 'data-source': s.kind === 'pdf' ? String(s.source + 1) : ''
       }, [
         image,
         el('div', { class: 'label' }, [
-          el('label', {}, [
+          el('label', { class: 'card-hit' }, [
             el('input', { type: 'checkbox', class: 'card-select', checked: !!D.selected[s.id], 'aria-label': t('impose.card.select', { n: i + 1 }) }),
-            ' ' + (i + 1)
+            el('span', { class: 'card-no', text: String(i + 1) })
           ]),
           el('span', { class: 'small', text: s.kind === 'pdf' ? t('impose.card.source', { n: s.source + 1 }) + (s.rotate ? ' · ' + s.rotate + '°' : '') : t('impose.card.blank') })
-        ]),
-        el('div', { class: 'buttons' }, [
-          el('button', { type: 'button', 'data-is': 'left', title: t('impose.card.move_to_front'), text: '◀' }),
-          el('button', { type: 'button', 'data-is': 'rotate', title: t('impose.card.rotate'), text: '⟳', disabled: s.kind === 'blank' }),
-          el('button', { type: 'button', 'data-is': 'remove', title: t('impose.card.remove'), text: '✕' }),
-          el('button', { type: 'button', 'data-is': 'right', title: t('impose.card.take_later'), text: '▶' })
         ])
       ]);
       part.appendChild(card);
     });
     grid.appendChild(part);
     if (D.pdf && Object.keys(D.thumbs).length >= D.pdf.numPages) grid.setAttribute('data-thumbs-ready', 'yes');
+    refreshLayout();
   }
 
   function cardEvents() {
@@ -311,18 +463,11 @@
       var card = e.target.closest('.card');
       if (!card) return;
       var id = card.getAttribute('data-id');
-      var i = indexOf(id);
-      var is = e.target.getAttribute('data-is');
       if (e.target.classList.contains('card-select')) {
         if (e.target.checked) D.selected[id] = true; else delete D.selected[id];
         card.classList.toggle('selected', !!D.selected[id]);
-        return;
+        refreshSelectionCount();
       }
-      if (!is) return;
-      if (is === 'left') move(id, i - 1);
-      else if (is === 'right') move(id, i + 2);
-      else if (is === 'remove') { D.pages.splice(i, 1); delete D.selected[id]; changed(); }
-      else if (is === 'rotate') { var s = D.pages[i]; s.rotate = ((s.rotate || 0) + 90) % 360; changed(); }
     });
     grid.addEventListener('dragstart', function (e) {
       var card = e.target.closest('.card');
@@ -454,6 +599,47 @@
       D.pages.splice(l[0], 0, { id: newId(), kind: 'blank' });
       changed();
     });
+    // Move earlier / later: every selected page moves one place; a block of selected pages moves together (their order is kept)
+    $('selected-earlier').addEventListener('click', function () {
+      if (!selectedIndices().length) return O.notify(t('impose.select_first'), 'error');
+      for (var i = 1; i < D.pages.length; i++) {
+        if (D.selected[D.pages[i].id] && !D.selected[D.pages[i - 1].id]) { var a = D.pages[i - 1]; D.pages[i - 1] = D.pages[i]; D.pages[i] = a; }
+      }
+      changed();
+    });
+    $('selected-later').addEventListener('click', function () {
+      if (!selectedIndices().length) return O.notify(t('impose.select_first'), 'error');
+      for (var i = D.pages.length - 2; i >= 0; i--) {
+        if (D.selected[D.pages[i].id] && !D.selected[D.pages[i + 1].id]) { var a = D.pages[i + 1]; D.pages[i + 1] = D.pages[i]; D.pages[i] = a; }
+      }
+      changed();
+    });
+  }
+
+  /** The layout controls of the tab: view switch, sheets stepper, the folding settings panel, the "Learn" link, the ruler. */
+  function layoutEvents() {
+    $('view-sheets').addEventListener('click', function () { showView(false); });
+    $('view-pages').addEventListener('click', function () { showView(true); });
+    function step(by) {
+      var input = $('signature-sheet');
+      var n = Math.round(O.number('signature-sheet', 4));
+      if (!(n >= 1)) n = 4;
+      O.writeNumber(input, Math.max(1, Math.min(8, n + by)));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    $('signature-less').addEventListener('click', function () { step(-1); });
+    $('signature-more').addEventListener('click', function () { step(1); });
+    $('settings-toggle').addEventListener('click', function () {
+      var open = !$('settings').classList.contains('open');
+      $('settings').classList.toggle('open', open);
+      $('settings-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    var links = document.querySelectorAll('#tab-impose [data-open-tab]');
+    for (var i = 0; i < links.length; i++) {
+      links[i].addEventListener('click', function (e) { if (MC.app) MC.app.openTab(e.currentTarget.getAttribute('data-open-tab')); });
+    }
+    if (typeof root.ResizeObserver === 'function') new root.ResizeObserver(drawRuler).observe($('mat'));
+    else root.addEventListener('resize', drawRuler);
   }
 
   // ---------------- preview ----------------
@@ -492,6 +678,7 @@
     var container = $('sheet-preview'), uy = $('warnings'), oz = $('imposition-summary');
     container.textContent = ''; uy.textContent = ''; oz.textContent = '';
     O.writeLocal(SETTINGS_KEY, JSON.stringify(readSettings()));
+    refreshLayout();
     var sizeWarning = D.pages.length ? pluginSizeWarning() : null;
     if (sizeWarning) uy.appendChild(el('div', { class: 'warning', id: 'plugin-size-warning', text: sizeWarning }));
     if (!D.pages.length) {
@@ -524,8 +711,10 @@
       var title = dz.kind === 'sewn'
         ? t(front.indexInSignature === 0 ? 'impose.sheet.signature_outer' : 'impose.sheet.signature', { signature: front.signature + 1, sheet: front.indexInSignature + 1 })
         : t('impose.sheet.paper', { n: front.sheet + 1 });
-      container.appendChild(el('div', { class: 'sheet-card', 'data-sheet': String(front.sheet) }, [
-        el('div', { class: 'title' }, [el('span', { text: title }), el('span', { text: t('impose.sheet.output_page', { a: i + 1, b: i + 2 }) })]),
+      // data-band: the paper tape colour of the sheet title (one colour per signature, three in turn)
+      var band = dz.kind === 'sewn' ? (front.signature % 3) + 1 : 1;
+      container.appendChild(el('div', { class: 'sheet-card', 'data-sheet': String(front.sheet), 'data-band': String(band) }, [
+        el('div', { class: 'title' }, [el('span', { class: 'band', text: title }), el('span', { class: 'out', text: t('impose.sheet.output_page', { a: i + 1, b: i + 2 }) })]),
         el('div', { class: 'sides' }, [
           el('div', {}, [sideCanvas(r.layout, front), el('div', { class: 'side-name', text: t('impose.sheet.front', { pages: front.slots.map(pageLabel).join(' | ') }) })]),
           el('div', {}, [sideCanvas(r.layout, back), el('div', { class: 'side-name', text: t(back.rotate180 ? 'impose.sheet.back_rotated' : 'impose.sheet.back', { pages: back.slots.map(pageLabel).join(' | ') }) })])
@@ -543,40 +732,41 @@
     var g = c.getContext('2d');
     function X(x) { return x * k; }
     function Y(y) { return H - y * k; } // PDF: origin at the bottom left
-    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
-    g.strokeStyle = '#9a8f82'; g.lineWidth = 1; g.strokeRect(0.5, 0.5, W - 1, H - 1);
+    // paper laid on the cutting mat: off-white sheet, hatched blank pages, the spine side in brass, numbers in mono
+    var MONO = 'ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace';
+    g.fillStyle = '#fcfcf8'; g.fillRect(0, 0, W, H);
     side.slots.forEach(function (yv) {
       var v = yv.slot;
       var x = X(v.x), y = Y(v.y + v.h), w = v.w * k, h = v.h * k;
       if (yv.blank) {
-        g.fillStyle = '#ebe6de'; g.fillRect(x, y, w, h);
-        g.strokeStyle = '#d6cfc4'; g.lineWidth = 1;
+        g.fillStyle = '#eef0eb'; g.fillRect(x, y, w, h);
+        g.strokeStyle = '#d5dbd3'; g.lineWidth = 1;
         g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
         for (var ti = -h; ti < w; ti += 8) { g.beginPath(); g.moveTo(x + ti, y + h); g.lineTo(x + ti + h, y); g.stroke(); }
         g.restore();
       } else {
-        g.fillStyle = '#f7efe4'; g.fillRect(x, y, w, h);
+        g.fillStyle = '#fcfcf8'; g.fillRect(x, y, w, h);
         var inner = yv.content;
-        g.strokeStyle = '#d9b99b'; g.setLineDash([3, 2]);
+        g.strokeStyle = '#c4cdc6'; g.setLineDash([3, 2]);
         g.strokeRect(X(inner.x) + 0.5, Y(inner.y + inner.h) + 0.5, inner.w * k - 1, inner.h * k - 1);
         g.setLineDash([]);
       }
-      g.strokeStyle = '#7a6f62'; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      g.strokeStyle = '#a3ada6'; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       // spine side: thick line
-      g.strokeStyle = '#8a3b12'; g.lineWidth = 3;
+      g.strokeStyle = '#b78512'; g.lineWidth = 3;
       var spineLeft = (yv.spineSide === 'left') !== !!side.rotate180;
       g.beginPath(); var sx = spineLeft ? x + 1.5 : x + w - 1.5; g.moveTo(sx, y); g.lineTo(sx, y + h); g.stroke();
       g.save();
       g.translate(x + w / 2, y + h / 2);
       if (side.rotate180) g.rotate(Math.PI);
-      g.fillStyle = yv.blank ? '#9a8f82' : '#2a241d';
-      g.font = '600 ' + Math.round(Math.min(w, h) * 0.32) + 'px system-ui, sans-serif';
+      g.fillStyle = yv.blank ? '#6e7b73' : '#142019';
+      g.font = (yv.blank ? '500 ' : '700 ') + Math.round(Math.min(w, h) * 0.3) + 'px ' + MONO;
       g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(String(yv.page), 0, 0);
-      if (yv.creep) { g.font = '10px system-ui, sans-serif'; g.fillText(t('impose.sheet.creep', { mm: yv.creep }), 0, h * 0.3); }
+      if (yv.creep) { g.font = '10px ' + MONO; g.fillText(t('impose.sheet.creep', { mm: yv.creep }), 0, h * 0.3); }
       g.restore();
     });
-    g.strokeStyle = '#333'; g.lineWidth = 1;
+    g.strokeStyle = '#2c3a33'; g.lineWidth = 1;
     side.lines.forEach(function (cz) {
       g.setLineDash(cz.dashed ? [3, 3] : []);
       g.beginPath(); g.moveTo(X(cz.x1), Y(cz.y1)); g.lineTo(X(cz.x2), Y(cz.y2)); g.stroke();
@@ -690,6 +880,9 @@
     var container = $('output-preview');
     container.textContent = '';
     container.removeAttribute('data-ready');
+    $('output-section').hidden = false; // the output preview shows only once an output was made
+    exported = true;
+    refreshLayout();
     if (D.outputPdf) { try { D.outputPdf.destroy(); } catch { /* ignore */ } D.outputPdf = null; }
     var pdf = await openDocument(bytes);
     D.outputPdf = pdf;
@@ -742,17 +935,26 @@
   }
 
   // ---------------- start ----------------
+  /**
+   * The preset picker shows the current size (syncPresets); "Custom size…" stands for a size without a preset and
+   * opens the size fields. Choosing a preset writes its width × height.
+   */
   function fillPresetSizes(selectId, widthId, heightId, landscape) {
     var select = $(selectId);
     O.PRESET_SIZES.forEach(function (o) {
       select.appendChild(el('option', { value: o.width + 'x' + o.height, text: t('impose.ready.portrait', { name: o.name, width: o.width, height: o.height }) }));
       if (landscape) select.appendChild(el('option', { value: o.height + 'x' + o.width, text: t('impose.ready.landscape', { name: o.name, width: o.height, height: o.width }) }));
     });
+    select.appendChild(el('option', { value: 'custom', text: t('impose.size_custom') }));
     select.addEventListener('change', function () {
-      if (!select.value) return;
+      if (select.value === 'custom') {
+        $('size-fields').open = true;
+        $(widthId).focus();
+        return;
+      }
       var p = select.value.split('x');
+      if (p.length !== 2) return;
       O.writeNumber(widthId, Number(p[0])); O.writeNumber(heightId, Number(p[1]));
-      select.value = '';
       update();
     });
   }
@@ -779,9 +981,14 @@
     MC.plugins.setupInterfaces($('plugin-settings'));
     cardEvents();
     toolEvents();
+    layoutEvents();
     saveEvents();
     refreshProjectList();
     updateVisibility();
+    // a saved size without a preset: the size fields are open, so the numbers in use are in sight
+    if ($('paper-ready').value === 'custom' || $('book-ready').value === 'custom') $('size-fields').open = true;
+    refreshLayout();
+    drawRuler();
     update();
   }
 
@@ -790,5 +997,5 @@
     return { pageCount: D.pages.length, settings: a };
   }
 
-  MC.impose = { start: start, openFile: openFile, readSettings: readSettings, applySettings: applySettings, currentData: currentData, refreshProjectList: refreshProjectList, summary: summary, parseRange: parseRange };
+  MC.impose = { start: start, openFile: openFile, readSettings: readSettings, applySettings: applySettings, currentData: currentData, refreshProjectList: refreshProjectList, summary: summary, parseRange: parseRange, reveal: reveal };
 })(typeof self !== 'undefined' ? self : this);

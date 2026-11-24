@@ -123,7 +123,7 @@
     return a;
   }
 
-  /** Warning U1 in the #epub-warning box; when the box is inside the closed "EPUB settings" section, the section opens (so that the warning is visible). */
+  /** Warning U1 in the #epub-warning box; when the box is inside the closed "EPUB settings" section, the section and the groups around it open (so that the warning is visible). */
   function showWarning(text) {
     var u = MC.common.$('epub-warning');
     if (!u) return;
@@ -132,6 +132,8 @@
       u.appendChild(MC.common.el('div', { class: 'warning', text: text }));
       var d = MC.common.$('epub-settings');
       if (d) d.open = true;
+      // the EPUB settings sit inside "Advanced settings" (and, on a narrow screen, the folded settings panel): open those too
+      if (d && MC.impose && MC.impose.reveal) MC.impose.reveal(d);
     }
   }
 
