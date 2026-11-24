@@ -1369,9 +1369,14 @@ async function m2TauriSimulation(page, address, label) {
   const c1 = await page.evaluate(() => window.__fake.call.filter((c) => c.command === 'save_file'));
   check('file', /^Dizilmiş PDF kaydedilmedi/.test(cancelled.text) && cancelled.error && !/hazır/.test(cancelled.text) && c1.length === 1 && c1[0].name === 'test-37-dizilmis.pdf' && c1[0].kind === 'pdf' && c1[0].size > 1000,  // turkish-ok: expected Turkish UI text
     `${label}: D7 cancel in Save → "kaydedilmedi" (error), no "hazır"; save_file raw bytes + suggested name`, `${cancelled.text} / ${JSON.stringify(c1)}`);  // turkish-ok: expected Turkish UI text
+  const stage = () => page.evaluate(() => ({ stage: document.getElementById('tab-impose').getAttribute('data-stage'), now: (document.querySelector('#tab-impose .tape li[aria-current="step"]') || {}).getAttribute?.('data-step') }));
+  const stageCancelled = await stage();
   // write
   await page.evaluate(() => { window.__fake.saveResponse = '/Users/test/Desktop/test-37-dizilmis.pdf'; });  // turkish-ok: expected Turkish UI text
   const write = await exportNotice();
+  const stageWritten = await stage();
+  check('M10', stageCancelled.stage === 'check' && stageCancelled.now === 'check' && stageWritten.stage === 'print' && stageWritten.now === 'print',
+    `${label}: a cancelled Save window does not mark step 3 (download and print); a written file does`, JSON.stringify({ stageCancelled, stageWritten }));
   check('file', write.text === 'Kaydedildi: /Users/test/Desktop/test-37-dizilmis.pdf (24 yüz).' && !write.error,  // turkish-ok: expected Turkish UI text
     `${label}: D7 written in Save → a success notice with the real path`, write.text);
   // D11 failed branch: Save could not write → "kaydedilemedi: <Rust error>" (error), no success  // turkish-ok: expected Turkish UI text
@@ -1572,7 +1577,6 @@ async function m6TrCheck(page, address, label) {
 async function m6EnglishFlow(page, address, trace, label, full) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
-  await revealAdvanced(page); // M10: "Backs in reverse order" is in Advanced settings
   const head = await page.evaluate(() => ({ lang: document.documentElement.lang, title: document.title, tab: Array.from(document.querySelectorAll('nav [role="tab"]')).map((b) => b.textContent),
     button: document.getElementById('export-transfer').textContent, source: document.getElementById('source-info').textContent, choice: document.getElementById('i18n-select').value,
     options: Array.from(document.getElementById('i18n-select').options).map((o) => o.value + '=' + o.textContent) }));
@@ -2420,6 +2424,197 @@ async function m10LayoutFlow(browser, address, label, local) {
 }
 
 /**
+ * M10 review fixes (package 2), WITHOUT the revealAdvanced helper; every check runs in its own context, so one failing
+ * check does not stop the others:
+ *   - ⇄ (swap): the preset picker, the settings summary, the size summary and the drop zone size follow the new orientation;
+ *   - a closed "Advanced settings" lists the settings that differ from their defaults (saved record, EPUB included); none → no note;
+ *   - "Custom size…" stays chosen and opens the size fields; choosing a preset writes its size;
+ *   - "Two PDFs" shows "Backs in reverse order" right under the output choice (Advanced settings stays closed);
+ *   - keyboard: the focus stays on the choose button after a file was chosen; below 820 px the Tab order is the visual
+ *     order; the phone language picker shows the focus; the view tabs move with the arrow keys (roving tabindex);
+ *   - Pages view: drag and drop reorders the pages; a multi-page selection moves as a block with Move earlier / later.
+ */
+async function m10FixesFlow(browser, address, label, local) {
+  async function isolated(name, view, body) {
+    const ctx = await browser.newContext({ locale: local, viewport: { width: view.width, height: view.height }, hasTouch: !!view.mobile, isMobile: !!view.mobile, acceptDownloads: true });
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(30000);
+    const trace = watch(page, `${label} ${name}`);
+    try {
+      if (view.storage) await page.addInitScript((s) => { for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, view.storage);
+      await page.goto(address);
+      await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+      await body(page);
+    } catch (e) {
+      check('M10', false, `${label} ${name}: the check stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
+    }
+    if (trace.errors.length) check('M10', false, `${label} ${name}: console error`, trace.errors.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+  const DESKTOP = { width: 1440, height: 900 }, PHONE = { width: 375, height: 812, mobile: true };
+  const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const loadPdf = async (page) => {
+    await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: await makeTestPdf(page) });
+    await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 37 && !document.getElementById('export-transfer').disabled);
+    await settle(page);
+  };
+
+  await isolated('swap', DESKTOP, async (page) => {
+    await page.click('#size-fields > summary');
+    await page.click('#paper-swap');
+    await settle(page);
+    const s = await page.evaluate(() => ({ w: document.getElementById('paper-width').value, h: document.getElementById('paper-height').value,
+      ready: document.getElementById('paper-ready').selectedOptions[0].textContent, summary: document.getElementById('settings-summary').textContent,
+      size: document.getElementById('size-summary').textContent, drop: document.getElementById('drop-size').textContent }));
+    check('M10', s.w === '210' && s.h === '297' && s.ready === 'A4 dikey (210 × 297)' && /A4 dikey · A5 dikey/.test(s.summary) && /210 × 297/.test(s.size) && s.drop === 'A4 dikey (210 × 297)',  // turkish-ok: expected Turkish UI text
+      `${label}: ⇄ on A4 landscape → the preset picker, the summaries and the drop zone size say A4 portrait`, JSON.stringify(s));
+  });
+
+  const saved = { bindingType: 'sewn', sheetsPerSignature: 4, paperWidth: 297, paperHeight: 210, bookWidth: 148, bookHeight: 210, outerMargin: 10, cropMarks: false, scaling: 'fit', duplex: 'short', outputMode: 'single' };
+  await isolated('advanced note', { ...DESKTOP, storage: { 'mucellit.imposeSettings': JSON.stringify(saved), 'mucellit.epubSettings': JSON.stringify({ fontSize: 12 }) } }, async (page) => {
+    const s = await page.evaluate(() => ({ open: document.getElementById('advanced-settings').open, note: document.getElementById('advanced-changed').textContent }));
+    const visible = await page.isVisible('#advanced-changed');
+    check('M10', !s.open && visible && s.note === 'Öntanımdan farklı (3): Dış kenar (mm), Kırım (kesim) işaretleri, Yazı boyu (pt)',  // turkish-ok: expected Turkish UI text
+      `${label}: a closed "Advanced settings" lists the saved values that differ from the defaults (outer margin, crop marks, EPUB font size)`, JSON.stringify({ ...s, visible }));
+  });
+  await isolated('advanced note none', DESKTOP, async (page) => {
+    const s = { note: await page.textContent('#advanced-changed'), visible: await page.isVisible('#advanced-changed') };
+    await page.click('#advanced-settings > summary');
+    await page.uncheck('#folding');
+    const one = await page.textContent('#advanced-changed');
+    await page.check('#folding');
+    const back = await page.textContent('#advanced-changed');
+    check('M10', s.note === '' && !s.visible && /\(1\): Katlama/.test(one) && back === '',  // turkish-ok: expected Turkish UI text
+      `${label}: all advanced settings at their defaults → no note; one change shows (1), undoing it clears the note`, JSON.stringify({ s, one, back }));
+  });
+
+  await isolated('custom size', DESKTOP, async (page) => {
+    await page.selectOption('#paper-ready', 'custom');
+    await settle(page);
+    const c = await page.evaluate(() => ({ value: document.getElementById('paper-ready').value, open: document.getElementById('size-fields').open, focus: document.activeElement.id }));
+    await page.fill('#paper-width', '300');
+    await page.dispatchEvent('#paper-width', 'change');
+    const after = await page.$eval('#paper-ready', (s) => s.value);
+    check('M10', c.value === 'custom' && c.open && c.focus === 'paper-width' && after === 'custom',
+      `${label}: "Custom size…" stays chosen (does not jump back), opens the size fields and focuses the width`, JSON.stringify({ c, after }));
+  });
+  await isolated('preset size', DESKTOP, async (page) => {
+    await page.selectOption('#paper-ready', '148x210');
+    await page.selectOption('#book-ready', '105x148');
+    await settle(page);
+    const s = await page.evaluate(() => ['paper-ready', 'paper-width', 'paper-height', 'book-ready', 'book-width', 'book-height'].map((i) => document.getElementById(i).value).join(' '));
+    check('M10', s === '148x210 148 210 105x148 105 148', `${label}: choosing a preset size writes its width × height (paper A5, book A6)`, s);
+  });
+
+  await isolated('two pdfs', DESKTOP, async (page) => {
+    const before = await page.isVisible('#back-reversed');
+    await page.selectOption('#output-mode', 'pair');
+    const pair = { visible: await page.isVisible('#back-reversed'), advanced: await page.$eval('#advanced-settings', (d) => d.open),
+      under: await page.evaluate(() => { const o = document.getElementById('output-mode').getBoundingClientRect(), b = document.getElementById('back-reversed-field').getBoundingClientRect(); return b.top >= o.bottom && b.top - o.bottom < 60; }) };
+    await page.check('#back-reversed');
+    await page.selectOption('#output-mode', 'single');
+    const single = await page.isVisible('#back-reversed');
+    check('M10', !before && pair.visible && !pair.advanced && pair.under && !single,
+      `${label}: "Two PDFs" shows "Backs in reverse order" right under the output choice without opening Advanced settings`, JSON.stringify({ before, pair, single }));
+  });
+
+  await isolated('focus after choosing', DESKTOP, async (page) => {
+    const pdf = await makeTestPdf(page);
+    await page.focus('#pdf-select');
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.press('Enter')]);
+    await chooser.setFiles({ name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
+    await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 37);
+    await settle(page);
+    const active = await page.evaluate(() => (document.activeElement === document.body ? 'body' : document.activeElement.id));
+    check('M10', active === 'pdf-select', `${label}: after choosing a file with the keyboard the focus stays on the choose button (now in the file bar)`, active);
+  });
+
+  for (const v of [{ name: '700', width: 700, height: 900 }, { name: 'phone', ...PHONE }]) {
+    await isolated(`tab order ${v.name}`, v, async (page) => {
+      await loadPdf(page);
+      await page.evaluate(() => { document.getElementById('tab-button-impose').focus(); document.activeElement.blur(); window.scrollTo(0, 0); });
+      const seq = [];
+      for (let i = 0; i < 20; i++) {
+        await page.keyboard.press('Tab');
+        const s = await page.evaluate(() => {
+          const e = document.activeElement; if (!e || e === document.body) return null;
+          const bar = e.closest('nav[role="tablist"], .go');
+          return { id: e.id || e.tagName.toLowerCase(), y: Math.round(e.getBoundingClientRect().top + window.scrollY), dom: Array.prototype.indexOf.call(document.querySelectorAll('*'), e),
+            fixed: !!bar && getComputedStyle(bar).position === 'fixed' };
+        });
+        if (!s) continue;
+        if (seq.some((x) => x.id === s.id)) break;
+        seq.push(s);
+      }
+      const k0 = seq.reduce((b, s, i) => (s.dom < seq[b].dom ? i : b), 0);
+      seq.push(...seq.splice(0, k0));
+      const flow = seq.filter((s) => !s.fixed);
+      const ups = [];
+      for (let i = 1; i < flow.length; i++) if (flow[i].y < flow[i - 1].y - 4) ups.push(`${flow[i - 1].id}(${flow[i - 1].y}) → ${flow[i].id}(${flow[i].y})`);
+      const ids = flow.map((s) => s.id);
+      check('M10', ups.length === 0 && ids.indexOf('pdf-select') >= 0 && ids.indexOf('settings-toggle') > ids.indexOf('pdf-select') && ids.indexOf('view-sheets') > ids.indexOf('settings-toggle'),
+        `${label} ${v.width} px: with a PDF the Tab order is the visual order (file bar → settings → view tabs; no step goes up the page)`, JSON.stringify({ ups, order: seq.map((s) => s.id + ':' + s.y) }));
+    });
+  }
+
+  await isolated('phone language focus', PHONE, async (page) => {
+    const ring = () => page.evaluate(() => { const c = getComputedStyle(document.querySelector('.language')); return { style: c.outlineStyle, width: c.outlineWidth, focused: document.activeElement.id }; });
+    const idle = await ring();
+    for (let i = 0; i < 12 && (await page.evaluate(() => document.activeElement.id)) !== 'i18n-select'; i++) await page.keyboard.press('Tab');
+    const focus = await ring();
+    check('M10', idle.style === 'none' && focus.focused === 'i18n-select' && focus.style !== 'none' && parseFloat(focus.width) >= 2,
+      `${label}: on the phone the language picker shows the keyboard focus (the select is transparent, its box gets the ring)`, JSON.stringify({ idle, focus }));
+  });
+
+  await isolated('view tabs keys', DESKTOP, async (page) => {
+    await loadPdf(page);
+    const state = () => page.evaluate(() => ({ active: document.activeElement.id, pages: document.getElementById('view-pages').getAttribute('aria-selected'),
+      tabindex: ['view-sheets', 'view-pages'].map((i) => document.getElementById(i).getAttribute('tabindex')).join('/'), grid: !document.getElementById('pages-view').hidden }));
+    const start = await state();
+    await page.focus('#view-sheets');
+    await page.keyboard.press('ArrowRight');
+    const right = await state();
+    await page.keyboard.press('ArrowLeft');
+    const left = await state();
+    await page.keyboard.press('End');
+    const end = await state();
+    check('M10', start.tabindex === '0/-1' && right.active === 'view-pages' && right.pages === 'true' && right.tabindex === '-1/0' && right.grid &&
+      left.active === 'view-sheets' && left.pages === 'false' && left.tabindex === '0/-1' && end.active === 'view-pages',
+      `${label}: the view tabs move with the arrow keys / End (roving tabindex: only the selected one is in the Tab order)`, JSON.stringify({ start, right, left, end }));
+  });
+
+  await isolated('drag and drop', DESKTOP, async (page) => {
+    await loadPdf(page);
+    await page.click('#view-pages');
+    const sources = () => page.$$eval('#small-thumbs .card', (l) => l.slice(0, 5).map((k) => k.getAttribute('data-source')));
+    const before = await sources();
+    const target = page.locator('#small-thumbs .card').nth(3);
+    const box = await target.boundingBox();
+    await page.locator('#small-thumbs .card').nth(0).dragTo(target, { targetPosition: { x: box.width - 8, y: box.height / 2 } });
+    await settle(page);
+    const after = await sources();
+    check('M10', JSON.stringify(before) === '["1","2","3","4","5"]' && JSON.stringify(after) === '["2","3","4","1","5"]',
+      `${label}: in the Pages view dragging page 1 onto the right half of page 4 puts it after page 4 (no test helper)`, JSON.stringify({ before, after }));
+  });
+
+  await isolated('block move', DESKTOP, async (page) => {
+    await loadPdf(page);
+    await page.click('#view-pages');
+    const sources = () => page.$$eval('#small-thumbs .card', (l) => l.slice(0, 6).map((k) => k.getAttribute('data-source')).join(','));
+    await page.locator('#small-thumbs .card').nth(2).click();
+    await page.locator('#small-thumbs .card').nth(3).click();
+    const picked = await page.textContent('#selection-count');
+    await page.click('#selected-earlier');
+    const earlier = await sources();
+    await page.click('#selected-later');
+    await page.click('#selected-later');
+    const later = await sources();
+    check('M10', /^2 sayfa/.test(picked) && earlier === '1,3,4,2,5,6' && later === '1,2,5,3,4,6',  // turkish-ok: expected Turkish UI text
+      `${label}: two selected pages move together, order kept (Move earlier once, Move later twice)`, JSON.stringify({ picked, earlier, later }));
+  });
+}
+
+/**
  * A short Learn check for file:// and the Tauri simulation, with the DOM only (the product code as it is; no test
  * injection): the tab (or the menu event) opens the guide, a step plays; no probe interface in the product code; not
  * set up again when pressed again.
@@ -2523,6 +2718,7 @@ async function main() {
     await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced en', 'en-US');
     await learnLayoutFlow(browser, localRoot + 'index.html', 'learn layout', 'tr-TR');
     await m10LayoutFlow(browser, localRoot + 'index.html', 'm10 layout', 'tr-TR');
+    await m10FixesFlow(browser, localRoot + 'index.html', 'm10 fixes', 'tr-TR');
     // ---- Run 1c: English interface, en-US browser ----
     await run('en', 'i18n', localRoot + 'index.html', localRoot, async (p, address, trace) => {
       await m6EnglishFlow(p, address, trace, 'en', true);

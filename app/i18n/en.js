@@ -57,6 +57,7 @@
   },
   "impose.advanced": "Advanced settings",
   "impose.advanced_note": "Creep, margins, scaling, marks, EPUB",
+  "impose.advanced_changed": "Changed from the default ({n}): {names}",
   "impose.save_to_project_note": "Keep these settings with a book in My books",
   "impose.download_note": "In the print dialog: {duplex}",
   "impose.download_note_pair": "Two files: print the fronts, then turn the stack over and print the backs.",

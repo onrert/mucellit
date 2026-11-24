@@ -91,13 +91,19 @@
     var O = MC.common, el = O.el;
     var a = loadSettings();
     var children = [el('summary', { text: t('epub.settings') })];
+    // The HTML default (value attribute / defaultChecked) is the plug-in default and the current value is the saved one,
+    // so the Imposition tab can list the settings that differ from their defaults (impose.js changedAdvanced).
     FIELDS.forEach(function (f) {
-      children.push(el('label', { class: 'field' }, [el('span', { text: t(f[2]) }),
-        // number field type=text + data-number (the language's decimal separator; common.setupNumberFields)
-        el('input', { type: 'text', inputmode: 'decimal', 'data-number': '', id: f[1], min: String(f[3]), max: String(f[4]), step: String(f[5]), value: MC.i18n.numberField(a[f[0]]) })]));
+      // number field type=text + data-number (the language's decimal separator; common.setupNumberFields)
+      var input = el('input', { type: 'text', inputmode: 'decimal', 'data-number': '', id: f[1], min: String(f[3]), max: String(f[4]), step: String(f[5]), value: MC.i18n.numberField(DEFAULTS[f[0]]) });
+      input.value = MC.i18n.numberField(a[f[0]]);
+      children.push(el('label', { class: 'field' }, [el('span', { text: t(f[2]) }), input]));
     });
     MARKS.forEach(function (f) {
-      children.push(el('label', { class: 'choice' }, [el('input', { type: 'checkbox', id: f[1], checked: !!a[f[0]] }), ' ' + t(f[2])]));
+      var box = el('input', { type: 'checkbox', id: f[1] });
+      box.defaultChecked = !!DEFAULTS[f[0]];
+      box.checked = !!a[f[0]];
+      children.push(el('label', { class: 'choice' }, [box, ' ' + t(f[2])]));
       if (f[3]) children.push(el('p', { class: 'small', id: f[1] + '-note', text: t(f[3]) }));
     });
     children.push(el('p', { class: 'small', text: t('epub.size_note') }));

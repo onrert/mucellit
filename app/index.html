@@ -64,8 +64,8 @@
 
         <div class="result" id="result" hidden>
           <div class="views" role="tablist" aria-label="View" data-i18n-attr="aria-label:impose.view">
-            <button type="button" role="tab" id="view-sheets" aria-selected="true" aria-controls="sheet-view"><span data-i18n="impose.sheet_preview">Sheet preview</span></button>
-            <button type="button" role="tab" id="view-pages" aria-selected="false" aria-controls="pages-view"><span data-i18n="impose.pages">Pages</span><span class="count" id="page-count"></span></button>
+            <button type="button" role="tab" id="view-sheets" aria-selected="true" aria-controls="sheet-view" tabindex="0"><span data-i18n="impose.sheet_preview">Sheet preview</span></button>
+            <button type="button" role="tab" id="view-pages" aria-selected="false" aria-controls="pages-view" tabindex="-1"><span data-i18n="impose.pages">Pages</span><span class="count" id="page-count"></span></button>
           </div>
           <div id="imposition-summary" class="summary"></div>
           <div id="sheet-view" role="tabpanel" aria-labelledby="view-sheets">
@@ -163,6 +163,8 @@
             <option value="pair" data-i18n="impose.output.pair">Two PDFs: fronts + backs (manual duplex)</option>
           </select>
         </label>
+        <!-- belongs to "Two PDFs": shown right under the output choice when that is chosen (impose.js updateVisibility) -->
+        <label class="choice" id="back-reversed-field" hidden><input type="checkbox" id="back-reversed"> <span data-i18n="impose.back_reversed">Backs in reverse order</span></label>
         <label class="field"><span id="duplex-label" data-i18n="impose.duplex.single">Printer duplex setting (choose the same in the print dialog)</span>
           <select id="duplex">
             <option value="short" data-i18n="impose.duplex.short">Flip on short edge</option>
@@ -172,7 +174,7 @@
         </label>
 
         <details class="more advanced" id="advanced-settings">
-          <summary><span class="more-text"><span class="more-title" data-i18n="impose.advanced">Advanced settings</span><small data-i18n="impose.advanced_note">Creep, margins, scaling, marks, EPUB</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+          <summary><span class="more-text"><span class="more-title" data-i18n="impose.advanced">Advanced settings</span><small data-i18n="impose.advanced_note">Creep, margins, scaling, marks, EPUB</small><small class="changed-note" id="advanced-changed" aria-live="polite"></small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
           <div id="signature-advanced" data-sewn-only>
             <label class="choice"><input type="checkbox" id="last-signature-shrink"> <span data-i18n="impose.shrink_last_signature">Shrink the last signature (fewer blank pages)</span></label>
             <label class="choice"><input type="checkbox" id="creep"> <span data-i18n="impose.creep">Creep compensation</span></label>
@@ -194,7 +196,6 @@
           <label class="choice"><input type="checkbox" id="cropMarks" checked> <span data-i18n="impose.crop_marks">Crop marks</span></label>
           <label class="choice"><input type="checkbox" id="folding" checked> <span data-i18n="impose.folding">Fold marks</span></label>
           <label class="choice"><input type="checkbox" id="spine-mark" checked> <span data-i18n="impose.spine_marks">Collation marks on the spine (stepped squares)</span></label>
-          <label class="choice" id="back-reversed-field"><input type="checkbox" id="back-reversed"> <span data-i18n="impose.back_reversed">Backs in reverse order</span></label>
           <div id="plugin-settings"></div>
         </details>
 

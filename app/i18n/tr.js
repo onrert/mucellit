@@ -51,6 +51,7 @@
   "impose.sheets_short": "{n} yaprak",
   "impose.advanced": "Gelişmiş ayarlar",
   "impose.advanced_note": "Kayma telafisi, kenarlar, ölçekleme, işaretler, EPUB",
+  "impose.advanced_changed": "Öntanımdan farklı ({n}): {names}",
   "impose.save_to_project_note": "Ayarları Kitaplarım'daki bir kitapta saklayın",
   "impose.download_note": "Yazıcıda: {duplex}",
   "impose.download_note_pair": "İki dosya: önce önleri basın, sonra desteyi çevirip arkaları basın.",

@@ -56,6 +56,7 @@
 
   function applySettings(a) {
     if (!a) return;
+    ['paper-ready', 'book-ready'].forEach(function (id) { $(id).removeAttribute('data-custom'); }); // the loaded sizes decide the pickers
     Object.keys(FIELDS).forEach(function (k) {
       if (a[k] === undefined || a[k] === null) return;
       var id = FIELDS[k][0], kind = FIELDS[k][1], e = $(id);
@@ -111,12 +112,16 @@
     return t(p.landscape ? 'impose.size_short.landscape' : 'impose.size_short.portrait', { name: p.name });
   }
 
-  /** The preset pickers show the current size; a size without a preset shows "Custom size…". */
+  /**
+   * The preset pickers show the current size; a size without a preset shows "Custom size…". A picker on which the user
+   * chose "Custom size…" (data-custom) keeps showing it, so the choice does not jump back to the matching preset.
+   */
   function syncPresets() {
     [['paper-ready', 'paper-width', 'paper-height'], ['book-ready', 'book-width', 'book-height']].forEach(function (f) {
       var select = $(f[0]);
       var width = O.number(f[1], NaN), height = O.number(f[2], NaN);
       var value = 'custom';
+      if (select.getAttribute('data-custom') === 'yes') { select.value = value; return; }
       for (var i = 0; i < select.options.length; i++) {
         var p = select.options[i].value.split('x');
         if (p.length === 2 && Math.abs(Number(p[0]) - width) < 0.01 && Math.abs(Number(p[1]) - height) < 0.01) { value = select.options[i].value; break; }
@@ -141,7 +146,44 @@
     $('settings-summary').textContent = parts.join(' · ');
     var paper = $('paper-ready');
     $('drop-size').textContent = paper.value !== 'custom' && paper.selectedOptions && paper.selectedOptions[0] ? paper.selectedOptions[0].textContent : (sizesValid ? sizeText(pw, ph) + ' mm' : '');
+    refreshAdvancedNote();
     refreshDownloadNote();
+  }
+
+  /**
+   * The advanced settings that differ from their defaults (the HTML default value of each control; the EPUB plug-in
+   * sets its defaults the same way), listed in the closed group's summary so that a value loaded from a saved record or
+   * a project is in sight without opening the group. Controls that do not apply (hidden, e.g. creep without signatures) are left out.
+   */
+  function changedAdvanced() {
+    var names = [];
+    var controls = document.querySelectorAll('#advanced-settings input, #advanced-settings select');
+    for (var i = 0; i < controls.length; i++) {
+      var c = controls[i];
+      if (c.closest('[hidden]')) continue;
+      var changed;
+      if (c.type === 'checkbox') changed = c.checked !== c.defaultChecked;
+      else if (c.tagName === 'SELECT') {
+        var first = null;
+        for (var k = 0; k < c.options.length; k++) if (c.options[k].defaultSelected) { first = c.options[k]; break; }
+        changed = c.value !== (first || c.options[0] || {}).value;
+      } else {
+        var now = O.parseNumber(c.value), was = O.parseNumber(c.defaultValue);
+        changed = isFinite(now) && isFinite(was) ? Math.abs(now - was) > 1e-9 : String(c.value).trim() !== String(c.defaultValue).trim();
+      }
+      if (!changed) continue;
+      var label = c.closest('label');
+      var text = label ? (label.querySelector('span') || label).textContent : c.getAttribute('aria-label') || c.id;
+      names.push(String(text).replace(/\s+/g, ' ').trim());
+    }
+    return names;
+  }
+
+  function refreshAdvancedNote() {
+    var names = changedAdvanced();
+    var note = $('advanced-changed');
+    note.textContent = names.length ? t('impose.advanced_changed', { n: names.length, names: names.join(', ') }) : '';
+    $('advanced-settings').classList.toggle('changed', names.length > 0);
   }
 
   function refreshDownloadNote() {
@@ -175,14 +217,38 @@
     $('result').hidden = !hasPages;
     var chooser = $('pdf-select').parentNode; // label.file-select (button + hidden input)
     var slot = hasPages ? $('file-slot') : $('drop-slot');
-    if (chooser.parentNode !== slot) slot.appendChild(chooser);
     var button = $('pdf-select');
+    if (chooser.parentNode !== slot) {
+      // moving a focused element drops the focus to <body>; the choose button keeps it in its new place
+      var focused = document.activeElement === button || document.activeElement === document.body || !document.activeElement;
+      slot.appendChild(chooser);
+      if (focused && document.activeElement !== button) button.focus();
+    }
+    placeSettings();
     var key = hasPages ? 'impose.choose_other' : (MC.plugins.list().length > 0 ? 'impose.pdf_epub_choose' : 'impose.pdf_choose');
     if (button.getAttribute('data-i18n') !== key) { button.setAttribute('data-i18n', key); button.textContent = t(key); }
     button.classList.toggle('main', !hasPages);
     $('page-count').textContent = hasPages ? '(' + D.pages.length + ')' : '';
     refreshSelectionCount();
     refreshDownloadNote();
+  }
+
+  /**
+   * The settings panel follows the reading order: on a wide screen it is the side column (after the work area); on a
+   * narrow one (one column, style.css ≤ 820 px) it sits in the work area where it is seen: after the drop zone without
+   * a document, before the result with one. So the Tab order is the visual order (no CSS `order`).
+   */
+  var narrowQuery = root.matchMedia ? root.matchMedia('(max-width: 820px)') : null;
+  function placeSettings() {
+    var settings = $('settings'), work = $('work'), mat = $('mat');
+    var narrow = !!(narrowQuery && narrowQuery.matches);
+    var parent = narrow ? work : work.parentNode;
+    var before = narrow ? (D.pages.length > 0 ? mat : mat.nextSibling) : null;
+    if (settings.parentNode === parent && (narrow ? settings.nextSibling === before : !settings.nextElementSibling)) return;
+    var active = document.activeElement;
+    var hadFocus = active && settings.contains(active);
+    parent.insertBefore(settings, before);
+    if (hadFocus && document.activeElement !== active) active.focus();
   }
 
   function refreshSelectionCount() {
@@ -201,6 +267,9 @@
   function showView(pages) {
     $('view-sheets').setAttribute('aria-selected', pages ? 'false' : 'true');
     $('view-pages').setAttribute('aria-selected', pages ? 'true' : 'false');
+    // roving tabindex: only the selected view tab is in the Tab order; the arrow keys move between them (layoutEvents)
+    $('view-sheets').setAttribute('tabindex', pages ? '-1' : '0');
+    $('view-pages').setAttribute('tabindex', pages ? '0' : '-1');
     $('sheet-view').hidden = pages;
     $('pages-view').hidden = !pages;
   }
@@ -620,6 +689,20 @@
   function layoutEvents() {
     $('view-sheets').addEventListener('click', function () { showView(false); });
     $('view-pages').addEventListener('click', function () { showView(true); });
+    // tablist keyboard pattern: ← → (and Home / End) select and focus the other view tab
+    $('view-sheets').parentNode.addEventListener('keydown', function (e) {
+      var keys = { ArrowLeft: 'prev', ArrowRight: 'next', Home: 'first', End: 'last' };
+      if (!keys[e.key]) return;
+      e.preventDefault();
+      var pages = $('view-pages').getAttribute('aria-selected') === 'true';
+      var toPages = keys[e.key] === 'first' ? false : keys[e.key] === 'last' ? true : !pages;
+      showView(toPages);
+      $(toPages ? 'view-pages' : 'view-sheets').focus();
+    });
+    if (narrowQuery) {
+      if (narrowQuery.addEventListener) narrowQuery.addEventListener('change', placeSettings);
+      else if (narrowQuery.addListener) narrowQuery.addListener(placeSettings);
+    }
     function step(by) {
       var input = $('signature-sheet');
       var n = Math.round(O.number('signature-sheet', 4));
@@ -859,9 +942,11 @@
   function exportPdf() {
     return runOutputJob('export-transfer', async function (result) {
       if (MC.platform.localFile) {
-        // Native Save window (Tauri): the files are saved one by one, the notice tells the real result.
-        await showOutputPreview(result.files[0].bytes);
+        // Native Save window (Tauri): the files are saved one by one, the notice tells the real result. Step 3 is marked
+        // only when at least one file was written (a cancelled Save window leaves the step indicator at step 2).
+        await showOutputPreview(result.files[0].bytes, false);
         var record = await MC.platform.saveAll(result.files, 'application/pdf');
+        if (record && record.saved && record.saved.length) { exported = true; refreshLayout(); }
         var m = MC.platform.saveMessage(record, result.layout.sides.length);
         O.notify(m.text, m.kind);
         return;
@@ -876,12 +961,13 @@
     });
   }
 
-  async function showOutputPreview(bytes) {
+  /** markDone false: the caller marks step 3 itself once it knows the output was really kept (Tauri Save window). */
+  async function showOutputPreview(bytes, markDone) {
     var container = $('output-preview');
     container.textContent = '';
     container.removeAttribute('data-ready');
     $('output-section').hidden = false; // the output preview shows only once an output was made
-    exported = true;
+    if (markDone !== false) exported = true;
     refreshLayout();
     if (D.outputPdf) { try { D.outputPdf.destroy(); } catch { /* ignore */ } D.outputPdf = null; }
     var pdf = await openDocument(bytes);
@@ -946,21 +1032,29 @@
       if (landscape) select.appendChild(el('option', { value: o.height + 'x' + o.width, text: t('impose.ready.landscape', { name: o.name, width: o.height, height: o.width }) }));
     });
     select.appendChild(el('option', { value: 'custom', text: t('impose.size_custom') }));
-    select.addEventListener('change', function () {
+    // 'input' comes before the panel's own input/change listeners (they sync the pickers), so the choice is handled first
+    function chosen() {
       if (select.value === 'custom') {
+        // the choice stays "Custom size…" (syncPresets keeps it) until a preset is chosen or settings are loaded
+        select.setAttribute('data-custom', 'yes');
         $('size-fields').open = true;
         $(widthId).focus();
         return;
       }
+      select.removeAttribute('data-custom');
       var p = select.value.split('x');
       if (p.length !== 2) return;
       O.writeNumber(widthId, Number(p[0])); O.writeNumber(heightId, Number(p[1]));
       update();
-    });
+    }
+    select.addEventListener('input', chosen);
+    select.addEventListener('change', chosen);
   }
 
+  /** ⇄: the preset picker, the summaries and the drop zone size follow the new orientation too (updateVisibility). */
   function swap(widthId, heightId) {
-    var g = $(widthId).value; $(widthId).value = $(heightId).value; $(heightId).value = g; update();
+    var g = $(widthId).value; $(widthId).value = $(heightId).value; $(heightId).value = g;
+    updateVisibility(); update();
   }
 
   function start() {
