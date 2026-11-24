@@ -2439,11 +2439,15 @@ async function m10LayoutFlow(browser, address, label, local) {
  *   - "Two PDFs" shows "Backs in reverse order" right under the output choice (Advanced settings stays closed);
  *   - keyboard: the focus stays on the choose button after a file was chosen; below 820 px the Tab order is the visual
  *     order; the phone language picker shows the focus; the view tabs move with the arrow keys (roving tabindex);
- *   - Pages view: drag and drop reorders the pages; a multi-page selection moves as a block with Move earlier / later.
+ *   - Pages view: drag and drop reorders the pages; a multi-page selection moves as a block with Move earlier / later;
+ *   - (review round 1) typing a decimal in a settings field ("1,5" / "1.5") on a phone without and with a document and on
+ *     the desktop keeps the value and the focus (the settings panel is not moved on a key press); without a document the
+ *     phone Tab order goes choose → settings; a tap on the phone language picker draws no ring; the changed-settings
+ *     note is announced from a live region outside <summary> that is not rewritten while its text stays the same.
  */
 async function m10FixesFlow(browser, address, label, local) {
   async function isolated(name, view, body) {
-    const ctx = await browser.newContext({ locale: local, viewport: { width: view.width, height: view.height }, hasTouch: !!view.mobile, isMobile: !!view.mobile, acceptDownloads: true });
+    const ctx = await browser.newContext({ locale: view.locale || local, viewport: { width: view.width, height: view.height }, hasTouch: !!view.mobile, isMobile: !!view.mobile, acceptDownloads: true });
     const page = await ctx.newPage();
     page.setDefaultTimeout(30000);
     const trace = watch(page, `${label} ${name}`);
@@ -2499,11 +2503,16 @@ async function m10FixesFlow(browser, address, label, local) {
     await page.selectOption('#paper-ready', 'custom');
     await settle(page);
     const c = await page.evaluate(() => ({ value: document.getElementById('paper-ready').value, open: document.getElementById('size-fields').open, focus: document.activeElement.id }));
-    await page.fill('#paper-width', '300');
+    // a typed size that equals a preset (210 × 297 = A4 portrait) keeps "Custom size…": without the user's choice the
+    // picker would show the preset (syncPresets), so this measures the choice, not a size without a preset
+    await page.fill('#paper-width', '210');
     await page.dispatchEvent('#paper-width', 'change');
-    const after = await page.$eval('#paper-ready', (s) => s.value);
-    check('M10', c.value === 'custom' && c.open && c.focus === 'paper-width' && after === 'custom',
-      `${label}: "Custom size…" stays chosen (does not jump back), opens the size fields and focuses the width`, JSON.stringify({ c, after }));
+    await page.fill('#paper-height', '297');
+    await page.dispatchEvent('#paper-height', 'change');
+    await settle(page);
+    const after = await page.evaluate(() => ({ value: document.getElementById('paper-ready').value, size: document.getElementById('size-summary').textContent }));
+    check('M10', c.value === 'custom' && c.open && c.focus === 'paper-width' && after.value === 'custom' && /210 × 297/.test(after.size),
+      `${label}: "Custom size…" stays chosen (does not jump back, also when the typed size equals a preset), opens the size fields and focuses the width`, JSON.stringify({ c, after }));
   });
   await isolated('preset size', DESKTOP, async (page) => {
     await page.selectOption('#paper-ready', '148x210');
@@ -2534,6 +2543,51 @@ async function m10FixesFlow(browser, address, label, local) {
     await settle(page);
     const active = await page.evaluate(() => (document.activeElement === document.body ? 'body' : document.activeElement.id));
     check('M10', active === 'pdf-select', `${label}: after choosing a file with the keyboard the focus stays on the choose button (now in the file bar)`, active);
+  });
+
+  // a key press redraws the preview; the settings panel must stay where it is (Chromium blurs and re-formats a field
+  // whose panel is taken out of the DOM: "1,5" became "15" on a phone without a document)
+  for (const v of [{ name: 'phone, no document', ...PHONE, typed: '1,5' }, { name: 'phone, no document, en', ...PHONE, locale: 'en-US', typed: '1.5' },
+    { name: 'phone, with a document', ...PHONE, typed: '1,5', pdf: true }, { name: 'desktop, no document', ...DESKTOP, typed: '1,5' }]) {
+    await isolated(`typing a decimal ${v.name}`, v, async (page) => {
+      if (v.pdf) await loadPdf(page);
+      if (v.mobile) await page.click('#settings-toggle');
+      await page.click('#advanced-settings > summary');
+      await page.click('#outer-margin');
+      await page.evaluate(() => {
+        window.__moved = 0; window.__blurs = 0;
+        const settings = document.getElementById('settings');
+        new MutationObserver((list) => { for (const m of list) for (const n of m.removedNodes) if (n === settings) window.__moved++; }).observe(document.body, { childList: true, subtree: true });
+        document.getElementById('outer-margin').addEventListener('blur', () => { window.__blurs++; });
+      });
+      await page.keyboard.press('ControlOrMeta+A');
+      for (const k of v.typed) { await page.keyboard.type(k); await settle(page); }
+      const r = await page.evaluate(() => ({ value: document.getElementById('outer-margin').value, moved: window.__moved, blurs: window.__blurs, focus: document.activeElement.id }));
+      check('M10', r.value === v.typed && r.moved === 0 && r.blurs === 0 && r.focus === 'outer-margin',
+        `${label} ${v.name}: typing "${v.typed}" in a settings field keeps it (the settings panel is not moved, the field keeps the focus)`, JSON.stringify(r));
+    });
+  }
+
+  await isolated('tab order phone, no document', PHONE, async (page) => {
+    await page.evaluate(() => { document.getElementById('tab-button-impose').focus(); document.activeElement.blur(); window.scrollTo(0, 0); });
+    const seq = [];
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press('Tab');
+      const s = await page.evaluate(() => {
+        const e = document.activeElement; if (!e || e === document.body) return null;
+        const bar = e.closest('nav[role="tablist"], .go, header');
+        return { id: e.id || e.tagName.toLowerCase(), y: Math.round(e.getBoundingClientRect().top + window.scrollY), fixed: !!bar };
+      });
+      if (!s) continue;
+      if (seq.some((x) => x.id === s.id)) break;
+      seq.push(s);
+    }
+    const flow = seq.filter((s) => !s.fixed), ids = flow.map((s) => s.id);
+    const ups = [];
+    for (let i = 1; i < flow.length; i++) if (flow[i].y < flow[i - 1].y - 4) ups.push(`${flow[i - 1].id}(${flow[i - 1].y}) → ${flow[i].id}(${flow[i].y})`);
+    const placed = await page.evaluate(() => document.getElementById('settings').previousElementSibling.id);
+    check('M10', ups.length === 0 && ids.indexOf('pdf-select') >= 0 && ids.indexOf('settings-toggle') > ids.indexOf('pdf-select') && placed === 'mat',
+      `${label} 375 px: without a document the settings follow the drop zone and the Tab order is the visual order (choose → settings)`, JSON.stringify({ ups, placed, order: seq.map((s) => s.id + ':' + s.y) }));
   });
 
   for (const v of [{ name: '700', width: 700, height: 900 }, { name: 'phone', ...PHONE }]) {
@@ -2571,6 +2625,32 @@ async function m10FixesFlow(browser, address, label, local) {
     const focus = await ring();
     check('M10', idle.style === 'none' && focus.focused === 'i18n-select' && focus.style !== 'none' && parseFloat(focus.width) >= 2,
       `${label}: on the phone the language picker shows the keyboard focus (the select is transparent, its box gets the ring)`, JSON.stringify({ idle, focus }));
+  });
+
+  await isolated('phone language tap', PHONE, async (page) => {
+    await page.tap('#i18n-select');
+    const tap = await page.evaluate(() => ({ focused: document.activeElement.id, style: getComputedStyle(document.querySelector('.language')).outlineStyle }));
+    await page.evaluate(() => document.getElementById('i18n-select').blur());
+    for (let i = 0; i < 12 && (await page.evaluate(() => document.activeElement.id)) !== 'i18n-select'; i++) await page.keyboard.press('Tab');
+    const key = await page.evaluate(() => ({ focused: document.activeElement.id, style: getComputedStyle(document.querySelector('.language')).outlineStyle }));
+    check('M10', tap.focused === 'i18n-select' && tap.style === 'none' && key.focused === 'i18n-select' && key.style !== 'none',
+      `${label}: on the phone a tap on the language picker draws no focus ring, the keyboard focus does`, JSON.stringify({ tap, key }));
+  });
+
+  await isolated('advanced note live region', DESKTOP, async (page) => {
+    await page.click('#advanced-settings > summary');
+    await page.uncheck('#folding');
+    const r = await page.evaluate(async () => {
+      const live = document.getElementById('advanced-changed-live');
+      const inSummary = Array.from(document.querySelectorAll('summary [aria-live]')).map((e) => e.id);
+      let writes = 0;
+      if (live) new MutationObserver((l) => { writes += l.length; }).observe(live, { childList: true, characterData: true, subtree: true });
+      const f = document.getElementById('signature-sheet');
+      for (const v of ['5', '4', '5', '4']) { f.value = v; f.dispatchEvent(new Event('input', { bubbles: true })); f.dispatchEvent(new Event('change', { bubbles: true })); await new Promise((ok) => requestAnimationFrame(ok)); }
+      return { inSummary, live: !!live && live.getAttribute('aria-live') === 'polite' && !live.closest('summary'), same: !!live && live.textContent === document.getElementById('advanced-changed').textContent && live.textContent !== '', writes };
+    });
+    check('M10', r.inSummary.length === 0 && r.live && r.same && r.writes === 0,
+      `${label}: the changed-settings note is announced from a live region outside <summary>, which is not rewritten while the text stays the same`, JSON.stringify(r));
   });
 
   await isolated('view tabs keys', DESKTOP, async (page) => {
@@ -2629,11 +2709,15 @@ async function m10FixesFlow(browser, address, label, local) {
  *   - Calculator: the basic numbers are in sight, the rarely changed ones in the closed "Advanced" group; the result on the mat;
  *   - phone 375×812: the Calculator result starts within two screens (P4); every control of My books (a book with
  *     its steps, Backup open) and of the Calculator (Advanced open) is at least 44 × 44 px; no tab scrolls sideways;
- *     the Learn figure (svg#fig) starts in the first screen (P4).
+ *     the Learn figure (svg#fig) starts in the first screen (P4);
+ *   - (review round 1) phone, English: no select text runs under its arrow (the Imposition inner space); a book chosen
+ *     on the phone shelf brings its details into view with the focus on its title, on the desktop the page stays and the
+ *     focus stays on the shelf; English texts never say "project"; the phone Calculator result keeps its table roles
+ *     and its yellow tape follows the pieces to cut, not the row numbers.
  */
 async function m10TabsFlow(browser, address, label, local) {
   async function isolated(name, view, body) {
-    const ctx = await browser.newContext({ locale: local, viewport: { width: view.width, height: view.height }, hasTouch: !!view.mobile, isMobile: !!view.mobile });
+    const ctx = await browser.newContext({ locale: view.locale || local, viewport: { width: view.width, height: view.height }, hasTouch: !!view.mobile, isMobile: !!view.mobile });
     const page = await ctx.newPage();
     page.setDefaultTimeout(30000);
     const trace = watch(page, `${label} ${name}`);
@@ -2703,6 +2787,96 @@ async function m10TabsFlow(browser, address, label, local) {
     const steps = await page.evaluate(() => { const s = document.querySelector('#steps .step'), d = document.querySelector('#book-detail'); return { stepRight: Math.round(s.getBoundingClientRect().right), detailRight: Math.round(d.getBoundingClientRect().right) }; });
     check('M10', r.n >= 14 * 5 && r.small.length === 0 && steps.stepRight <= steps.detailRight,
       `${label}: phone: every control of My books (a book with 14 steps, Backup open) is ≥ 44 × 44 px; the step rows fit the panel`, JSON.stringify({ r, steps }));
+  });
+
+  // the select arrow is drawn in the right padding (style.css, right 12–22 px): the text must stop before it
+  await isolated('select arrow phone en', { ...PHONE, locale: 'en-US' }, async (page) => {
+    const ref = await page.$eval('#settings select', (s) => getComputedStyle(s).paddingRight);
+    const all = [];
+    for (const tab of ['projects', 'calculator']) {
+      await page.click('#tab-button-' + tab);
+      for (const d of await page.$$(`#tab-${tab} details:not([open]) > summary`)) await d.click();
+      all.push(...await page.evaluate((tab) => {
+        const ctx = document.createElement('canvas').getContext('2d');
+        return Array.from(document.querySelectorAll(`#tab-${tab} select`)).filter((s) => s.getBoundingClientRect().width > 0).map((s) => {
+          const c = getComputedStyle(s), w = s.getBoundingClientRect().width;
+          ctx.font = c.font;
+          const longest = Math.max(...Array.from(s.options).map((o) => ctx.measureText(o.textContent).width));
+          const start = parseFloat(c.borderLeftWidth) + parseFloat(c.paddingLeft), contentEnd = w - parseFloat(c.borderRightWidth) - parseFloat(c.paddingRight);
+          return { id: s.id, padR: c.paddingRight, textEnd: Math.round(Math.min(start + longest, contentEnd)), arrow: Math.round(w - 22) };
+        });
+      }, tab));
+    }
+    const bad = all.filter((x) => x.padR !== ref || x.textEnd > x.arrow - 2);
+    check('M10', all.length >= 4 && bad.length === 0,
+      `${label}: phone, English: in My books and the Calculator no select text (its longest option included) runs under the arrow; the same inner space as the Imposition selects (${ref})`, JSON.stringify({ n: all.length, bad: bad.length ? bad : undefined }));
+  });
+
+  const twoBooks = async (page) => {
+    await page.click('#tab-button-projects');
+    for (const name of ['First book', 'Second book']) { await page.fill('#yk-name', name); await page.click('#yk-create'); }
+    await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 2);
+    await page.evaluate(() => { document.activeElement.blur(); window.scrollTo(0, 0); });
+    await page.waitForTimeout(100);
+  };
+  const where = (page) => page.evaluate(() => {
+    const h = document.querySelector('#book-detail h2'), r = h.getBoundingClientRect(), a = document.activeElement;
+    const hit = r.top >= 0 && r.bottom <= innerHeight ? document.elementFromPoint(Math.min(r.left + 12, innerWidth - 1), r.top + r.height / 2) : null;
+    return { title: h.textContent, top: Math.round(r.top), inView: !!hit && (hit === h || h.contains(hit)), scrollY: Math.round(window.scrollY),
+      focus: a === document.body ? 'body' : a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') + (a.getAttribute('data-book') ? '[data-book]' : ''), inDetail: document.getElementById('book-detail').contains(a) };
+  });
+  await isolated('book chosen phone', PHONE, async (page) => {
+    await twoBooks(page);
+    await page.tap('#book-list li:first-child button');
+    await page.waitForTimeout(300);
+    const r = await where(page);
+    check('M10', r.title === 'First book' && r.inView && r.inDetail && r.focus === 'h2',
+      `${label}: phone: a book chosen on the shelf brings its details into view (title below the sticky header) and moves the focus there`, JSON.stringify(r));
+  });
+  await isolated('book chosen desktop', DESKTOP, async (page) => {
+    await twoBooks(page);
+    await page.click('#book-list li:first-child button');
+    await page.waitForTimeout(300);
+    const r = await where(page);
+    check('M10', r.title === 'First book' && r.scrollY === 0 && r.focus === 'button[data-book]',
+      `${label}: desktop: choosing a book does not move the page and the focus stays on the shelf (not on <body>)`, JSON.stringify(r));
+  });
+
+  await isolated('english books', { ...DESKTOP, locale: 'en-US' }, async (page) => {
+    const words = await page.evaluate(() => {
+      const en = (window.MucellitDictionaries || []).find((d) => d._lang === 'en') || {};
+      const hits = [];
+      for (const [k, v] of Object.entries(en)) for (const text of (typeof v === 'string' ? [v] : Object.values(v))) if (/project/i.test(text)) hits.push(k);
+      return { n: Object.keys(en).length, hits };
+    });
+    const dialogs = [];
+    page.on('dialog', (d) => dialogs.push(d.message()));
+    await page.click('#tab-button-projects');
+    await page.fill('#yk-name', 'A book');
+    await page.click('#yk-create');
+    await page.click('#backup > summary');
+    await page.click('#data-clear');
+    await page.waitForFunction(() => document.querySelectorAll('#book-list li').length === 0);
+    const notice = await page.textContent('#notice');
+    check('M10', words.n > 1000 && words.hits.length === 0 && dialogs.length === 1 && /books/.test(dialogs[0]) && !/project/i.test(dialogs[0] + notice),
+      `${label}: English: no visible text says "project" (the dictionary; "Delete all" asks about books)`, JSON.stringify({ ...words, dialogs, notice }));
+  });
+
+  await isolated('calculator phone table', PHONE, async (page) => {
+    await page.click('#tab-button-calculator');
+    const r = await page.evaluate(() => {
+      const t = document.getElementById('h-result'), rows = Array.from(t.querySelectorAll('tr'));
+      const tape = getComputedStyle(document.documentElement).getPropertyValue('--tape-1').trim();
+      const probe = document.createElement('i'); probe.style.color = tape; document.body.appendChild(probe); const yellow = getComputedStyle(probe).color; probe.remove();
+      const yellowRows = () => Array.from(t.querySelectorAll('tr')).filter((x) => getComputedStyle(x.querySelector('td.value')).backgroundColor === yellow).map((x) => x.querySelector('td.value').getAttribute('data-result')).join();
+      const before = yellowRows();
+      t.insertBefore(rows[rows.length - 1], rows[0]); // another row order: the tape follows the rows to cut
+      const moved = yellowRows();
+      return { table: t.getAttribute('role'), display: getComputedStyle(t).display, rows: rows.length, roles: rows.every((x) => x.getAttribute('role') === 'row' && x.querySelector('th').getAttribute('role') === 'rowheader' && Array.from(x.querySelectorAll('td')).every((d) => d.getAttribute('role') === 'cell')), before, moved };
+    });
+    const cut = 'board,spineStrip,covering,endpapers,mull,headbands';
+    check('M10', r.table === 'table' && r.rows === 12 && r.roles && r.before === cut && r.moved === cut,
+      `${label}: phone: the result keeps its table roles in the block layout and the pieces to cut are on yellow tape by their kind, not their row number`, JSON.stringify(r));
   });
 
   await isolated('phone overflow', PHONE, async (page) => {
