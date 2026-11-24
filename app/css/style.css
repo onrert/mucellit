@@ -236,7 +236,7 @@ main { padding: 18px 28px 40px; max-width: 1400px; margin: 0 auto; }
 #small-thumbs .card .image { height: 120px; display: grid; place-items: center; overflow: hidden; background: var(--blank); border-radius: 3px; }
 #small-thumbs .card .image img { max-width: 100%; max-height: 116px; transition: transform .15s; background: #fff; }
 #small-thumbs .card .image.blank-page { color: #45524a; font-size: 13px; background: repeating-linear-gradient(-45deg, #e2e5de 0 4px, #f2f3ef 4px 8px); }
-#small-thumbs .card .label { display: flex; justify-content: space-between; align-items: center; min-height: 22px; font-size: 13px; padding: 0 2px; }
+#small-thumbs .card .label { display: flex; justify-content: flex-end; align-items: center; min-height: 22px; font-size: 13px; padding: 0 2px; }
 #small-thumbs .card .label .small { color: #45524a; font-size: 13px; }
 /* the label (checkbox + position) covers the whole card: a click or tap anywhere selects the page */
 #small-thumbs .card-hit { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: 6px 8px; cursor: pointer; border-radius: 6px; }
