@@ -2443,7 +2443,9 @@ async function m10LayoutFlow(browser, address, label, local) {
  *   - (review round 1) typing a decimal in a settings field ("1,5" / "1.5") on a phone without and with a document and on
  *     the desktop keeps the value and the focus (the settings panel is not moved on a key press); without a document the
  *     phone Tab order goes choose → settings; a tap on the phone language picker draws no ring; the changed-settings
- *     note is announced from a live region outside <summary> that is not rewritten while its text stays the same.
+ *     note is announced from a live region outside <summary> that is not rewritten while its text stays the same;
+ *   - (review round 2) a press on the phone language picker that never focused it, or a key after a tap, does not hide
+ *     the keyboard ring.
  */
 async function m10FixesFlow(browser, address, label, local) {
   async function isolated(name, view, body) {
@@ -2637,6 +2639,34 @@ async function m10FixesFlow(browser, address, label, local) {
       `${label}: on the phone a tap on the language picker draws no focus ring, the keyboard focus does`, JSON.stringify({ tap, key }));
   });
 
+  // (round 2) the tap note (.by-pointer) must not outlive a press that never focused the picker: a touch that turns into a
+  // scroll ends with pointercancel (a real touch scroll in Chromium sends pointerdown → pointercancel; the events are
+  // dispatched here so that WebKit runs the same path); a press with no cancel and no focus is cleared by the next key
+  const ringState = (page) => page.evaluate(() => { const b = document.querySelector('.language'); return { focused: document.activeElement.id, note: b.classList.contains('by-pointer'), style: getComputedStyle(b).outlineStyle }; });
+  const tabToPicker = async (page) => { for (let i = 0; i < 14 && (await page.evaluate(() => document.activeElement.id)) !== 'i18n-select'; i++) await page.keyboard.press('Tab'); };
+  await isolated('phone language cancelled press', PHONE, async (page) => {
+    const press = (types) => page.evaluate((types) => { const s = document.getElementById('i18n-select'); for (const t of types) s.dispatchEvent(new PointerEvent(t, { bubbles: true, pointerType: 'touch', isPrimary: true })); }, types);
+    await press(['pointerdown', 'pointercancel']);
+    const cancelled = await ringState(page);
+    await tabToPicker(page);
+    const key = await ringState(page);
+    await page.evaluate(() => document.getElementById('i18n-select').blur());
+    await press(['pointerdown']); // no cancel, no focus
+    await tabToPicker(page);
+    const key2 = await ringState(page);
+    check('M10', !cancelled.note && cancelled.focused !== 'i18n-select' && key.focused === 'i18n-select' && key.style !== 'none' && key2.focused === 'i18n-select' && key2.style !== 'none',
+      `${label}: on the phone a press on the language picker that never focused it (cancelled by a scroll, or not) leaves no tap note: the keyboard focus that comes later shows the ring`, JSON.stringify({ cancelled, key, key2 }));
+  });
+  await isolated('phone language tap then keys', PHONE, async (page) => {
+    await page.tap('#i18n-select');
+    const tap = await ringState(page);
+    await page.keyboard.press('Escape'); // closes the picker (an open Chromium picker takes the key itself)
+    await page.keyboard.press('Shift');
+    const key = await ringState(page);
+    check('M10', tap.focused === 'i18n-select' && tap.style === 'none' && key.focused === 'i18n-select' && key.style !== 'none',
+      `${label}: on the phone, after a tap on the language picker (no ring) a key press on it brings the ring (the keyboard is in use)`, JSON.stringify({ tap, key }));
+  });
+
   await isolated('advanced note live region', DESKTOP, async (page) => {
     await page.click('#advanced-settings > summary');
     await page.uncheck('#folding');
@@ -2713,11 +2743,14 @@ async function m10FixesFlow(browser, address, label, local) {
  *   - (review round 1) phone, English: no select text runs under its arrow (the Imposition inner space); a book chosen
  *     on the phone shelf brings its details into view with the focus on its title, on the desktop the page stays and the
  *     focus stays on the shelf; English texts never say "project"; the phone Calculator result keeps its table roles
- *     and its yellow tape follows the pieces to cut, not the row numbers.
+ *     and its yellow tape follows the pieces to cut, not the row numbers;
+ *   - (review round 2) the focus after a desktop book choice is on the chosen book; after "Delete book" (mouse, tap,
+ *     keyboard) on the book left or the new-book form; a step's checkbox, arrows, ✕, date and note used with the
+ *     keyboard keep the focus in the step (desktop and phone), never on <body>.
  */
 async function m10TabsFlow(browser, address, label, local) {
   async function isolated(name, view, body) {
-    const ctx = await browser.newContext({ locale: view.locale || local, viewport: { width: view.width, height: view.height }, hasTouch: !!view.mobile, isMobile: !!view.mobile });
+    const ctx = await browser.newContext({ locale: view.locale || local, viewport: { width: view.width, height: view.height }, hasTouch: !!(view.mobile || view.touch), isMobile: !!view.mobile });
     const page = await ctx.newPage();
     page.setDefaultTimeout(30000);
     const trace = watch(page, `${label} ${name}`);
@@ -2823,8 +2856,10 @@ async function m10TabsFlow(browser, address, label, local) {
     const h = document.querySelector('#book-detail h2'), r = h.getBoundingClientRect(), a = document.activeElement;
     const hit = r.top >= 0 && r.bottom <= innerHeight ? document.elementFromPoint(Math.min(r.left + 12, innerWidth - 1), r.top + r.height / 2) : null;
     return { title: h.textContent, top: Math.round(r.top), inView: !!hit && (hit === h || h.contains(hit)), scrollY: Math.round(window.scrollY),
-      focus: a === document.body ? 'body' : a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') + (a.getAttribute('data-book') ? '[data-book]' : ''), inDetail: document.getElementById('book-detail').contains(a) };
+      focus: a === document.body ? 'body' : a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') + (a.getAttribute('data-book') ? '[data-book]' : ''), inDetail: document.getElementById('book-detail').contains(a),
+      focusBook: a.getAttribute('data-book'), focusCurrent: a.getAttribute('aria-current') };
   });
+  const bookId = (page, n) => page.$eval(`#book-list li:nth-child(${n}) button`, (b) => b.getAttribute('data-book'));
   await isolated('book chosen phone', PHONE, async (page) => {
     await twoBooks(page);
     await page.tap('#book-list li:first-child button');
@@ -2835,12 +2870,107 @@ async function m10TabsFlow(browser, address, label, local) {
   });
   await isolated('book chosen desktop', DESKTOP, async (page) => {
     await twoBooks(page);
+    const chosen = await bookId(page, 1), other = await bookId(page, 2);
     await page.click('#book-list li:first-child button');
     await page.waitForTimeout(300);
     const r = await where(page);
-    check('M10', r.title === 'First book' && r.scrollY === 0 && r.focus === 'button[data-book]',
-      `${label}: desktop: choosing a book does not move the page and the focus stays on the shelf (not on <body>)`, JSON.stringify(r));
+    // round 2: the focus must be on the CHOSEN book's shelf button, not just any book's
+    check('M10', r.title === 'First book' && r.scrollY === 0 && r.focus === 'button[data-book]' && chosen !== other && r.focusBook === chosen && r.focusCurrent === 'true',
+      `${label}: desktop: choosing a book does not move the page and the focus stays on the shelf, on the chosen book's button`, JSON.stringify({ ...r, chosen }));
   });
+
+  // (round 2) "Delete book" with the mouse, a tap and the keyboard: the focus goes to the book that is left (desktop: its
+  // shelf button; phone: the title of its details, where the deleted one was), with no book left to the new-book form;
+  // never to <body> (WebKit does not focus a clicked or tapped button, so nothing may depend on that focus)
+  for (const [name, view] of [['delete book desktop', { ...DESKTOP, touch: true }], ['delete book phone', PHONE]]) {
+    await isolated(name, view, async (page) => { // watch() accepts the confirmations
+      const narrow = view.width <= 820, trail = [];
+      for (const how of ['mouse', 'tap', 'keyboard']) {
+        await twoBooks(page);
+        for (const left of [1, 0]) {
+          const keep = left ? await bookId(page, 1) : null;
+          if (how === 'mouse') await page.click('#book-remove');
+          else if (how === 'tap') await page.tap('#book-remove');
+          else { await page.focus('#book-remove'); await page.keyboard.press('Enter'); }
+          await page.waitForFunction((n) => document.querySelectorAll('#book-list li').length === n, left);
+          await page.waitForTimeout(100);
+          const f = await page.evaluate(() => { const a = document.activeElement; return a === document.body ? { body: true } : { id: a.id, tag: a.tagName.toLowerCase(), book: a.getAttribute('data-book'), current: a.getAttribute('aria-current'), detail: document.getElementById('book-detail').contains(a), title: a.textContent }; });
+          const ok = !f.body && (!left ? f.id === 'yk-name'
+            : narrow ? f.tag === 'h2' && f.detail && (await where(page)).inView && (await page.$eval('#book-list button[aria-current="true"]', (b) => b.getAttribute('data-book'))) === keep
+            : f.book === keep && f.current === 'true');
+          trail.push({ how, left, ok, focus: f.body ? 'body' : f.id || f.tag + (f.book ? '[data-book]' : '') });
+        }
+      }
+      check('M10', trail.length === 6 && trail.every((x) => x.ok),
+        `${label}: ${narrow ? 'phone' : 'desktop'}: after "Delete book" (mouse, tap, keyboard) the focus goes to the book left (${narrow ? 'the title of its details' : 'its shelf button'}), with none left to the new-book form; never to <body>`, JSON.stringify(trail));
+    });
+  }
+
+  // (round 2) a step's controls used with the keyboard keep the focus in that step although the open book is redrawn:
+  // the checkbox (Space) and the date/note fields stay focused; ▲/▼ follow the moved step (at an end the other arrow);
+  // ✕ hands the focus to the step that took its place (the one before, for the last step), the last one to "New step"
+  const stepFocus = (page) => page.evaluate(() => {
+    const a = document.activeElement; if (!a || a === document.body) return { body: true };
+    const li = a.closest('#steps li');
+    // the control by its kind in the row (not by data-control, which the product code added in round 2)
+    const control = a.matches('input.step-done') ? 'done' : a.matches('input.step-date') ? 'date' : a.matches('textarea.step-note') ? 'note' : a.matches('.step-remove') ? 'remove'
+      : a.textContent === '▲' ? 'up' : a.textContent === '▼' ? 'down' : a.id || a.tagName.toLowerCase();
+    return { control,
+      step: li ? li.getAttribute('data-step') : null, pos: li ? Array.prototype.indexOf.call(li.parentNode.children, li) + 1 : null, disabled: !!a.disabled };
+  });
+  const stepId = (page, n) => page.$eval(`#steps li:nth-child(${n})`, (l) => l.getAttribute('data-step'));
+  const stepCtl = (id, sel) => `#steps li[data-step="${id}"] ${sel}`;
+  const UP = '.step-buttons button:nth-child(1)', DOWN = '.step-buttons button:nth-child(2)', REMOVE = '.step-remove';
+  const keyOn = async (page, sel, key) => { await page.focus(sel); await page.keyboard.press(key); await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))); return stepFocus(page); };
+  const oneBook = async (page) => { // watch() accepts the ✕ confirmations
+    await page.click('#tab-button-projects');
+    await page.fill('#yk-name', 'Step book');
+    await page.click('#yk-create');
+    await page.waitForFunction(() => document.querySelectorAll('#steps li').length === 14);
+  };
+  for (const [where2, view] of [['desktop', DESKTOP], ['phone', PHONE]]) {
+    await isolated(`step check keys ${where2}`, view, async (page) => {
+      await oneBook(page);
+      const s5 = await stepId(page, 5), s3 = await stepId(page, 3);
+      const box = await keyOn(page, stepCtl(s5, 'input.step-done'), 'Space');
+      const done = await page.$eval(stepCtl(s5, 'input.step-done'), (b) => b.checked);
+      await page.focus(stepCtl(s3, 'input.step-date'));
+      await page.keyboard.type('15112026');
+      const date = await stepFocus(page);
+      await page.focus(stepCtl(s3, 'textarea.step-note'));
+      await page.keyboard.type('glue');
+      const note = await stepFocus(page);
+      const noteValue = await page.$eval(stepCtl(s3, 'textarea.step-note'), (t) => t.value);
+      check('M10', box.control === 'done' && box.step === s5 && done && date.control === 'date' && date.step === s3 && note.control === 'note' && note.step === s3 && noteValue === 'glue',
+        `${label}: ${where2}: a step's checkbox (Space) keeps the focus on the same step's box; typing a date or a note keeps the focus in place`, JSON.stringify({ box, done, date, note }));
+    });
+    await isolated(`step arrow keys ${where2}`, view, async (page) => {
+      await oneBook(page);
+      const s5 = await stepId(page, 5), s2 = await stepId(page, 2), s13 = await stepId(page, 13);
+      const up = await keyOn(page, stepCtl(s5, UP), 'Enter');
+      const down = await keyOn(page, stepCtl(s5, DOWN), 'Enter');
+      const top = await keyOn(page, stepCtl(s2, UP), 'Enter');
+      const bottom = await keyOn(page, stepCtl(s13, DOWN), 'Enter');
+      check('M10', up.control === 'up' && up.step === s5 && up.pos === 4 && down.control === 'down' && down.step === s5 && down.pos === 5 &&
+        top.control === 'down' && top.step === s2 && top.pos === 1 && !top.disabled && bottom.control === 'up' && bottom.step === s13 && bottom.pos === 14 && !bottom.disabled,
+        `${label}: ${where2}: ▲/▼ with the keyboard keep the focus on the moved step's same button (at the first/last place its other arrow)`, JSON.stringify({ up, down, top, bottom }));
+    });
+    await isolated(`step remove keys ${where2}`, view, async (page) => {
+      await oneBook(page);
+      const s6 = await stepId(page, 6);
+      const mid = await keyOn(page, stepCtl(await stepId(page, 5), REMOVE), 'Enter');
+      const s12 = await stepId(page, 12), s13 = await stepId(page, 13); // 13 steps left: the last one and the one before it
+      const last = await keyOn(page, stepCtl(s13, REMOVE), 'Enter');
+      const rest = [];
+      for (let i = 0; i < 14 && (await page.$$('#steps li')).length; i++) {
+        const f = await keyOn(page, stepCtl(await stepId(page, 1), REMOVE), 'Enter');
+        rest.push(f.body ? 'body' : f.control + (f.pos ? '@' + f.pos : ''));
+      }
+      check('M10', mid.control === 'remove' && mid.step === s6 && last.control === 'remove' && last.step === s12 && rest.length === 12 &&
+        rest.slice(0, -1).every((x) => x === 'remove@1') && rest[11] === 'step-fresh-name',
+        `${label}: ${where2}: ✕ with the keyboard hands the focus to the step that took its place (the one before for the last step), the last one to the "New step" field`, JSON.stringify({ mid, last, rest: rest.join(' ') }));
+    });
+  }
 
   await isolated('english books', { ...DESKTOP, locale: 'en-US' }, async (page) => {
     const words = await page.evaluate(() => {
