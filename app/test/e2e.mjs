@@ -2628,7 +2628,8 @@ async function m10FixesFlow(browser, address, label, local) {
  *     destructive; with no book the detail is the empty mat; the new-book form is in sight;
  *   - Calculator: the basic numbers are in sight, the rarely changed ones in the closed "Advanced" group; the result on the mat;
  *   - phone 375×812: the Calculator result starts within two screens (P4); every control of My books (a book with
- *     its steps, Backup open) and of the Calculator (Advanced open) is at least 44 × 44 px; the Learn figure (svg#fig) starts in the first screen (P4).
+ *     its steps, Backup open) and of the Calculator (Advanced open) is at least 44 × 44 px; no tab scrolls sideways;
+ *     the Learn figure (svg#fig) starts in the first screen (P4).
  */
 async function m10TabsFlow(browser, address, label, local) {
   async function isolated(name, view, body) {
@@ -2702,6 +2703,16 @@ async function m10TabsFlow(browser, address, label, local) {
     const steps = await page.evaluate(() => { const s = document.querySelector('#steps .step'), d = document.querySelector('#book-detail'); return { stepRight: Math.round(s.getBoundingClientRect().right), detailRight: Math.round(d.getBoundingClientRect().right) }; });
     check('M10', r.n >= 14 * 5 && r.small.length === 0 && steps.stepRight <= steps.detailRight,
       `${label}: phone: every control of My books (a book with 14 steps, Backup open) is ≥ 44 × 44 px; the step rows fit the panel`, JSON.stringify({ r, steps }));
+  });
+
+  await isolated('phone overflow', PHONE, async (page) => {
+    // WebKit kept the transparent language select's full text width, so every tab but the first scrolled sideways (~476 px)
+    const widths = {};
+    for (const tab of ['projects', 'calculator', 'learn', 'impose']) {
+      await page.click('#tab-button-' + tab);
+      widths[tab] = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    }
+    check('M10', Object.values(widths).every((d) => d <= 0), `${label}: phone: no tab scrolls sideways (page scrollWidth = clientWidth)`, JSON.stringify(widths));
   });
 
   await isolated('learn phone', PHONE, async (page) => {
