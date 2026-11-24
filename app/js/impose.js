@@ -179,10 +179,14 @@
     return names;
   }
 
+  /**
+   * The note in the group's summary and its screen reader copy (#advanced-changed-live, a live region outside <summary>).
+   * Both are written only when the text changes: this runs on every key press, an unchanged live region stays quiet.
+   */
   function refreshAdvancedNote() {
     var names = changedAdvanced();
-    var note = $('advanced-changed');
-    note.textContent = names.length ? t('impose.advanced_changed', { n: names.length, names: names.join(', ') }) : '';
+    var text = names.length ? t('impose.advanced_changed', { n: names.length, names: names.join(', ') }) : '';
+    ['advanced-changed', 'advanced-changed-live'].forEach(function (id) { var note = $(id); if (note && note.textContent !== text) note.textContent = text; });
     $('advanced-settings').classList.toggle('changed', names.length > 0);
   }
 
@@ -237,14 +241,19 @@
    * The settings panel follows the reading order: on a wide screen it is the side column (after the work area); on a
    * narrow one (one column, style.css ≤ 820 px) it sits in the work area where it is seen: after the drop zone without
    * a document, before the result with one. So the Tab order is the visual order (no CSS `order`).
+   * It runs on every redraw (every key press in a settings field): the panel is moved only when it is not in place yet,
+   * because moving it takes the focus from the field being typed in (Chromium fires blur and change on removal).
    */
   var narrowQuery = root.matchMedia ? root.matchMedia('(max-width: 820px)') : null;
   function placeSettings() {
     var settings = $('settings'), work = $('work'), mat = $('mat');
     var narrow = !!(narrowQuery && narrowQuery.matches);
+    var withPages = D.pages.length > 0;
+    var inPlace = !narrow ? settings.parentNode === work.parentNode && !settings.nextElementSibling
+      : settings.parentNode === work && (withPages ? settings.nextElementSibling === mat : settings.previousElementSibling === mat);
+    if (inPlace) return;
     var parent = narrow ? work : work.parentNode;
-    var before = narrow ? (D.pages.length > 0 ? mat : mat.nextSibling) : null;
-    if (settings.parentNode === parent && (narrow ? settings.nextSibling === before : !settings.nextElementSibling)) return;
+    var before = narrow ? (withPages ? mat : mat.nextSibling) : null;
     var active = document.activeElement;
     var hadFocus = active && settings.contains(active);
     parent.insertBefore(settings, before);
