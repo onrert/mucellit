@@ -174,7 +174,7 @@
         </label>
 
         <details class="more advanced" id="advanced-settings">
-          <summary><span class="more-text"><span class="more-title" data-i18n="impose.advanced">Advanced settings</span><small data-i18n="impose.advanced_note">Creep, margins, scaling, marks, EPUB</small><small class="changed-note" id="advanced-changed" aria-live="polite"></small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
+          <summary><span class="more-text"><span class="more-title" data-i18n="impose.advanced">Advanced settings</span><small data-i18n="impose.advanced_note">Creep, margins, scaling, marks, EPUB</small><small class="changed-note" id="advanced-changed"></small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
           <div id="signature-advanced" data-sewn-only>
             <label class="choice"><input type="checkbox" id="last-signature-shrink"> <span data-i18n="impose.shrink_last_signature">Shrink the last signature (fewer blank pages)</span></label>
             <label class="choice"><input type="checkbox" id="creep"> <span data-i18n="impose.creep">Creep compensation</span></label>
@@ -198,6 +198,8 @@
           <label class="choice"><input type="checkbox" id="spine-mark" checked> <span data-i18n="impose.spine_marks">Collation marks on the spine (stepped squares)</span></label>
           <div id="plugin-settings"></div>
         </details>
+        <!-- the changed-settings note for screen readers: a live region may not sit inside <summary> (impose.js refreshAdvancedNote) -->
+        <p class="sr-only" id="advanced-changed-live" aria-live="polite"></p>
 
         <details class="more advanced" id="project-settings">
           <summary><span class="more-text"><span class="more-title" data-i18n="impose.save_to_project">Save to a book</span><small data-i18n="impose.save_to_project_note">Keep these settings with a book in My books</small></span><span class="icon icon-chevron" aria-hidden="true"></span></summary>
@@ -332,7 +334,7 @@
       <div class="ruler" aria-hidden="true"></div>
       <h2 class="mat-title" id="calc-result-title" data-i18n="calculator.result_title">Cutting sizes</h2>
       <div id="h-error"></div>
-      <table class="result" id="h-result"></table>
+      <table class="result" id="h-result" role="table"></table>
       <div id="h-warnings"></div>
       <p class="small" data-i18n="calculator.description">Spine thickness S = number of leaves (blank pages included) × paper thickness (+ endpaper thickness allowance). To get the real paper thickness, measure 10 sheets with calipers and divide by 10. W, H: text block width and height; t: board thickness; k: square (board overhang); f: joint gap; e: turn-in. The same cover formulas apply to perfect binding (flat spine).</p>
       <p class="small" id="h-source" data-i18n="calculator.source">Values follow typical workshop practice; measure and adjust on your first book.</p>

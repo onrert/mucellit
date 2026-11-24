@@ -72,9 +72,13 @@
       [t('calculator.result.headbands'), mm(r.headbands.length), 'headbands', t('calculator.formula.headbands')],
       [t('calculator.result.print_sheets'), String(r.printSheets), 'printSheets', '']
     ];
+    // the pieces to cut are on yellow tape (style.css tr.cut). The roles are explicit: on a phone the table is laid out
+    // as blocks and grids (style.css), which drops the implicit table semantics in WebKit.
+    var cut = ['board', 'spineStrip', 'covering', 'endpapers', 'mull', 'headbands'];
     rows.forEach(function (s) {
-      table.appendChild(el('tr', {}, [el('th', { text: s[0] }), el('td', { class: 'value', 'data-result': s[2], text: s[1] }),
-        el('td', { class: 'small formula', text: s[3] })]));
+      table.appendChild(el('tr', { role: 'row', class: cut.indexOf(s[2]) >= 0 ? 'cut' : undefined }, [el('th', { role: 'rowheader', scope: 'row', text: s[0] }),
+        el('td', { role: 'cell', class: 'value', 'data-result': s[2], text: s[1] }),
+        el('td', { role: 'cell', class: 'small formula', text: s[3] })]));
     });
     if (r.jointGapUnsourced) warning.appendChild(el('div', { class: 'warning', 'data-warning': 'jointGap', text: t('calculator.warning.joint_gap') }));
     if (r.curveLengthWarning) warning.appendChild(el('div', { class: 'warning', 'data-warning': 'curve', text: t('calculator.warning.curve') }));

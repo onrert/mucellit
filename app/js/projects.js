@@ -41,11 +41,35 @@
       .catch(function (err) { O.notify(t('projects.operation_failed', { error: err && err.message ? err.message : err }), 'error'); });
   }
 
-  function select(id) {
+  /**
+   * Selects a book and redraws the shelf and the open book. chosen: the user picked it (shelf, new-book form).
+   * The redraw replaces the focused shelf button (and WebKit does not focus a clicked button at all), so the focus is
+   * placed: on a narrow screen (one column, style.css ≤ 820 px) the open book is below the shelf and the form, so a
+   * chosen book is brought into view and its title gets the focus; on a wide screen the page does not move and the focus
+   * goes to the book on the shelf. A redraw that took the focus away (e.g. Delete book) does the same.
+   */
+  var narrowQuery = root.matchMedia ? root.matchMedia('(max-width: 820px)') : null;
+  function select(id, chosen) {
+    var active = document.activeElement;
+    var hadFocus = !!active && active !== document.body && $('tab-projects').contains(active);
     selectedId = id;
     O.writeLocal(SELECTED_KEY, id || '');
     drawList();
     drawDetail();
+    var lost = hadFocus && (!document.activeElement || document.activeElement === document.body);
+    if (!chosen && !lost) return;
+    var heading = $('book-detail').querySelector('h2');
+    if (heading && narrowQuery && narrowQuery.matches) {
+      heading.setAttribute('tabindex', '-1');
+      heading.scrollIntoView({ block: 'start' }); // scroll-margin-top (style.css) keeps it below the sticky header
+      heading.focus({ preventScroll: true });
+    } else {
+      var target = $('shelf-title');
+      var items = $('book-list').querySelectorAll('button[data-book]');
+      for (var i = 0; i < items.length; i++) if (items[i].getAttribute('data-book') === selectedId) target = items[i];
+      if (target === $('shelf-title')) target.setAttribute('tabindex', '-1');
+      target.focus({ preventScroll: true });
+    }
   }
 
   function drawList() {
@@ -55,7 +79,7 @@
     data.projects.forEach(function (k) {
       var il = M.progress(k);
       ul.appendChild(el('li', {}, [
-        el('button', { type: 'button', 'data-book': k.id, 'aria-current': k.id === selectedId ? 'true' : 'false', onclick: function () { select(k.id); } }, [
+        el('button', { type: 'button', 'data-book': k.id, 'aria-current': k.id === selectedId ? 'true' : 'false', onclick: function () { select(k.id, true); } }, [
           el('strong', { text: k.name }),
           el('span', { class: 'small', text: t('projects.list_summary', { kind: M.kindName(k.bindingType), done: il.done, n: il.total }) }),
           el('span', { class: 'progress' }, [el('i', { style: 'width:' + Math.round(il.ratio * 100) + '%' })])
@@ -173,7 +197,7 @@
         data.projects.push(k);
         save();
         $('yk-name').value = '';
-        select(k.id);
+        select(k.id, true);
         O.notify(t('projects.created', { name: k.name }));
       } catch (err) { O.notify(err.message, 'error'); }
     });

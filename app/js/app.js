@@ -88,6 +88,14 @@
       select.value = D.readChoice() || 'system'; // the change shows once changeLanguage has been confirmed
       changeLanguage(requested);
     });
+    // On a phone the picker is a transparent select on a box (style.css) and the box shows the focus ring, for the
+    // keyboard only. A select matches :focus-visible after a tap or a click too, so a pointer press is noted on the box
+    // (.by-pointer) until the focus leaves the select.
+    var box = select.parentNode;
+    if (box && box.classList) {
+      select.addEventListener('pointerdown', function () { box.classList.add('by-pointer'); });
+      select.addEventListener('blur', function () { box.classList.remove('by-pointer'); });
+    }
   }
 
   /**
