@@ -54,6 +54,11 @@
  *   kept on a language change; the licence panel.
  * The "learn layout" run (desktop 1280×800 and phone 375×812, product DOM): the figure is not squeezed and the
  *   figure-area controls do not overlap (regression of the "stage" class clash, fixed in be2d993).
+ * M10 layout: in the Imposition tab the rarely needed controls are in closed <details class="advanced"> groups and the
+ *   page grid is in the "Pages" view. Flows that use those controls call the one helper revealAdvanced (reveal-advanced.mjs)
+ *   right after opening the page. The "m10 layout" run (desktop 1440×900, phone 375×812, 1000×700; no helper) tests the
+ *   defaults: groups closed and opening, sheet preview first, the download button in the first screen, the bottom tab
+ *   bar on the phone, the EPUB warning opening its groups, Move earlier / later.
  * Flags / environment:
  *   --engine=chromium|webkit  (default chromium; webkit = the Playwright engine closest to WKWebView)
  *   MC_PLAYWRIGHT             Playwright module folder (e.g. /path/playwright/node_modules/playwright)
@@ -69,6 +74,7 @@ import { dirname, join, extname, resolve, sep } from 'node:path';
 import { execSync } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
 import { createRequire } from 'node:module';
+import { revealAdvanced } from './reveal-advanced.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -182,6 +188,7 @@ function leftRight(m) {
 async function pdfFlow(page, address, label, criterion, screenImage) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+  await revealAdvanced(page); // M10: size fields + page grid
   await page.click('#tab-button-impose');
   const pdf = await makeTestPdf(page);
   await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
@@ -455,6 +462,7 @@ async function ayBlankToStart(page, address, label) {
   const A = 'AD6';
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+  await revealAdvanced(page); // M10: size fields + "More…" page tools
   await page.click('#tab-button-impose');
   await setupHelpers(page);
   const pdf = Buffer.from(await page.evaluate(async () => Array.from(await window.__t.numberedPdf(7))));
@@ -482,6 +490,7 @@ async function encryptedFlow(page, address, trace, label) {
   for (const name of states) {
     await page.goto(address);
     await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+    await revealAdvanced(page); // M10: size fields (#book-width)
     await page.click('#tab-button-impose');
     trace.prompts.length = 0;
     await page.setInputFiles('#pdf-file', { name: name, mimeType: 'application/pdf', buffer: await readFile(join(FIXTURE, name)) });
@@ -533,6 +542,7 @@ async function encryptedFlow(page, address, trace, label) {
   {
     await page.goto(address);
     await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+    await revealAdvanced(page); // M10: "Save to project" group + size fields
     const result = await page.evaluate(() => {
       const MC = window.Mucellit;
       const live = MC.projects.data();
@@ -568,6 +578,7 @@ async function encryptedFlow(page, address, trace, label) {
 async function uiChecks(page, address, label) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+  await revealAdvanced(page); // M10: size fields + advanced settings (margins)
   await page.click('#tab-button-impose');
   await setupHelpers(page);
   const pdf = Buffer.from(await page.evaluate(async () => Array.from(await window.__t.numberedPdf(8))));
@@ -677,6 +688,7 @@ const E_MESSAGE = {
 async function freshPage(page, address) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+  await revealAdvanced(page); // M10: size fields + advanced settings (margins, scaling)
   await page.click('#tab-button-impose');
   await page.evaluate(() => {
     const E = (window.__e = {});
@@ -1074,6 +1086,7 @@ async function releaseFlow(page, address, label) {
   const O = 'G8';
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+  await revealAdvanced(page); // M10: the page grid is in the Pages view
   await page.click('#tab-button-projects');
   const pdf = await makeTestPdf(page);
   const result = await page.evaluate((array) => {
@@ -1544,7 +1557,7 @@ async function m6TrCheck(page, address, label) {
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
   const d = await page.evaluate(() => ({ lang: document.documentElement.lang, tab: Array.from(document.querySelectorAll('nav [role="tab"]')).map((b) => b.textContent),
     button: document.getElementById('export-transfer').textContent, code: window.Mucellit.i18n.code(), choice: document.getElementById('i18n-select').value }));
-  check('i18n', d.lang === 'tr' && d.code === 'tr' && JSON.stringify(d.tab) === '["Düzenle","Süreç","Hesapla","Öğren"]' && /Dizilmiş PDF'i (indir|kaydet…)/.test(d.button) && d.choice === 'system',  // turkish-ok: expected Turkish UI text
+  check('i18n', d.lang === 'tr' && d.code === 'tr' && JSON.stringify(d.tab) === '["Düzenle","Kitaplarım","Hesapla","Öğren"]' && /Dizilmiş PDF'i (indir|kaydet…)/.test(d.button) && d.choice === 'system',  // turkish-ok: expected Turkish UI text
     `${label}: in a tr-TR browser the system language is Turkish; tabs and button with today's text`, JSON.stringify(d));
   const storage = await page.textContent('#storage-hint');
   check('i18n', storage === 'Veri bu tarayıcıda saklanır. Tarayıcı verisi silinirse kaybolur; ara ara JSON yedeği alın.',  // turkish-ok: expected Turkish UI text
@@ -1559,10 +1572,11 @@ async function m6TrCheck(page, address, label) {
 async function m6EnglishFlow(page, address, trace, label, full) {
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+  await revealAdvanced(page); // M10: "Backs in reverse order" is in Advanced settings
   const head = await page.evaluate(() => ({ lang: document.documentElement.lang, title: document.title, tab: Array.from(document.querySelectorAll('nav [role="tab"]')).map((b) => b.textContent),
     button: document.getElementById('export-transfer').textContent, source: document.getElementById('source-info').textContent, choice: document.getElementById('i18n-select').value,
     options: Array.from(document.getElementById('i18n-select').options).map((o) => o.value + '=' + o.textContent) }));
-  check('i18n', head.lang === 'en' && head.title === 'Mücellit' && JSON.stringify(head.tab) === '["Imposition","Projects","Calculator","Learn"]' && head.button === 'Download imposed PDF' &&
+  check('i18n', head.lang === 'en' && head.title === 'Mücellit' && JSON.stringify(head.tab) === '["Imposition","My books","Calculator","Learn"]' && head.button === 'Download imposed PDF' &&
     head.source === 'No PDF loaded yet.' && head.choice === 'system' && JSON.stringify(head.options) === '["system=System language (English)","en=English","tr=Türkçe"]',  // turkish-ok: expected Turkish UI text
     `${label}: in an en-US browser the interface is in English (tabs, button, language picker)`, JSON.stringify(head));
   // the changed English texts in the interface
@@ -1694,7 +1708,7 @@ async function m6TauriI18n(page, address, label) {
   await page.waitForSelector('html[data-ready="yes"]');
   const b = await page.evaluate(() => ({ lang: document.documentElement.lang, button: document.getElementById('export-transfer').textContent, ls: localStorage.getItem('mucellit.language'), settings: window.__fake.i18nSettings,
     tab: document.getElementById('tab-button-projects').textContent }));
-  check('i18n', b.lang === 'en' && b.button === 'Save imposed PDF…' && b.ls === 'en' && b.tab === 'Projects' && JSON.stringify(b.settings.slice(-1)) === '[["en","en"]]',
+  check('i18n', b.lang === 'en' && b.button === 'Save imposed PDF…' && b.ls === 'en' && b.tab === 'My books' && JSON.stringify(b.settings.slice(-1)) === '[["en","en"]]',
     `${label}: menu language:en → set_language {en, en}, reloaded, the interface and the Save button in English`, JSON.stringify(b));
   // the WebKit data was removed (localStorage empty) but Rust has a backup → the choice comes back
   await page.evaluate(() => localStorage.clear());
@@ -1734,6 +1748,7 @@ async function m3Printing(page, address, label) {
   page.on('download', () => { download += 1; });
   await page.goto(address);
   await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+  await revealAdvanced(page); // M10: crop marks are in Advanced settings
   await page.click('#tab-button-impose');
   const clearNotice = () => page.evaluate(() => { const b = document.getElementById('notice'); b.textContent = ''; b.className = ''; window.__fake.call.length = 0; window.__fake.questions = []; });
   const state = () => page.evaluate(() => ({ notice: document.getElementById('notice').textContent, error: document.getElementById('notice').classList.contains('error'),
@@ -2303,6 +2318,108 @@ async function learnLayoutFlow(browser, address, label, local) {
 }
 
 /**
+ * M10 layout ("cutting mat" redesign): the product defaults of the Imposition tab, WITHOUT the revealAdvanced helper.
+ * Desktop 1440×900 and phone 375×812 (the acceptance widths) and 1000×700 (the narrowest Mac window, tauri.conf.json):
+ *   - the advanced groups are closed at start (no field of them visible, no page tools, no result) and open on a click;
+ *   - after loading a PDF the sheet preview is the default view; the page grid opens in the Pages view;
+ *   - the download button is in the first screen (inside the viewport, enabled, not covered, no scrolling);
+ *   - the section tabs: in the header on a wide screen; on the phone the bottom tab bar (4 tabs ≥ 44 × 44 px at the
+ *     bottom edge) and a header ≤ 64 px;
+ *   - an EPUB warning opens the closed groups around it by itself (O4 without the helper; desktop and phone);
+ *   - desktop: a click on a card selects it; Move earlier / Move later move the selection (they replace the per-card ◀ ▶);
+ *   - no console error (the server sends the Tauri CSP header).
+ */
+const M10_VIEWS = [
+  { name: 'desktop', width: 1440, height: 900 },
+  { name: 'phone', width: 375, height: 812, mobile: true },
+  { name: 'mac-min', width: 1000, height: 700 },
+];
+async function m10LayoutFlow(browser, address, label, local) {
+  const U = require('./epub-build.cjs');
+  for (const v of M10_VIEWS) {
+    const tag = `${label} ${v.name} ${v.width}×${v.height}`;
+    const ctx = await browser.newContext({ locale: local, viewport: { width: v.width, height: v.height }, hasTouch: !!v.mobile, isMobile: !!v.mobile, acceptDownloads: true });
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(30000);
+    const trace = watch(page, tag);
+    const firstScreen = (id) => page.evaluate(([id, w, h]) => {
+      const e = document.getElementById(id); if (!e) return { found: false };
+      const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const top = x >= 0 && y >= 0 && x <= w && y <= h ? document.elementFromPoint(x, y) : null;
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), inside: r.top >= 0 && r.left >= 0 && r.bottom <= h && r.right <= w && r.width > 0,
+        covered: !(top && (top === e || e.contains(top))), disabled: e.disabled, scroll: window.scrollY };
+    }, [id, v.width, v.height]);
+    try {
+      await page.goto(address);
+      await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+      // ---- defaults without a document; the advanced group opens on a click
+      const groups = await page.$$eval('#tab-impose details.advanced', (l) => l.map((d) => d.id + ':' + d.open));
+      const before = { margin: await page.isVisible('#outer-margin'), paper: await page.isVisible('#paper-width'), tools: await page.isVisible('#page-tools'),
+        result: await page.isVisible('#result'), choose: await page.isVisible('#pdf-select') };
+      if (await page.isVisible('#settings-toggle')) await page.click('#settings-toggle');
+      await page.click('#advanced-settings > summary');
+      const after = { open: await page.$eval('#advanced-settings', (d) => d.open), margin: await page.isVisible('#outer-margin') };
+      check('M10', groups.length >= 4 && groups.every((g) => g.endsWith(':false')) && !before.margin && !before.paper && !before.tools && !before.result && before.choose && after.open && after.margin,
+        `${tag}: the advanced groups are closed at start (no page tools, no result, the choose button visible) and "Advanced settings" opens on a click`, JSON.stringify({ groups, before, after }));
+      await page.click('#advanced-settings > summary'); // closed again
+      if (await page.isVisible('#settings-toggle')) await page.click('#settings-toggle');
+      // ---- a PDF: the sheet preview is the default view, the Pages view on a click
+      const pdf = await makeTestPdf(page);
+      await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
+      await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 37 && !document.getElementById('export-transfer').disabled);
+      await page.evaluate(() => { window.scrollTo(0, 0); const b = document.getElementById('notice'); b.className = ''; });
+      const view0 = { sheets: await page.isVisible('#sheet-preview'), grid: await page.isVisible('#small-thumbs'), selected: await page.getAttribute('#view-sheets', 'aria-selected'),
+        count: await page.textContent('#page-count'), cards: await page.locator('#sheet-preview .sheet-card').count() };
+      await page.click('#view-pages');
+      const view1 = { sheets: await page.isVisible('#sheet-preview'), grid: await page.isVisible('#small-thumbs'), tools: await page.isVisible('#page-tools'), selected: await page.getAttribute('#view-pages', 'aria-selected') };
+      check('M10', view0.sheets && !view0.grid && view0.selected === 'true' && view0.count === '(37)' && view0.cards === 12 && !view1.sheets && view1.grid && view1.tools && view1.selected === 'true',
+        `${tag}: after loading a PDF the sheet preview is the default view (12 sheets); "Pages (37)" shows the page grid and its tools`, JSON.stringify({ view0, view1 }));
+      // ---- desktop: a click on a card selects it; Move earlier / later
+      if (v.name === 'desktop') {
+        const sources = () => page.$$eval('#small-thumbs .card', (l) => l.slice(0, 5).map((k) => k.getAttribute('data-source')));
+        await page.locator('#small-thumbs .card').nth(2).click();
+        const picked = { selected: await page.locator('#small-thumbs .card.selected').count(), text: await page.textContent('#selection-count') };
+        await page.click('#selected-earlier');
+        const earlier = await sources();
+        await page.click('#selected-later'); await page.click('#selected-later');
+        const later = await sources();
+        check('M10', picked.selected === 1 && /1 sayfa seçili/.test(picked.text) && JSON.stringify(earlier.slice(0, 3)) === '["1","3","2"]' && JSON.stringify(later.slice(0, 4)) === '["1","2","4","3"]',  // turkish-ok: expected Turkish UI text
+          `${tag}: a click on a card selects it; Move earlier / Move later move the selected page one place`, JSON.stringify({ picked, earlier, later }));
+      }
+      await page.click('#view-sheets');
+      await page.evaluate(() => window.scrollTo(0, 0));
+      // ---- the download button in the first screen; nav place
+      const dl = await firstScreen('export-transfer');
+      check('M10', dl.found !== false && dl.inside && !dl.covered && !dl.disabled && dl.scroll === 0, `${tag}: with a PDF the download button is in the first screen (enabled, not covered, no scrolling)`, JSON.stringify(dl));
+      const nav = await page.evaluate(() => {
+        const r = (e) => e.getBoundingClientRect();
+        const tabs = Array.from(document.querySelectorAll('nav [role="tab"]')).map((b) => ({ w: Math.round(r(b).width), h: Math.round(r(b).height), top: Math.round(r(b).top), bottom: Math.round(r(b).bottom) }));
+        return { tabs, header: Math.round(r(document.querySelector('header')).height), position: getComputedStyle(document.querySelector('nav[role="tablist"]')).position, vh: window.innerHeight };
+      });
+      const navOk = v.mobile
+        ? nav.tabs.length === 4 && nav.position === 'fixed' && nav.tabs.every((b) => b.w >= 44 && b.h >= 44 && b.bottom >= nav.vh - 1 && b.top >= nav.vh - 120) && nav.header <= 64
+        : nav.tabs.length === 4 && nav.position !== 'fixed' && nav.tabs.every((b) => b.bottom <= nav.header + 1);
+      check('M10', navOk, `${tag}: ${v.mobile ? 'the tabs are the bottom tab bar (4 × ≥ 44×44 px at the bottom), header ≤ 64 px' : 'the tabs are in the header'}`, JSON.stringify(nav));
+      // ---- an EPUB warning opens the groups around it (no helper)
+      if (v.name !== 'mac-min') {
+        await page.goto(address);
+        await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
+        const closed = await page.$eval('#advanced-settings', (d) => d.open);
+        await page.evaluate(() => { const b = document.getElementById('notice'); b.textContent = ''; b.className = ''; });
+        await page.setInputFiles('#pdf-file', { name: 'tr-mini.epub', mimeType: EPUB_MIME, buffer: U.ready.trMini() });
+        await page.waitForFunction(() => { const b = document.getElementById('notice'); return b.classList.contains('error') || / yüklendi /.test(b.textContent); }, null, { timeout: 90000 });  // turkish-ok: expected Turkish UI text
+        const w = { closedBefore: !closed, visible: await page.isVisible('#epub-warning .warning'), advanced: await page.$eval('#advanced-settings', (d) => d.open), epub: await page.$eval('#epub-settings', (d) => d.open) };
+        check('M10', w.closedBefore && w.visible && w.advanced && w.epub, `${tag}: an EPUB warning opens "Advanced settings" and the EPUB settings by itself (visible without the test helper)`, JSON.stringify(w));
+      }
+    } catch (e) {
+      check('M10', false, `${tag}: the M10 layout run stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
+    }
+    check('M10', trace.errors.length === 0, `${tag}: no console error in the M10 layout run`, trace.errors.slice(0, 3).join(' | ') || '0 errors');
+    await ctx.close();
+  }
+}
+
+/**
  * A short Learn check for file:// and the Tauri simulation, with the DOM only (the product code as it is; no test
  * injection): the tab (or the menu event) opens the guide, a step plays; no probe interface in the product code; not
  * set up again when pressed again.
@@ -2405,6 +2522,7 @@ async function main() {
     await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced', 'tr-TR');
     await m7ReduceLearn(browser, localRoot + 'index.html', 'learn reduced en', 'en-US');
     await learnLayoutFlow(browser, localRoot + 'index.html', 'learn layout', 'tr-TR');
+    await m10LayoutFlow(browser, localRoot + 'index.html', 'm10 layout', 'tr-TR');
     // ---- Run 1c: English interface, en-US browser ----
     await run('en', 'i18n', localRoot + 'index.html', localRoot, async (p, address, trace) => {
       await m6EnglishFlow(p, address, trace, 'en', true);

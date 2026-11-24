@@ -28,6 +28,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, extname, resolve, sep } from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { revealAdvanced } from './reveal-advanced.mjs';
 
 if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync('/opt/pw-browsers')) process.env.PLAYWRIGHT_BROWSERS_PATH = '/opt/pw-browsers';
 
@@ -41,7 +42,7 @@ const LICENSES = ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'vendor/SOURCES.md', 'ven
   'vendor/fontkit/LICENSE', 'vendor/literata/OFL.txt', 'js/learn/LICENSE'];
 /** Desktop (Mac/Tauri) traces that must not show in the browser version. */
 const DESKTOP = /\bMac\b|macOS|⌘|Tauri|Finder|\bDock\b|Önizleme'de|Open in Preview/;  // turkish-ok: expected Turkish UI text
-const EXPECTED = { tr: { tab: ['Düzenle', 'Süreç', 'Hesapla', 'Öğren'], suffix: '-dizilmis.pdf' }, en: { tab: ['Imposition', 'Projects', 'Calculator', 'Learn'], suffix: '-imposed.pdf' } };  // turkish-ok: expected Turkish UI text
+const EXPECTED = { tr: { tab: ['Düzenle', 'Kitaplarım', 'Hesapla', 'Öğren'], suffix: '-dizilmis.pdf' }, en: { tab: ['Imposition', 'My books', 'Calculator', 'Learn'], suffix: '-imposed.pdf' } };  // turkish-ok: expected Turkish UI text
 
 async function loadPlaywright() {
   if (process.env.MC_PLAYWRIGHT) return await import(pathToFileURL(join(resolve(process.env.MC_PLAYWRIGHT), 'index.mjs')).href);
@@ -168,6 +169,7 @@ async function verify(pw, distRoot, { quiet = false, time = 60000 } = {}) {
           `${et} language picker: ${other} → system (${i18n}); the page reloads on the sub path`, JSON.stringify({ g1, g2 }));
 
         // ---- PDF dizme
+        await revealAdvanced(page); // M10: size fields + page grid
         await page.click('#tab-button-impose');
         const pdf = await makeTestPdf(page);
         await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: pdf });
