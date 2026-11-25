@@ -36,6 +36,19 @@
     }
   }
 
+  /**
+   * On a narrow screen the Imposition download bar is fixed at the bottom; while it shows, its height is part of the
+   * bottom scroll-padding (style.css, --go-height), so a focused element stays above it. Measured, not assumed: the note
+   * can wrap and the Mac app adds the print buttons. A hidden bar (height 0) keeps the last height.
+   */
+  function trackDownloadBar() {
+    var bar = $('output-bar');
+    if (!bar || !root.ResizeObserver) return;
+    new root.ResizeObserver(function () {
+      if (bar.offsetHeight) document.documentElement.style.setProperty('--go-height', bar.offsetHeight + 'px');
+    }).observe(bar);
+  }
+
   function start() {
     var missing = [];
     if (!root.PDFLib) missing.push('pdf-lib');
@@ -53,6 +66,7 @@
     MC.projects.start();
     MC.impose.start();
     MC.calculator.start();
+    trackDownloadBar();
     openTab(O.readLocal(TAB_KEY) || 'impose');
     document.documentElement.setAttribute('data-ready', 'yes');
   }

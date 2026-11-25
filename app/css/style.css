@@ -35,6 +35,8 @@
   --control: 42px;
   --header: 60px;
   --tabbar: 64px;
+  --cover-bottom: 0px;  /* bars fixed at the bottom of the window (phone tab bar, Imposition download bar) */
+  --focus-gap: 20px;    /* room between a focused element and a bar (more than the padding under a text field's caret line, which is what the browser scrolls to) */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -54,6 +56,11 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* A focused element is never left under a bar that lies over the page: the sticky header (the bar + its 10 px ruler), on
+   a phone the bottom tab bar, ≤ 820 px the Imposition download bar (--cover-bottom, set in the media blocks below). The
+   browser keeps this padding free when it scrolls to an element itself (Tab, scrollIntoView); common.focusInView reads
+   the same values for the focus that the app moves. */
+html { scroll-padding: calc(var(--header) + 10px + var(--focus-gap)) 0 calc(var(--cover-bottom) + var(--focus-gap)); }
 body {
   background: var(--bench);
   color: var(--ink);
@@ -383,8 +390,8 @@ button.danger:hover { background: var(--error-bg); border-color: var(--error-tex
 .backup-buttons .file-select { display: inline-flex; }
 #storage-hint { margin: 8px 0 0; line-height: 1.45; }
 /* the open book */
-/* scroll-margin: a book chosen on a narrow screen is scrolled to its title (projects.js), below the sticky header */
-#book-detail h2 { font-size: 24px; font-weight: 800; margin: 2px 0 2px; overflow-wrap: anywhere; scroll-margin-top: calc(var(--header) + 24px); }
+/* a book chosen on a narrow screen is scrolled to its title (projects.js); the scroll-padding of html keeps it below the header */
+#book-detail h2 { font-size: 24px; font-weight: 800; margin: 2px 0 2px; overflow-wrap: anywhere; }
 #book-detail #book-progress { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
 #book-detail .book-tape { height: 12px; max-width: 520px; margin: 0 0 18px; }
 #book-detail .fields-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0 14px; }
@@ -461,6 +468,8 @@ table.result td.value { font-variant-numeric: tabular-nums; font-weight: 600; wh
   #tab-impose { padding-bottom: 96px; }
   .go { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; border-radius: 0; padding: 10px 14px 8px; border-top: 1px solid var(--line-strong);
     padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  /* while the download bar shows, focus stays above it (--go-height: its measured height, app.js) */
+  html:has(#tab-impose:not([hidden]):not([data-stage="load"])) { --cover-bottom: var(--go-height, 96px); }
   #tab-impose[data-stage="load"] .go { display: none; }
   #tab-impose[data-stage="load"] { padding-bottom: 0; }
   .go .note { margin-top: 4px; }
@@ -470,7 +479,8 @@ table.result td.value { font-variant-numeric: tabular-nums; font-weight: 600; wh
 }
 @media (max-width: 640px) {
   .bar { height: 52px; padding: 0 16px; gap: 12px; }
-  .app-header { --header: 52px; }
+  :root { --header: 52px; --cover-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom)); }
+  html:has(#tab-impose:not([hidden]):not([data-stage="load"])) { --cover-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + var(--go-height, 96px)); }
   .brand { font-size: 20px; } .brand-mark { width: 24px; height: 24px; }
   /* the same nav becomes the bottom tab bar */
   nav[role="tablist"] { position: fixed; left: 0; right: 0; bottom: 0; z-index: 16; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;

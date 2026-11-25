@@ -25,6 +25,26 @@
     return e;
   }
 
+  /**
+   * Focuses an element that the app chose (not the browser's own Tab) and keeps it in view, clear of the bars over the
+   * page. The clear area is the scroll-padding of <html> (style.css), the same one the browser keeps when it scrolls to a
+   * focused element itself. --focus-gap of it is only room: an element already clear of the bars does not move the page;
+   * one under a bar or out of the window is scrolled the least amount that brings it inside the padding. A plain focus()
+   * is not enough: it leaves an element under a sticky bar where it is, and WebKit scrolls a text field by its caret,
+   * which leaves the top of the field under the header.
+   */
+  function focusInView(e) {
+    if (!e) return;
+    e.focus({ preventScroll: true });
+    var style = root.getComputedStyle(document.documentElement);
+    var gap = parseFloat(style.getPropertyValue('--focus-gap')) || 0;
+    var top = parseFloat(style.scrollPaddingTop) || 0;
+    var bottom = root.innerHeight - (parseFloat(style.scrollPaddingBottom) || 0);
+    var r = e.getBoundingClientRect();
+    if (r.top < top - gap) root.scrollBy(0, r.top - top);
+    else if (r.bottom > bottom + gap) root.scrollBy(0, Math.min(r.bottom - bottom, r.top - top));
+  }
+
   var noticeTimer = null;
   function notify(message, kind) {
     var b = $('notice');
@@ -170,5 +190,5 @@
     { name: 'Letter', width: 215.9, height: 279.4 }
   ];
 
-  MC.common = { $: $, el: el, notify: notify, download: download, number: number, requiredNumber: requiredNumber, parseNumber: parseNumber, numberError: numberError, writeNumber: writeNumber, setupNumberFields: setupNumberFields, today: today, readLocal: readLocal, writeLocal: writeLocal, PRESET_SIZES: PRESET_SIZES };
+  MC.common = { $: $, el: el, focusInView: focusInView, notify: notify, download: download, number: number, requiredNumber: requiredNumber, parseNumber: parseNumber, numberError: numberError, writeNumber: writeNumber, setupNumberFields: setupNumberFields, today: today, readLocal: readLocal, writeLocal: writeLocal, PRESET_SIZES: PRESET_SIZES };
 })(typeof self !== 'undefined' ? self : this);
