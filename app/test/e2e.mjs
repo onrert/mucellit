@@ -2746,7 +2746,12 @@ async function m10FixesFlow(browser, address, label, local) {
  *     and its yellow tape follows the pieces to cut, not the row numbers;
  *   - (review round 2) the focus after a desktop book choice is on the chosen book; after "Delete book" (mouse, tap,
  *     keyboard) on the book left or the new-book form; a step's checkbox, arrows, ✕, date and note used with the
- *     keyboard keep the focus in the step (desktop and phone), never on <body>.
+ *     keyboard keep the focus in the step (desktop and phone), never on <body>;
+ *   - (review round 3) the focused element is wholly clear of the bars over the page (sticky header; on a phone the tab
+ *     bar and the Imposition download bar): after step controls (▲ to the top, ▼ to the end, checkbox, ✕, "Add step";
+ *     keyboard, mouse, tap), after "Delete book", and while Tab / Shift+Tab walk My books, the Imposition settings and
+ *     Learn; "Delete book" focuses its target directly (desktop: the page stays); a cancelled confirmation changes
+ *     nothing; a book with one or two steps (arrows off / swapping).
  */
 async function m10TabsFlow(browser, address, label, local) {
   async function isolated(name, view, body) {
@@ -2757,7 +2762,7 @@ async function m10TabsFlow(browser, address, label, local) {
     try {
       await page.goto(address);
       await page.waitForSelector('html[data-ready="yes"]', { timeout: 20000 });
-      await body(page);
+      await body(page, trace);
     } catch (e) {
       check('M10', false, `${label} ${name}: the check stopped halfway: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
     }
@@ -2879,30 +2884,83 @@ async function m10TabsFlow(browser, address, label, local) {
       `${label}: desktop: choosing a book does not move the page and the focus stays on the shelf, on the chosen book's button`, JSON.stringify({ ...r, chosen }));
   });
 
+  // (round 3) the html scroll-padding must not make a desktop book choice jump: a shelf button just below the header (clear
+  // of it, inside the padding's room) is chosen with a click at its place and with Enter (no driver scrolling)
+  await isolated('book chosen desktop edge', DESKTOP, async (page) => {
+    await twoBooks(page);
+    const sel = '#book-list li:first-child button', chosen = await bookId(page, 1), runs = [];
+    for (const how of ['mouse', 'keyboard']) {
+      await page.evaluate((sel) => { const h = document.querySelector('.app-header').getBoundingClientRect().bottom; window.scrollBy(0, document.querySelector(sel).getBoundingClientRect().top - (h + 6)); }, sel);
+      const y0 = await page.evaluate(() => Math.round(window.scrollY));
+      if (how === 'mouse') { const p = await page.$eval(sel, (b) => { const r = b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }); await page.mouse.click(p[0], p[1]); }
+      else { await page.$eval(sel, (b) => b.focus({ preventScroll: true })); await page.keyboard.press('Enter'); }
+      await page.waitForTimeout(200);
+      const r = await where(page);
+      runs.push({ how, y0, y1: r.scrollY, focusBook: r.focusBook, ok: y0 > 0 && r.scrollY === y0 && r.focusBook === chosen });
+    }
+    check('M10', runs.every((x) => x.ok),
+      `${label}: desktop: choosing a book whose shelf button is just below the sticky header (mouse, keyboard) does not move the page`, JSON.stringify(runs));
+  });
+
+  // (round 3) the focused element lies wholly between the bars over the page: below the sticky header, above the phone
+  // tab bar and the phone download bar of Imposition (both fixed); { clear } and the edges
+  const clearOf = (page) => page.evaluate(() => {
+    const a = document.activeElement; if (!a || a === document.body) return { clear: false, body: true };
+    const r = a.getBoundingClientRect(), header = document.querySelector('.app-header').getBoundingClientRect().bottom;
+    const fixed = (e) => !!e && getComputedStyle(e).position === 'fixed' && e.getBoundingClientRect().height > 0;
+    const nav = document.querySelector('nav[role="tablist"]'), go = document.getElementById('output-bar');
+    let floor = innerHeight;
+    if (fixed(nav)) floor = Math.min(floor, nav.getBoundingClientRect().top);
+    if (fixed(go)) floor = Math.min(floor, go.getBoundingClientRect().top);
+    return { clear: r.height > 0 && r.top >= header - 0.5 && r.bottom <= floor + 0.5, top: Math.round(r.top), bottom: Math.round(r.bottom), header: Math.round(header), floor: Math.round(floor) };
+  });
+  // (round 3) the focus moves of the next "Delete book": every focusin after the book list got shorter (a focusin of the
+  // old button when the confirmation closes is not one of them)
+  const recordFocus = (page) => page.evaluate(() => {
+    const n = document.querySelectorAll('#book-list li').length; window.__focusTrail = [];
+    if (!window.__focusTrailOn) { window.__focusTrailOn = true; document.addEventListener('focusin', (e) => { if (window.__focusTrail && document.querySelectorAll('#book-list li').length < window.__focusTrailN) window.__focusTrail.push(e.target.id || e.target.tagName.toLowerCase() + (e.target.getAttribute('data-book') ? '[data-book]' : '')); }, true); }
+    window.__focusTrailN = n;
+  });
+
   // (round 2) "Delete book" with the mouse, a tap and the keyboard: the focus goes to the book that is left (desktop: its
   // shelf button; phone: the title of its details, where the deleted one was), with no book left to the new-book form;
-  // never to <body> (WebKit does not focus a clicked or tapped button, so nothing may depend on that focus)
+  // never to <body> (WebKit does not focus a clicked or tapped button, so nothing may depend on that focus).
+  // (round 3) That element is wholly clear of the bars, the focus goes there directly (not first to the next book's
+  // "Delete book", which the redraw used to focus), and on a desktop, where the button of the book left is in sight,
+  // the page does not move.
   for (const [name, view] of [['delete book desktop', { ...DESKTOP, touch: true }], ['delete book phone', PHONE]]) {
     await isolated(name, view, async (page) => { // watch() accepts the confirmations
-      const narrow = view.width <= 820, trail = [];
+      const narrow = view.width <= 820, trail = [], seen = [];
       for (const how of ['mouse', 'tap', 'keyboard']) {
         await twoBooks(page);
         for (const left of [1, 0]) {
           const keep = left ? await bookId(page, 1) : null;
-          if (how === 'mouse') await page.click('#book-remove');
-          else if (how === 'tap') await page.tap('#book-remove');
-          else { await page.focus('#book-remove'); await page.keyboard.press('Enter'); }
+          // desktop: a little down the page, the shelf still in sight (the page must not move)
+          if (!narrow && left) await page.evaluate(() => window.scrollTo(0, 40));
+          const y0 = await page.evaluate(() => Math.round(window.scrollY));
+          if (how === 'keyboard') { await page.focus('#book-remove'); await recordFocus(page); await page.keyboard.press('Enter'); }
+          else { await recordFocus(page); if (how === 'mouse') await page.click('#book-remove'); else await page.tap('#book-remove'); }
           await page.waitForFunction((n) => document.querySelectorAll('#book-list li').length === n, left);
           await page.waitForTimeout(100);
-          const f = await page.evaluate(() => { const a = document.activeElement; return a === document.body ? { body: true } : { id: a.id, tag: a.tagName.toLowerCase(), book: a.getAttribute('data-book'), current: a.getAttribute('aria-current'), detail: document.getElementById('book-detail').contains(a), title: a.textContent }; });
+          const f = await page.evaluate(() => { const a = document.activeElement; return a === document.body ? { body: true } : { id: a.id, tag: a.tagName.toLowerCase(), book: a.getAttribute('data-book'), current: a.getAttribute('aria-current'), detail: document.getElementById('book-detail').contains(a) }; });
           const ok = !f.body && (!left ? f.id === 'yk-name'
             : narrow ? f.tag === 'h2' && f.detail && (await where(page)).inView && (await page.$eval('#book-list button[aria-current="true"]', (b) => b.getAttribute('data-book'))) === keep
             : f.book === keep && f.current === 'true');
-          trail.push({ how, left, ok, focus: f.body ? 'body' : f.id || f.tag + (f.book ? '[data-book]' : '') });
+          const focus = f.body ? 'body' : f.id || f.tag + (f.book ? '[data-book]' : '');
+          trail.push({ how, left, ok, focus });
+          const c = await clearOf(page), moves = await page.evaluate(() => window.__focusTrail), y1 = await page.evaluate(() => Math.round(window.scrollY));
+          seen.push({ how, left, focus, clear: c.clear, top: c.top, bottom: c.bottom, header: c.header, floor: c.floor, moves: moves.join('>'), direct: moves.length === 1 && moves[0] === focus,
+            still: narrow || !left || y1 === y0, scroll: y0 + '>' + y1 });
         }
       }
       check('M10', trail.length === 6 && trail.every((x) => x.ok),
         `${label}: ${narrow ? 'phone' : 'desktop'}: after "Delete book" (mouse, tap, keyboard) the focus goes to the book left (${narrow ? 'the title of its details' : 'its shelf button'}), with none left to the new-book form; never to <body>`, JSON.stringify(trail));
+      check('M10', seen.length === 6 && seen.every((x) => x.clear),
+        `${label}: ${narrow ? 'phone' : 'desktop'}: after "Delete book" (mouse, tap, keyboard; a book left and none left) the focused element is wholly clear of the sticky header${narrow ? ' and the bottom tab bar' : ''}`,
+        JSON.stringify(seen.map((x) => ({ how: x.how, left: x.left, focus: x.focus, clear: x.clear, top: x.top, bottom: x.bottom, header: x.header, floor: x.floor }))));
+      check('M10', seen.length === 6 && seen.every((x) => x.direct && x.still),
+        `${label}: ${narrow ? 'phone' : 'desktop'}: "Delete book" moves the focus once, straight to its place (not through the next book's "Delete book")${narrow ? '' : '; the page does not move when the book left is in sight'}`,
+        JSON.stringify(seen.map((x) => ({ how: x.how, left: x.left, moves: x.moves, scroll: x.scroll }))));
     });
   }
 
@@ -2969,6 +3027,171 @@ async function m10TabsFlow(browser, address, label, local) {
       check('M10', mid.control === 'remove' && mid.step === s6 && last.control === 'remove' && last.step === s12 && rest.length === 12 &&
         rest.slice(0, -1).every((x) => x === 'remove@1') && rest[11] === 'step-fresh-name',
         `${label}: ${where2}: ✕ with the keyboard hands the focus to the step that took its place (the one before for the last step), the last one to the "New step" field`, JSON.stringify({ mid, last, rest: rest.join(' ') }));
+    });
+  }
+
+  // (round 3) a cancelled confirmation changes nothing: "Delete book" and a step's ✕ with the keyboard keep the book, the
+  // step and the focus on the same button; with the mouse the book and the steps stay too
+  for (const [name, view] of [['delete cancelled desktop', DESKTOP], ['delete cancelled phone', PHONE]]) {
+    await isolated(name, view, async (page, trace) => {
+      await twoBooks(page);
+      const chosen = await page.$eval('#book-list button[aria-current="true"]', (b) => b.getAttribute('data-book'));
+      const first = await stepId(page, 1);
+      trace.confirmReject = true;
+      const state = () => page.evaluate(() => ({ books: document.querySelectorAll('#book-list li').length, chosen: (document.querySelector('#book-list button[aria-current="true"]') || { getAttribute: () => null }).getAttribute('data-book'), steps: document.querySelectorAll('#steps li').length,
+        focus: document.activeElement === document.body ? 'body' : document.activeElement.id || (document.activeElement.classList.contains('step-remove') ? 'remove@' + document.activeElement.closest('li').getAttribute('data-step') : document.activeElement.tagName.toLowerCase()) }));
+      await page.focus('#book-remove'); await page.keyboard.press('Enter'); await page.waitForTimeout(150);
+      const bookKey = await state();
+      await page.click('#book-remove'); await page.waitForTimeout(150);
+      const bookMouse = await state();
+      await page.focus(stepCtl(first, REMOVE)); await page.keyboard.press('Enter'); await page.waitForTimeout(150);
+      const stepKey = await state();
+      await page.click(stepCtl(first, REMOVE)); await page.waitForTimeout(150);
+      const stepMouse = await state();
+      trace.confirmReject = false;
+      const all = [bookKey, bookMouse, stepKey, stepMouse];
+      check('M10', trace.confirms.length === 4 && all.every((s) => s.books === 2 && s.chosen === chosen && s.steps === 14) && bookKey.focus === 'book-remove' && stepKey.focus === 'remove@' + first,
+        `${label}: ${view.width <= 820 ? 'phone' : 'desktop'}: a cancelled "Delete book" or step ✕ (keyboard and mouse) keeps the book, the steps and, with the keyboard, the focus on the same button`, JSON.stringify({ confirms: trace.confirms.length, bookKey, bookMouse, stepKey, stepMouse }));
+    });
+  }
+
+  // (round 3) the focus a step control leaves behind is wholly clear of the bars, also where the redraw moves it: ▲ again
+  // and again up to the first place (the step climbs under the sticky header), ▼ down to the last (on a phone under the
+  // bottom tab bar), the checkbox, ✕ in the middle and at the end, "Add step" (it moves a row down); with the keyboard
+  // (the next press goes to whatever has the focus), the mouse and a tap (both on the control itself, so in WebKit the
+  // clicked button never had the focus). Before the first press of a run the control is placed so that one row more puts
+  // it 40 px under the bar.
+  const placeNearBar = (page, sel, dir) => page.evaluate(([sel, dir]) => {
+    const e = document.querySelector(sel), rows = document.querySelectorAll('#steps li');
+    const pitch = rows.length > 1 ? rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top : 100;
+    const r = e.getBoundingClientRect(), header = document.querySelector('.app-header').getBoundingClientRect().bottom;
+    const nav = document.querySelector('nav[role="tablist"]'), floor = getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : innerHeight;
+    window.scrollBy(0, dir === 'up' ? r.top - (header - 40 + pitch) : r.bottom - (floor + 40 - pitch));
+  }, [sel, dir]);
+  const pressOn = async (page, how, sel, key) => {
+    let hit;
+    if (how === 'keyboard') { if (sel) await page.focus(sel); await page.keyboard.press(key); }
+    else {
+      const p = await page.$eval(sel, (e) => { const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, h = document.elementFromPoint(x, y);
+        return { x, y, hit: h === e || e.contains(h) ? 'self' : h ? h.id || h.className || h.tagName : 'none' }; });
+      if (how === 'mouse') await page.mouse.click(p.x, p.y); else await page.touchscreen.tap(p.x, p.y);
+      hit = p.hit;
+    }
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return { ...(await stepFocus(page)), ...(await clearOf(page)), hit };
+  };
+  for (const [where2, view] of [['desktop', { ...DESKTOP, touch: true }], ['phone', PHONE]]) {
+    for (const how of ['keyboard', 'mouse', 'tap']) {
+      await isolated(`step focus in view ${where2} ${how}`, view, async (page) => { // watch() accepts the ✕ confirmations
+        await oneBook(page);
+        // the "book created" notice lies over the lower controls for a few seconds and would take the clicks
+        await page.waitForFunction(() => !document.getElementById('notice').classList.contains('show'), null, { timeout: 15000 });
+        const trail = [], note = (act, f, ok) => trail.push({ act, ok: ok && f.clear, control: f.body ? 'body' : f.control, pos: f.pos, hit: f.hit, clear: f.clear, top: f.top, bottom: f.bottom, header: f.header, floor: f.floor });
+        // ▲ from the 8th place to the 1st: 7 presses; at the first place the focus is on the step's ▼
+        const climber = await stepId(page, 8);
+        await placeNearBar(page, stepCtl(climber, UP), 'up');
+        for (let pos = 7; pos >= 1; pos--) {
+          const f = await pressOn(page, how, how === 'keyboard' && pos < 7 ? null : stepCtl(climber, UP), 'Enter');
+          note('up→' + pos, f, f.step === climber && f.pos === pos && f.control === (pos > 1 ? 'up' : 'down'));
+        }
+        // ▼ from the 7th place to the 14th
+        const faller = await stepId(page, 7);
+        await placeNearBar(page, stepCtl(faller, DOWN), 'down');
+        for (let pos = 8; pos <= 14; pos++) {
+          const f = await pressOn(page, how, how === 'keyboard' && pos > 8 ? null : stepCtl(faller, DOWN), 'Enter');
+          note('down→' + pos, f, f.step === faller && f.pos === pos && f.control === (pos < 14 ? 'down' : 'up'));
+        }
+        // the checkbox near the bottom bar
+        const boxed = await stepId(page, 10);
+        await page.evaluate((sel) => { const e = document.querySelector(sel).closest('label'), nav = document.querySelector('nav[role="tablist"]');
+          const floor = getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : innerHeight; window.scrollBy(0, e.getBoundingClientRect().bottom - (floor - 4)); }, stepCtl(boxed, 'input.step-done'));
+        const box = await pressOn(page, how, how === 'mouse' || how === 'tap' ? stepCtl(boxed, '.step-check') : stepCtl(boxed, 'input.step-done'), 'Space');
+        note('box', box, box.step === boxed && box.control === 'done' && await page.$eval(stepCtl(boxed, 'input.step-done'), (b) => b.checked));
+        // ✕ in the middle (the next step takes the place) and of the last step (the one before it is a row higher)
+        const next = await stepId(page, 6);
+        await placeNearBar(page, stepCtl(await stepId(page, 5), REMOVE), 'up');
+        const mid = await pressOn(page, how, stepCtl(await stepId(page, 5), REMOVE), 'Enter');
+        note('remove mid', mid, mid.step === next && mid.control === 'remove');
+        const before = await stepId(page, 12);
+        await placeNearBar(page, stepCtl(await stepId(page, 13), REMOVE), 'up');
+        const last = await pressOn(page, how, stepCtl(await stepId(page, 13), REMOVE), 'Enter');
+        note('remove last', last, last.step === before && last.control === 'remove');
+        // "Add step": the row moves down by the new step
+        await page.fill('#step-fresh-name', 'Extra step');
+        await placeNearBar(page, '#step-add', 'down');
+        const add = await pressOn(page, how, '#step-add', 'Enter');
+        const added = await page.evaluate(() => ({ n: document.querySelectorAll('#steps li').length, name: document.querySelector('#steps li:last-child .step-name').textContent }));
+        note('add', add, add.control === 'step-add' && added.n === 13 && /Extra step$/.test(added.name));
+        check('M10', trail.length === 18 && trail.every((x) => x.ok),
+          `${label}: ${where2}, ${how}: after ▲ up to the top, ▼ down to the end, the checkbox, ✕ and "Add step" the focus is on the expected control and wholly clear of the sticky header${where2 === 'phone' ? ' and the bottom tab bar' : ''}`,
+          JSON.stringify(trail.filter((x) => !x.ok).concat(trail.length === 18 ? [] : [{ n: trail.length }])) + ' of ' + trail.length);
+      });
+    }
+  }
+
+  // (round 3) two steps: ▲ and ▼ swap them and the focus follows the step to its other arrow; one step: both arrows are off
+  // and out of the Tab order (box → date → ✕ → note), a click on them does nothing, the checkbox keeps the focus
+  for (const [where2, view] of [['desktop', DESKTOP], ['phone', PHONE]]) {
+    await isolated(`one and two steps ${where2}`, view, async (page) => { // watch() accepts the ✕ confirmations
+      await oneBook(page);
+      while ((await page.$$('#steps li')).length > 2) await keyOn(page, stepCtl(await stepId(page, 1), REMOVE), 'Enter');
+      const a = await stepId(page, 1), b = await stepId(page, 2);
+      const up = await keyOn(page, stepCtl(b, UP), 'Enter');
+      const down = await keyOn(page, stepCtl(b, DOWN), 'Enter');
+      const two = { up, down, upClear: (await clearOf(page)).clear };
+      await keyOn(page, stepCtl(a, REMOVE), 'Enter');
+      const arrows = await page.$$eval(`#steps li[data-step="${b}"] .step-buttons button`, (l) => l.slice(0, 2).map((x) => x.disabled));
+      await page.focus(stepCtl(b, 'input.step-done'));
+      const order = [];
+      for (let i = 0; i < 6 && order.length < 3; i++) { await page.keyboard.press('Tab'); const f = await stepFocus(page); if (!order.length || order[order.length - 1] !== f.control) order.push(f.control); }
+      await page.click(stepCtl(b, UP), { force: true });
+      const still = await page.$$eval('#steps li', (l) => l.map((x) => x.getAttribute('data-step')));
+      const box = await keyOn(page, stepCtl(b, 'input.step-done'), 'Space');
+      const one = { arrows, order: order.join(' '), still: still.join(','), box, boxClear: (await clearOf(page)).clear };
+      check('M10', up.step === b && up.pos === 1 && up.control === 'down' && down.step === b && down.pos === 2 && down.control === 'up' && two.upClear &&
+        arrows.join() === 'true,true' && one.order === 'date remove note' && one.still === b && box.step === b && box.control === 'done' && one.boxClear,
+        `${label}: ${where2}: with two steps ▲/▼ swap them and the focus follows to the other arrow; with one step both arrows are off, skipped by Tab and dead to a click; its checkbox keeps the focus`,
+        JSON.stringify({ two, one }));
+    });
+  }
+
+  // (round 3) the same rule for the whole page: Tab and Shift+Tab through My books, the Imposition settings (with a
+  // document: on a phone the download bar is fixed above the tab bar) and Learn leave no focused element under a bar
+  const walkClear = async (page, from, n) => {
+    const bad = []; let stops = 0;
+    await page.focus(from);
+    for (const key of ['Tab', 'Shift+Tab']) {
+      for (let i = 0; i < n; i++) {
+        await page.keyboard.press(key);
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 30)))));
+        const inBar = await page.evaluate(() => { const a = document.activeElement; const go = document.getElementById('output-bar');
+          return !a || a === document.body || !!a.closest('.app-header, nav[role="tablist"]') || (getComputedStyle(go).position === 'fixed' && go.contains(a)) || a.getBoundingClientRect().height < 2; });
+        if (inBar) continue;
+        stops++;
+        const c = await clearOf(page);
+        if (!c.clear) bad.push(await page.evaluate(() => document.activeElement.id || document.activeElement.className || document.activeElement.tagName) + ` ${key} ${c.top}-${c.bottom} (${c.header}/${c.floor})`);
+      }
+    }
+    return { stops, bad };
+  };
+  for (const [where2, view] of [['desktop', DESKTOP], ['phone', PHONE]]) {
+    await isolated(`focus in view by Tab ${where2}`, view, async (page) => {
+      await oneBook(page);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const books = await walkClear(page, '#yk-name', 70);
+      await page.click('#tab-button-impose');
+      await page.setInputFiles('#pdf-file', { name: 'test-37.pdf', mimeType: 'application/pdf', buffer: await makeTestPdf(page) });
+      await page.waitForFunction(() => document.querySelectorAll('#small-thumbs .card').length === 37);
+      if (await page.isVisible('#settings-toggle')) await page.click('#settings-toggle');
+      await page.evaluate(() => { document.querySelectorAll('#settings details').forEach((d) => { d.open = true; }); window.scrollTo(0, 0); });
+      const impose = await walkClear(page, '#pdf-select', 45);
+      await page.click('#tab-button-learn');
+      await page.waitForTimeout(300);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const learn = await walkClear(page, '#tab-button-learn', 40);
+      check('M10', books.stops >= 100 && impose.stops >= 60 && learn.stops >= 50 && !books.bad.length && !impose.bad.length && !learn.bad.length,
+        `${label}: ${where2}: Tab and Shift+Tab through My books, the Imposition settings (a document open) and Learn leave no focused element under the sticky header${where2 === 'phone' ? ', the tab bar or the download bar' : ''}`,
+        JSON.stringify({ books, impose, learn }));
     });
   }
 
