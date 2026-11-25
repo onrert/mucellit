@@ -45,10 +45,12 @@
    * Selects a book and redraws the shelf and the open book. chosen: the user picked it (shelf, new-book form).
    * The redraw replaces the focused shelf button (and WebKit does not focus a clicked button at all), so the focus is
    * placed: on a narrow screen (one column, style.css ≤ 820 px) the open book is below the shelf and the form, so a
-   * chosen book is brought into view and its title gets the focus; on a wide screen the page does not move and the focus
-   * goes to the book on the shelf. Delete book passes chosen too (WebKit leaves the focus on <body> after a click or a
-   * tap, so "the focus was lost" cannot be seen there): the next book is handled the same way; with no book left the
-   * focus goes to the new-book form. A redraw that took the focus away does the same.
+   * chosen book is brought into view and its title gets the focus; on a wide screen the focus goes to the book on the
+   * shelf and the page moves only when that button is under a bar or out of the window (common.focusInView). Delete book
+   * passes chosen too (WebKit leaves the focus on <body> after a click or a tap, so "the focus was lost" cannot be seen
+   * there): the next book is handled the same way; with no book left the focus goes to the new-book form. A redraw that
+   * took the focus away does the same. A chosen book's redraw does not give the focus back to the control that had it
+   * (Delete book of the next book): the focus goes to its place once, not through that control.
    */
   var narrowQuery = root.matchMedia ? root.matchMedia('(max-width: 820px)') : null;
   function select(id, chosen) {
@@ -57,7 +59,7 @@
     selectedId = id;
     O.writeLocal(SELECTED_KEY, id || '');
     drawList();
-    drawDetail();
+    drawDetail(chosen ? false : undefined);
     var lost = hadFocus && (!document.activeElement || document.activeElement === document.body);
     if (!chosen && !lost) return;
     var target = null;
@@ -65,13 +67,13 @@
     for (var i = 0; i < items.length; i++) if (items[i].getAttribute('data-book') === selectedId) target = items[i];
     var heading = $('book-detail').querySelector('h2');
     if (!target) {
-      $('yk-name').focus(); // no book (left): the new-book form, brought into view
+      O.focusInView($('yk-name')); // no book (left): the new-book form
     } else if (heading && narrowQuery && narrowQuery.matches) {
       heading.setAttribute('tabindex', '-1');
-      heading.scrollIntoView({ block: 'start' }); // scroll-margin-top (style.css) keeps it below the sticky header
+      heading.scrollIntoView({ block: 'start' }); // the scroll-padding of html (style.css) keeps it below the sticky header
       heading.focus({ preventScroll: true });
     } else {
-      target.focus({ preventScroll: true });
+      O.focusInView(target);
     }
   }
 
@@ -80,7 +82,9 @@
    * the focus on <body>. place says where it goes after the redraw: { step, control, index } → the same control of the
    * same step (data-control: done | up | down | remove); an arrow disabled now (the step reached an end) hands over to the
    * other arrow; a removed step hands over to the step that took its place (or the one before it), the last one to the
-   * "New step" field. { id } → that element. Without place the focused element keeps the focus when it has an id.
+   * "New step" field. { id } → that element. Without place the focused element keeps the focus when it has an id; with
+   * place false nothing is focused (select places the focus itself). The focus is kept clear of the bars over the page
+   * (common.focusInView): a step moved up can land under the sticky header, one moved down under the phone tab bar.
    */
   function placeFocus(place) {
     var target = null;
@@ -96,7 +100,7 @@
         if (!target || target.disabled) target = row.querySelector('[data-control="done"]');
       }
     }
-    if (target) target.focus();
+    O.focusInView(target);
   }
 
   function drawList() {
@@ -120,7 +124,7 @@
   function drawDetail(place) {
     var container = $('book-detail');
     var active = document.activeElement;
-    if (!place && active && active.id && container.contains(active)) place = { id: active.id };
+    if (place === undefined && active && active.id && container.contains(active)) place = { id: active.id };
     container.textContent = '';
     drawDetailContent(container);
     if (place) placeFocus(place);
@@ -214,7 +218,8 @@
     container.appendChild(el('div', { class: 'line' }, [
       newName,
       el('button', { type: 'button', id: 'step-add', text: t('projects.step.add'), onclick: function () {
-        try { M.addStep(k, newName.value); save(); drawList(); drawDetail(); } catch (e) { O.notify(e.message, 'error'); }
+        // the focus stays on "Add step" (it moves down by the new step), also after a click in WebKit, which does not focus a clicked button
+        try { M.addStep(k, newName.value); save(); drawList(); drawDetail({ id: 'step-add' }); } catch (e) { O.notify(e.message, 'error'); }
       } })
     ]));
   }
